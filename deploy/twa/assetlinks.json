@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "online.mailofagents.twa",
+    "sha256_cert_fingerprints": [
+      "D4:23:FD:67:8F:D9:26:99:40:E3:9F:86:3B:7D:BC:A4:B9:08:0D:F5:F7:9D:21:46:8A:08:53:26:04:87:34:4A"
+    ]
+  }
+}]

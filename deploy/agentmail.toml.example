@@ -1,0 +1,18 @@
+# agentmail-server config
+#
+# For normal/wizard startup, only [server].listen and [storage].db_path are
+# read. The mail domain and admin password are set through the browser wizard
+# and stored in the database.
+#
+# For unattended init (--yes-init-from-config), ALL fields below are required.
+# The wizard is skipped; the server bootstraps from this file directly.
+
+[server]
+listen = "127.0.0.1:8090"     # HTTP listen address
+domain = "agentmail.local"    # mail domain (init only — read from db otherwise)
+
+[storage]
+db_path = "agentmail.db"      # bbolt database file
+
+[admin]
+password = "change-me"        # admin password (init only — read from db otherwise)

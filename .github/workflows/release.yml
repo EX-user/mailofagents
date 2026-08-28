@@ -1,0 +1,213 @@
+name: release
+
+# Build cross-platform binaries for both agentmail-server and agentmail-gateway
+# on tag push. Pure Go, no cgo — single static binary per target.
+#
+# Two-phase design to avoid a release-creation race:
+#   1. build (matrix, parallel): compile + package, upload the package as a
+#      workflow artifact. Does NOT touch the GitHub release.
+#   2. release (single job, needs: build): downloads every artifact, creates
+#      the release ONCE, and uploads all assets to it.
+# The previous single-phase design ran softprops/action-gh-release in every
+# matrix job; they raced on the same tag, so the last-finalizing job hit
+# "already_exists: tag_name" and failed — dropping a random target per release
+# (v0.2.5 windows, v0.2.8 linux-amd64). One release job = no race.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+          - goos: linux
+            goarch: amd64
+            ext: ""
+          - goos: linux
+            goarch: arm64
+            ext: ""
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      # NOTE: no actions/setup-go — its codeload tarball download was
+      # persistently 429-rate-limited tonight (3 runs, always at least one
+      # job dead at this step). Hosted ubuntu runners ship a preinstalled Go
+      # (>= the module's 1.22 floor), so use it directly. The version line
+      # keeps what we actually built with visible in the log.
+      - name: Go toolchain (runner-preinstalled)
+        run: go version
+
+      - name: Build both binaries
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          # suggested_min_gateway_version comes from .gateway-min-version,
+          # NOT the tag: only bump that file when the gateway binary has a
+          # real change (pure server/frontend releases keep the old floor,
+          # so nobody is nagged to swap an unchanged gateway).
+          GATEWAY_MIN=$(tr -d ' \t\r\n' < .gateway-min-version)
+          go build -trimpath -ldflags="-s -w -X github.com/agentmail/agentmail/internal/server.Version=${GITHUB_REF_NAME} -X github.com/agentmail/agentmail/internal/server.SuggestedMinGatewayVersion=${GATEWAY_MIN}" -o agentmail-server${{ matrix.ext }} ./cmd/agentmail-server
+          go build -trimpath -ldflags="-s -w -X github.com/agentmail/agentmail/internal/gateway.Version=${GITHUB_REF_NAME}" -o agentmail-gateway${{ matrix.ext }} ./cmd/agentmail-gateway
+
+      - name: Package
+        run: |
+          name="agentmail-${GITHUB_REF_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          mkdir -p dist
+          cp agentmail-server${{ matrix.ext }} agentmail-gateway${{ matrix.ext }} README.md LICENSE deploy/agentmail.toml.example dist/
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            cd dist && zip -r "../${name}.zip" . && cd ..
+          else
+            tar czf "${name}.tar.gz" -C dist .
+          fi
+
+      # Hand the package off to the release job as a workflow artifact. No race
+      # here: each matrix job uploads a uniquely-named artifact. The path is
+      # version-agnostic (do NOT pin to a major version like v0.2.* — it breaks
+      # the first release of a new major, e.g. v0.3.0, with "no files found").
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: agentmail-v*.*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: build
+    # Only publish on a real tag push (not workflow_dispatch runs without a tag).
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+
+      - name: Create release and upload all assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          echo "Publishing release ${TAG} with:"
+          ls -1 agentmail-*
+
+          # publish is idempotent (fetch-or-create the release; delete any
+          # existing same-name asset; upload). The release API is occasionally
+          # flaky right after create (eventual consistency, transient 5xx), so
+          # retry the whole publish a few times instead of aborting on the first
+          # non-2xx. We do NOT use curl -f on the fetch-by-tag (404 is expected
+          # before create); the create/upload calls keep -f but are retried.
+          publish() {
+            # 1. resolve-or-create the release for this tag.
+            REL_ID=$(curl -sSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+              | jq -r 'if .id then .id else "null" end')
+            if [ "$REL_ID" = "null" ] || [ -z "$REL_ID" ]; then
+              echo "Creating new release for ${TAG}"
+              REL_ID=$(curl -fsSL -X POST \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"generate_release_notes\":false}" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases" \
+                | jq -r .id)
+            fi
+            [ -n "$REL_ID" ] && [ "$REL_ID" != "null" ] || { echo "no release id"; return 1; }
+            echo "Release id: ${REL_ID}"
+
+            # 2. upload url (retry the GET a few times — the release may not be
+            # readable for a couple of seconds after create).
+            UPLOAD_URL=""
+            for i in 1 2 3 4 5; do
+              UPLOAD_URL=$(curl -sSL \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${REL_ID}" \
+                | jq -r 'if .upload_url then .upload_url else empty end') || true
+              if [ -n "$UPLOAD_URL" ]; then break; fi
+              echo "release not readable yet, retry $i"; sleep 3
+            done
+            [ -n "$UPLOAD_URL" ] || { echo "no upload url"; return 1; }
+            UPLOAD_URL="${UPLOAD_URL%\{?name,label\}}"
+
+            # 3. upload each asset (delete existing same-name first for clean replace).
+            for f in agentmail-*.tar.gz agentmail-*.zip; do
+              [ -e "$f" ] || continue
+              EXIST_ID=$(curl -sSL \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${REL_ID}" \
+                | jq -r --arg n "$f" '[.assets[] | select(.name==$n) | .id] | first // ""') || true
+              if [ -n "$EXIST_ID" ]; then
+                curl -fsSL -X DELETE \
+                  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/${EXIST_ID}" || true
+              fi
+              echo "Uploading $f"
+              curl -fsSL -X POST \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Content-Type: application/gzip" \
+                --data-binary "@$f" \
+                "${UPLOAD_URL}?name=${f}"
+            done
+          }
+
+          # Retry the whole publish on transient release-API failures.
+          for attempt in 1 2 3 4 5; do
+            echo "=== publish attempt $attempt ==="
+            if publish; then echo "publish OK"; break; fi
+            echo "publish failed, retrying in 5s…"; sleep 5
+            if [ "$attempt" = "5" ]; then echo "publish failed after 5 attempts"; exit 1; fi
+          done
+
+      - name: Verify all expected assets present
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          AUTH=( -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" )
+          EXPECT=( agentmail-${TAG}-windows-amd64.zip agentmail-${TAG}-linux-amd64.tar.gz \
+                   agentmail-${TAG}-linux-arm64.tar.gz agentmail-${TAG}-darwin-amd64.tar.gz \
+                   agentmail-${TAG}-darwin-arm64.tar.gz )
+          for i in 1 2 3 4 5 6; do
+            # No -f: a transient 404/parse hiccup just means "not all present yet".
+            NAMES=$(curl -sSL "${AUTH[@]}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" | jq -r '.assets[].name' 2>/dev/null || true)
+            MISSING=()
+            for e in "${EXPECT[@]}"; do echo "$NAMES" | grep -qx "$e" || MISSING+=("$e"); done
+            if [ ${#MISSING[@]} -eq 0 ]; then
+              echo "All ${#EXPECT[@]} assets present."
+              exit 0
+            fi
+            echo "attempt $i: still missing: ${MISSING[*]}"
+            sleep 5
+          done
+          echo "ERROR: missing assets after retries: ${MISSING[*]}"
+          exit 1

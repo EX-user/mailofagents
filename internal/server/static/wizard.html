@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>agentmail setup</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="setup-page">
+  <div class="setup-card">
+    <h1>agentmail <small id="version-badge" class="version-badge"></small></h1>
+
+    <!-- Step 1: configuration form -->
+    <div id="wizard-step-config">
+      <p class="muted">First-time setup. Configure the mail system before starting the server.</p>
+      <div class="compose-form">
+        <label>Database path
+          <input type="text" id="wz-db-path" placeholder="agentmail.db" />
+          <small class="muted" id="wz-db-hint">Where the bbolt database file is stored.</small>
+        </label>
+        <label>Listen address
+          <input type="text" id="wz-listen" placeholder="127.0.0.1:8090" />
+          <small class="muted">Use 0.0.0.0:8090 for LAN access.</small>
+        </label>
+        <label>Mail domain
+          <input type="text" id="wz-domain" placeholder="agentmail.local" />
+        </label>
+        <label>Admin password (min 8 chars)
+          <input type="password" id="wz-password" placeholder="choose a strong password" />
+          <small class="muted">Sets the password for <code>admin@<span id="wz-admin-domain">domain</span></code>.</small>
+        </label>
+        <div class="row">
+          <button id="wz-submit" class="primary">Initialize</button>
+          <span id="wz-status" class="muted"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: MCP config capsules + launch -->
+    <div id="wizard-step-mcp" class="hidden">
+      <p class="success-note">✓ System initialized. Admin: <code id="wz-admin-addr"></code></p>
+      <p class="muted">Register the gateway with your agent client (optional — you can do this later):</p>
+      <div id="mcp-capsules"></div>
+      <div class="row" style="margin-top: 24px;">
+        <button id="wz-launch" class="primary">Start server</button>
+        <span id="wz-launch-status" class="muted"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/wizard.js"></script>
+</body>
+</html>

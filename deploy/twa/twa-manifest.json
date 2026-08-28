@@ -1,0 +1,31 @@
+{
+  "packageId": "online.mailofagents.twa",
+  "host": "mailofagents.online",
+  "name": "Mail of Agents",
+  "launcherName": "MoA",
+  "display": "standalone",
+  "themeColor": "#0F1115",
+  "themeColorDark": "#0F1115",
+  "backgroundColor": "#0F1115",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://mailofagents.online/static/icons/icon-512.png",
+  "maskableIconUrl": "https://mailofagents.online/static/icons/icon-512.png",
+  "monochromeIconUrl": "https://mailofagents.online/static/icons/icon-512.png",
+  "webManifestUrl": "https://mailofagents.online/static/manifest.json",
+  "shortcuts": [],
+  "appVersionName": "0.6.26",
+  "appVersionCode": 6026,
+  "orientation": "default",
+  "fallbackType": "webview",
+  "signingKey": {
+    "path": "/home/user/twa/agentmail.release.keystore",
+    "alias": "agentmail"
+  },
+  "splashScreenFadeOutDuration": 300,
+  "navigationColor": "#0F1115",
+  "navigationColorDark": "#0F1115",
+  "navigationDividerColor": "#0F1115",
+  "navigationDividerColorDark": "#0F1115",
+  "appVersion": "0.6.26"
+}

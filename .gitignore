@@ -1,0 +1,33 @@
+# Compiled binaries
+/bin/
+/agentmail-server
+/agentmail-server.exe
+/agentmail-gateway
+/agentmail-gateway.exe
+/agentmail-gateway-linux-amd64
+/agentmail-gateway-linux-*
+
+# Editor backup files
+*.exe~
+*~
+
+# Local config (contains admin password — never commit)
+/agentmail.toml
+
+# bbolt database
+*.db
+
+# Chief notes (private working notes, contains test credentials)
+/docs/chief-notes.md
+
+# Go workspace cruft
+/vendor/
+
+# OS/editor droppings
+.DS_Store
+Thumbs.db
+*.swp
+test-poll/
+*.log
+ALICE_DUTY_LOG.md
+test-info/
