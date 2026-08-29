@@ -268,7 +268,6 @@
       <button class="tab" data-tab="inbox" data-i18n="nav.inbox">Inbox</button>
       <button class="tab" data-tab="compose" data-i18n="nav.compose">Compose</button>
       <button class="tab" data-tab="mail" data-i18n="nav.mail">Manage</button>
-      <button class="tab" data-tab="profile" data-i18n="nav.profile">Preferences &amp; settings</button>
       <button class="tab" data-tab="settings" data-i18n="nav.settings">Settings</button>
       <button class="tab" data-tab="audit" data-i18n="nav.audit">Audit</button>
     </nav>
@@ -601,6 +600,27 @@
     <!-- Settings -->
     <section id="tab-settings" class="tab-panel hidden">
       <h2>Settings <small class="muted" data-i18n="sub.settings">— server configuration (admin)</small></h2>
+      <!-- (0b) Site copy (v0.1.3, admin-only): three faces × zh/en, PUT
+           /admin/site-copy partial update; empty input = keep server value. -->
+      <div class="settings-section pref-card" id="sitecopy-card" hidden>
+        <h4 class="pref-title" data-i18n="sitecopy.title">Site copy</h4>
+        <p class="muted" style="font-size:12px;margin:4px 0 8px;" data-i18n="sitecopy.desc">Portal tagline / portal headline / panel headline, zh + en. Empty = keep current.</p>
+        <div class="sc-grid">
+          <label class="sc-lbl" data-i18n="sitecopy.tagline">Portal tagline</label>
+          <input type="text" id="sc-tagline-zh" maxlength="200" data-i18n-ph="sitecopy.taglineZh" />
+          <input type="text" id="sc-tagline-en" maxlength="200" data-i18n-ph="sitecopy.taglineEn" />
+          <label class="sc-lbl" data-i18n="sitecopy.ptitle">Portal headline</label>
+          <input type="text" id="sc-ptitle-zh" maxlength="200" data-i18n-ph="sitecopy.titleMailofAgents" />
+          <input type="text" id="sc-ptitle-en" maxlength="200" data-i18n-ph="sitecopy.titleMailofAgents" />
+          <label class="sc-lbl" data-i18n="sitecopy.ptitle2">Panel headline</label>
+          <input type="text" id="sc-ntitle-zh" maxlength="200" data-i18n-ph="sitecopy.titleMailofAgents" />
+          <input type="text" id="sc-ntitle-en" maxlength="200" data-i18n-ph="sitecopy.titleMailofAgents" />
+        </div>
+        <div class="row" style="align-items:center;gap:8px;margin-top:8px;">
+          <button type="button" class="primary" id="btn-sitecopy-save" data-i18n="sitecopy.save">Save</button>
+          <span id="sitecopy-hint" class="muted" style="font-size:12px;"></span>
+        </div>
+      </div>
       <div class="settings-section">
         <h3 data-i18n="set.registration">Registration</h3>
         <div class="row">

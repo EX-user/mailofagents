@@ -769,6 +769,55 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
     if (getSession()) fRefresh();
   })();
 
+  // v0.1.3 site copy (admin-only): three faces × zh/en → PUT /admin/site-copy
+  // (partial update: empty input keeps the server value; ≤200 chars/key).
+  // Card visibility gates on the authoritative session.is_admin.
+  (function wireSiteCopy() {
+    const scCard = $("#sitecopy-card");
+    const scSave = $("#btn-sitecopy-save");
+    const scHint = $("#sitecopy-hint");
+    if (!scCard || !scSave) return;
+    const s = getSession();
+    if (!s || !s.is_admin) return; // admin-only card
+    scCard.hidden = false;
+    const scKeys = [
+      ["sc-tagline-zh", "portal_tagline_zh"], ["sc-tagline-en", "portal_tagline_en"],
+      ["sc-ptitle-zh", "portal_title_zh"], ["sc-ptitle-en", "portal_title_en"],
+      ["sc-ntitle-zh", "panel_title_zh"], ["sc-ntitle-en", "panel_title_en"],
+    ];
+    function scPrefill() {
+      api("/api/site-copy", { keepSession: true }).then(function (d) {
+        scKeys.forEach(function (kv) {
+          const el = $("#" + kv[0]);
+          if (el && d && d[kv[1]]) el.value = d[kv[1]];
+        });
+      }, function () { /* older server: keep placeholders */ });
+    }
+    scSave.addEventListener("click", async function () {
+      scSave.disabled = true;
+      scHint.textContent = "";
+      const body = {};
+      let any = false;
+      scKeys.forEach(function (kv) {
+        const el = $("#" + kv[0]);
+        const v = el && el.value.trim();
+        if (v) { body[kv[1]] = v; any = true; }
+      });
+      try {
+        if (any) await api("/admin/site-copy", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        scHint.textContent = t("sitecopy.saved");
+      } catch (e) {
+        scHint.textContent = t("common.error", { msg: e.message });
+      }
+      scSave.disabled = false;
+    });
+    scPrefill();
+  })();
+
   // Theme: "light"/"dark" pin html[data-theme]; "system" removes the attr so
   // the prefers-color-scheme media query rules again. Persisted locally.
   const THEME_KEY = "theme";
