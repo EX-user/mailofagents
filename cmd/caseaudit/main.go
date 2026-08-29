@@ -8,11 +8,22 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	bolt "go.etcd.io/bbolt"
 )
+
+// rowIsAdmin decodes the is_admin flag of an account row (false on any
+// decode problem — audit output must not crash on legacy shapes).
+func rowIsAdmin(v []byte) bool {
+	var acc struct {
+		IsAdmin bool `json:"is_admin"`
+	}
+	return json.Unmarshal(v, &acc) == nil && acc.IsAdmin
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -30,16 +41,27 @@ func main() {
 	}
 	defer db.Close()
 
-	total, mixed := 0, 0
+	total, mixed, admins := 0, 0, 0
 	err = db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket([]byte("accounts")).ForEach(func(k, v []byte) error {
 			total++
 			s := string(k)
+			admin := rowIsAdmin(v)
+			if admin {
+				admins++
+				if admins <= limit {
+					fmt.Printf("ADMIN ROW: %s\n", s)
+				}
+			}
 			for _, r := range s {
 				if r >= 'A' && r <= 'Z' {
 					mixed++
 					if mixed <= limit {
-						fmt.Printf("MIXED-CASE KEY: %s\n", s)
+						twin := "(no lowercase twin)"
+						if tv := tx.Bucket([]byte("accounts")).Get([]byte(strings.ToLower(s))); tv != nil {
+							twin = fmt.Sprintf("twin is_admin=%v", rowIsAdmin(tv))
+						}
+						fmt.Printf("MIXED-CASE KEY: %s (is_admin=%v, %s)\n", s, admin, twin)
 					}
 					break
 				}
@@ -51,7 +73,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "sweep:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("total=%d mixed_case=%d (showing up to %d)\n", total, mixed, limit)
+	fmt.Printf("total=%d mixed_case=%d admin_rows=%d (showing up to %d)\n", total, mixed, admins, limit)
 	if mixed > 0 {
 		os.Exit(1) // nonzero exit = cleanup still pending
 	}

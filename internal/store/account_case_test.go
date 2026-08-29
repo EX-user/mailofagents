@@ -129,3 +129,64 @@ func rawKeyExists(s *Store, key string) bool {
 	})
 	return found
 }
+
+// TestNormalizeAccountCaseMergesAdminFlag: when an uppercase row collapses
+// into a lowercase twin, admin status must OR-merge — the legacy uppercase
+// row may be the REAL admin, and dropping it wholesale used to demote the
+// survivor (v0.6.33 live regression: admin login worked, is_admin=false).
+func TestNormalizeAccountCaseMergesAdminFlag(t *testing.T) {
+	s := newCaseTestStore(t)
+
+	// Uppercase row is the real admin; lowercase twin is a plain account.
+	putRawAccount(t, s, "Admin@test.example", "Admin@test.example", "sig-admin")
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		var acc Account
+		if err := json.Unmarshal(tx.Bucket(bAccounts).Get([]byte("Admin@test.example")), &acc); err != nil {
+			return err
+		}
+		acc.IsAdmin = true
+		val, err := json.Marshal(acc)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bAccounts).Put([]byte("Admin@test.example"), val)
+	}); err != nil {
+		t.Fatalf("seed admin flag: %v", err)
+	}
+	putRawAccount(t, s, "admin@test.example", "admin@test.example", "sig-plain")
+
+	res, err := s.NormalizeAccountCase()
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if res.DeletedDupes != 1 || res.AdminMerges != 1 {
+		t.Fatalf("counts = %+v, want dupes=1 admin_merges=1", res)
+	}
+	if rawKeyExists(s, "Admin@test.example") {
+		t.Error("uppercase admin key still present (merge incomplete)")
+	}
+	a, err := s.GetAccount("admin@test.example")
+	if err != nil {
+		t.Fatalf("lowercase admin missing: %v", err)
+	}
+	if !a.IsAdmin {
+		t.Error("surviving lowercase row lost IsAdmin=true (merge rule not applied)")
+	}
+	if a.Signature != "sig-plain" {
+		t.Errorf("signature = %q, want sig-plain (lowercase fields still win)", a.Signature)
+	}
+
+	// Both-plain twins must not inflate flags.
+	putRawAccount(t, s, "Delta@test.example", "Delta@test.example", "sig-d")
+	putRawAccount(t, s, "delta@test.example", "delta@test.example", "sig-d-lower")
+	res2, err := s.NormalizeAccountCase()
+	if err != nil {
+		t.Fatalf("normalize 2: %v", err)
+	}
+	if res2.AdminMerges != 0 {
+		t.Fatalf("second counts = %+v, want admin_merges=0", res2)
+	}
+	if a, _ := s.GetAccount("delta@test.example"); a != nil && a.IsAdmin {
+		t.Error("plain twin promoted to admin (flag inflation)")
+	}
+}

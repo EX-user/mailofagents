@@ -216,13 +216,16 @@ func (s *Store) ResetPassword(address, newPassword string) error {
 
 // CaseNormResult reports what NormalizeAccountCase did: how many account
 // keys were already lowercase (untouched), how many were rewritten to their
-// lowercase form (renamed), and how many were deleted as duplicates of an
+// lowercase form (renamed), how many were deleted as duplicates of an
 // already-lowercase record (the lowercase twin wins — it is the one future
-// logins resolve to).
+// logins resolve to), and how many duplicate merges had to restore
+// IsAdmin=true onto the surviving lowercase row (the legacy uppercase row
+// was the real admin).
 type CaseNormResult struct {
 	AlreadyLower int `json:"already_lower"`
 	Renamed      int `json:"renamed"`
 	DeletedDupes int `json:"deleted_duplicates"`
+	AdminMerges  int `json:"admin_merges"`
 }
 
 // NormalizeAccountCase repairs pre-fix account keys that were stored with
@@ -231,7 +234,10 @@ type CaseNormResult struct {
 // an outside user reported), the uppercase record is dropped as a
 // duplicate and the lowercase record is kept (it is what GetAccount now
 // resolves to). One transaction; on conflict the lowercase record's
-// password/visibility/signature/prefs are the ones that survive. Safe to
+// password/visibility/signature/prefs are the ones that survive, but
+// IsAdmin is OR-merged: a legacy uppercase row may be the REAL admin, and
+// dropping it wholesale used to demote the survivor (v0.6.33 live
+// regression — admin login worked while is_admin came back false). Safe to
 // run repeatedly — a clean store is a no-op.
 func (s *Store) NormalizeAccountCase() (CaseNormResult, error) {
 	var res CaseNormResult
@@ -254,8 +260,22 @@ func (s *Store) NormalizeAccountCase() (CaseNormResult, error) {
 			todo = append(todo, pending{oldKey: cloneBytes(k), lowerKey: cloneBytes(lk), val: cloneBytes(v)})
 		}
 		for _, p := range todo {
-			if b.Get(p.lowerKey) != nil {
-				// Lowercase twin exists — keep it, drop the uppercase dupe.
+			if existing := b.Get(p.lowerKey); existing != nil {
+				// Lowercase twin exists — keep it, but merge the privilege
+				// flag first: the legacy uppercase row may carry the real
+				// admin flag, which must survive the collapse.
+				var upper, lower Account
+				if json.Unmarshal(p.val, &upper) == nil &&
+					json.Unmarshal(existing, &lower) == nil &&
+					upper.IsAdmin && !lower.IsAdmin {
+					lower.IsAdmin = true
+					if nv, err := json.Marshal(lower); err == nil {
+						if err := b.Put(p.lowerKey, nv); err != nil {
+							return err
+						}
+						res.AdminMerges++
+					}
+				}
 				if err := b.Delete(p.oldKey); err != nil {
 					return err
 				}
