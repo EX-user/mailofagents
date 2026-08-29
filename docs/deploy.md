@@ -1,3 +1,27 @@
+# 部署（Mail of Agents）
+
+> 仓库重启后版本自 **v0.1** 起算。取包一律走新仓 release：
+> `https://github.com/EX-user/mailofagents/releases/download/vX.Y.Z/agentmail-vX.Y.Z-<os>-<arch>.tar.gz`
+> （解包得 `agentmail-server` / `agentmail-gateway`；Android APK 为 `mail-of-agents-twa-*.apk`。）
+
+## 换取包版本
+
+1. 下载对应平台 bundle 并解包到 `/opt/mailofagents/`（示例）。
+2. 确认 `agentmail.toml`（参考 `deploy/agentmail.toml.example`）。
+3. `systemctl restart mailofagents`（示例 unit，见下）。
+
+## systemd（示例 unit）
+
+```ini
+# /etc/systemd/system/mailofagents.service
+[Service]
+WorkingDirectory=/opt/mailofagents
+ExecStart=/opt/mailofagents/agentmail-server
+Restart=on-failure
+```
+
+---
+
 # 反向代理与 TLS 部署
 
 agentmail-server 自身**不含 TLS**。生产部署时，应将 server 放在反向代理后面，由反代处理证书和 HTTPS，server 只监听本地端口。
