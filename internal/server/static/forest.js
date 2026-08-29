@@ -118,6 +118,15 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     var box = $("#tf-canvas");
     var svg = $("#tf-links");
     if (!box || !svg) return;
+    // 上级 01M176QXG：PC 画布左缘出界——CSS vw calc 在网格列内失效，
+    // 改为 JS 实测 breakout：左缘吸到 12px、宽度吃满视口。
+    try {
+      var r0 = fScroller.getBoundingClientRect();
+      if (Math.abs(r0.left - 12) > 1 || Math.abs(r0.width - (window.innerWidth - 24)) > 1) {
+        fScroller.style.marginLeft = (12 - r0.left) + "px";
+        fScroller.style.width = (window.innerWidth - 24) + "px";
+      }
+    } catch (_) {}
     fClear();
     svg.innerHTML = "";
     // Superior 01M15G…: 锚定「离视野中心最近的信节点」——重排后该卡相对视野
@@ -195,8 +204,9 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       var subj = n.isRoot ? (n.subj || n.m.subject || "—") : (n.m.subject || n.subj || "—");
       el.innerHTML = '<div class="f-head">' + esc(shortAddr(n.m.from)) + " · " + esc(fmtTime(n.m.received_at)) + "</div>"
         + '<div class="f-subj">' + esc(fClip(subj, 24)) + "</div>"
-        + '<div class="f-body">' + esc(fClip(n.m.body || "", 84)) + "</div>";
+        + '<div class="f-body">' + esc(fClip(n.m.body || n.m.preview || "", 84)) + "</div>";
       el.dataset.id = n.m.id;
+      el.__fnode = n; // 触摸端点按/拖动定位节点用
       // Superior 01M15G…: 单击=只选中；卡可横向拖动；双击=进话题详情。
       el.addEventListener("mousedown", function (ev) {
         ev.stopPropagation(); // 卡上按下不触发画布平移
@@ -292,10 +302,12 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
   (function fWireDensity() {
     var host = $("#tf-scroll");
     if (!host || $("#tf-density")) return;
+    // 滑杆挂在滚动容器的兄弟定位层上——absolute 在滚动容器内会随内容滚走，
+    // 移动端就再也碰不到（上级 01M176QXG）。
     var ctl = document.createElement("div");
     ctl.id = "tf-density";
     ctl.innerHTML = '<span>▤</span><input type="range" min="48" max="160" step="4" value="' + fRowH() + '" aria-label="row density">';
-    host.appendChild(ctl);
+    host.insertBefore(ctl, host.firstChild);
     ctl.querySelector("input").addEventListener("input", function (e) {
       var v = parseInt(e.target.value, 10) || 78;
       try { localStorage.setItem(fRowKey, String(v)); } catch (_) {}
@@ -326,18 +338,57 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       fPz.moveTo(drag.px + (e.clientX - drag.x), drag.py + (e.clientY - drag.y));
     });
     window.addEventListener("mouseup", function () { drag = null; });
+    // 触摸端（上级 01M176QXG）：panzoom 会吞掉合成 click/dblclick，因此
+    // 点按/双点按/卡片横拖全部自管：短触未移动=点按（选中），350ms 内两次
+    // 点按同一卡=进详情；单指横拖=平移，卡上单指横拖=拖卡。
+    var fLastTap = { t: 0, card: null };
+    function fTapCard(card) {
+      var now = Date.now();
+      if (fLastTap.card === card && now - fLastTap.t < 350) {
+        fLastTap = { t: 0, card: null };
+        document.dispatchEvent(new CustomEvent("threads:open", { detail: { root: card.dataset.root } }));
+        return;
+      }
+      fLastTap = { t: now, card: card };
+      document.querySelectorAll(".f-card.sel").forEach(function (x) { x.classList.remove("sel"); });
+      card.classList.add("sel");
+    }
+    var tdrag = null;
     fScroller.addEventListener("touchstart", function (e) {
-      if (e.touches.length === 1) {
-        drag = { x: e.touches[0].clientX, y: e.touches[0].clientY, px: fPz.getTransform().x, py: fPz.getTransform().y };
+      if (e.touches.length !== 1) return;
+      var t0 = e.touches[0];
+      var card = e.target.closest && e.target.closest(".f-card");
+      if (card && card.__fnode) {
+        tdrag = { mode: "card", card: card, n: card.__fnode, x: t0.clientX, y: t0.clientY, ox: card.__fnode.x, oy: card.__fnode.y, dx: 0, dy: 0, moved: false, t0: Date.now() };
+      } else if (!e.target.closest || !e.target.closest("#tf-density")) {
+        tdrag = { mode: "pan", x: t0.clientX, y: t0.clientY, px: fPz.getTransform().x, py: fPz.getTransform().y, dx: 0, dy: 0, moved: false, t0: Date.now(), target: e.target };
       }
     }, { passive: true });
     fScroller.addEventListener("touchmove", function (e) {
-      if (drag && e.touches.length === 1) {
-        e.preventDefault();
-        fPz.moveTo(drag.px + (e.touches[0].clientX - drag.x), drag.py + (e.touches[0].clientY - drag.y));
+      if (!tdrag || e.touches.length !== 1) return;
+      e.preventDefault();
+      tdrag.dx = e.touches[0].clientX - tdrag.x;
+      tdrag.dy = e.touches[0].clientY - tdrag.y;
+      if (Math.abs(tdrag.dx) + Math.abs(tdrag.dy) > 8) tdrag.moved = true;
+      if (tdrag.moved && tdrag.mode === "pan") {
+        fPz.moveTo(tdrag.px + tdrag.dx, tdrag.py + tdrag.dy);
+      } else if (tdrag.moved && tdrag.mode === "card") {
+        tdrag.card.style.left = (tdrag.ox + tdrag.dx) + "px";
       }
     }, { passive: false });
-    fScroller.addEventListener("touchend", function () { drag = null; });
+    fScroller.addEventListener("touchend", function () {
+      var t = tdrag; tdrag = null;
+      if (!t) return;
+      if (!t.moved && Date.now() - t.t0 < 400) {
+        var card = t.mode === "card" ? t.card : (t.target && t.target.closest ? t.target.closest(".f-card") : null);
+        if (card) fTapCard(card);
+        return;
+      }
+      if (t.moved && t.mode === "card") {
+        t.n.x = t.ox + t.dx;
+        fLinksDraw();
+      }
+    });
   })();
 
   (function fWire() {
