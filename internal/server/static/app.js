@@ -8,7 +8,7 @@
 // ./core.js; this entry imports it and keeps every domain in place. i18n stays
 // a classic script (window.I18N). HARD CONSTRAINT: domain code imports only
 // core; cross-domain interaction goes through DOM events.
-import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, setUnauthorizedHandler, fmtTime, fmtBytes, copyText } from "./core.js";
+import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, basicAuth, toast, setUnauthorizedHandler, fmtTime, fmtBytes, copyText } from "./core.js";
 
 (function () {
   "use strict";
@@ -1257,8 +1257,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
       if (getSession()) {
         try {
           const me = await api("/api/account/info?query=self");
-          // Refresh the cached role in case it changed server-side.
+          // Refresh the cached role in case it changed server-side, and
+          // write it back into the remember-me token (v0.1.3: the token
+          // used to render every session as regular).
           const s = getSession(); s.is_admin = !!me.is_admin; setSession(s);
+          updateTokenRole(me.is_admin);
           showApp(me.is_admin);
           activateTab("overview");
         } catch (e) {
@@ -2167,7 +2170,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
       try {
         const tok = await api("/api/auth/token", { method: "POST" });
         if (tok && tok.token) {
-          if (remember) setToken(address, tok.token);
+          if (remember) setToken(address, tok.token, s.is_admin);
           // else: password stays in sessionStorage (session-only mode).
         }
       } catch (_) { /* token endpoint optional; basic auth still works */ }

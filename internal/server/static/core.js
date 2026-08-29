@@ -59,10 +59,13 @@ const SESSION_KEY = "agentmail_creds";   // sessionStorage: {address, password, 
 const TOKEN_KEY    = "agentmail_token";  // localStorage: {address, token}
 
 export function getSession() {
-  // Token path (remember-me): localStorage has higher priority when token is valid.
+  // Token path (remember-me): localStorage has higher priority when token is
+  // valid. The stored role is authoritative for the panel UI — v0.6.27
+  // returned is_admin: undefined here, so every remember-me login rendered
+  // as regular (five-card nav) even for the real admin (v0.1.3 fix).
   try {
     const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
-    if (t && t.address && t.token) return { address: t.address, token: t.token, is_admin: undefined };
+    if (t && t.address && t.token) return { address: t.address, token: t.token, is_admin: !!t.is_admin };
   } catch (_) {}
   // Password path (session-only or fallback).
   try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); }
@@ -73,9 +76,22 @@ export function setSession(s) {
   else sessionStorage.removeItem(SESSION_KEY);
 }
 // setToken stores/retrieves a session token in localStorage ("remember me").
-export function setToken(address, token) {
-  if (address && token) localStorage.setItem(TOKEN_KEY, JSON.stringify({ address, token }));
+// The server-verified role travels with the token so the panel renders the
+// right nav without an extra round-trip.
+export function setToken(address, token, isAdmin) {
+  if (address && token) localStorage.setItem(TOKEN_KEY, JSON.stringify({ address, token, is_admin: !!isAdmin }));
   else localStorage.removeItem(TOKEN_KEY);
+}
+// updateTokenRole writes a freshly verified role back into the stored token
+// (boot refresh path). No-op when only the password path is in use.
+export function updateTokenRole(isAdmin) {
+  try {
+    const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
+    if (t && t.address && t.token) {
+      t.is_admin = !!isAdmin;
+      localStorage.setItem(TOKEN_KEY, JSON.stringify(t));
+    }
+  } catch (_) {}
 }
 export function clearAuth() {
   sessionStorage.removeItem(SESSION_KEY);
