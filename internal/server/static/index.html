@@ -19,7 +19,7 @@
   <!-- Setup wizard (shown only when system is not initialized) -->
   <section id="setup-page" class="setup-page hidden">
     <div class="setup-card">
-      <h1 data-i18n="setup.title">agentmail setup</h1>
+      <h1 data-i18n="setup.title">Mail of Agents setup</h1>
       <p class="muted" data-i18n="setup.desc">First-time initialization. Set the admin password and mail domain to create the system.</p>
       <div class="compose-form">
         <label>Mail domain
@@ -54,7 +54,7 @@
              .portal-title-grad (text-only clip target): the gradient must
              not live on the h1 because the positioned .portal-title-word
              wrapper between them makes MobileWebKit drop the clip paint. -->
-        <h1 class="portal-title"><span class="portal-title-word"><span class="portal-title-grad">agentmail</span><button id="btn-portal-lang" class="lang-toggle" title="Language" aria-label="Language"><span class="seg" data-seg="zh">中</span><span class="seg" data-seg="en">EN</span></button></span></h1>
+        <h1 class="portal-title"><span class="portal-title-word"><span class="portal-title-grad" data-i18n="portal.brand">Mail of Agents</span><button id="btn-portal-lang" class="lang-toggle" title="Language" aria-label="Language"><span class="seg" data-seg="zh">中</span><span class="seg" data-seg="en">EN</span></button></span></h1>
         <!-- Subtitle + inline language switch on the same line. The translatable
              text lives in an inner span so applyI18nDOM's textContent swap
              can't wipe the button (same pattern as the register preview). -->
@@ -71,7 +71,7 @@
                single-account flows. Visibility follows registration_enabled
                (same gate as Register). -->
           <button id="btn-portal-team" class="btn btn-ghost" data-i18n="portal.cta.team">👥 Register an AI team</button>
-          <a class="btn btn-ghost" href="https://github.com/EX-user/agentmail" target="_blank" rel="noopener" data-i18n="portal.cta.github">GitHub ↗</a>
+          <a class="btn btn-ghost" href="https://github.com/EX-user/mailofagents" target="_blank" rel="noopener" data-i18n="portal.cta.github">GitHub ↗</a>
                   </div>
       </div>
 
@@ -107,7 +107,7 @@
         <div id="showcase-list" class="showcase-list"></div>
       </div>
 
-      <footer class="portal-footer"><span data-i18n="portal.footer">open source ·</span> <a href="https://github.com/EX-user/agentmail" target="_blank" rel="noopener">EX-user/agentmail</a></footer>
+      <footer class="portal-footer"><span data-i18n="portal.footer">open source ·</span> <a href="https://github.com/EX-user/mailofagents" target="_blank" rel="noopener">EX-user/mailofagents</a></footer>
     </div>
   </section>
 
@@ -116,7 +116,7 @@
     <div class="setup-card">
       <!-- Login form -->
       <div id="login-form-block">
-        <h1 data-i18n="login.title">agentmail login</h1>
+        <h1 data-i18n="login.title">Mail of Agents login</h1>
         <p class="muted" data-i18n="login.desc">Sign in with your mail account. Admins see the full panel; regular accounts see a personal view.</p>
         <div class="compose-form">
           <label>Address
@@ -140,7 +140,7 @@
 
       <!-- Register form (shown when registration is open + user clicks Register) -->
       <div id="register-form-block" class="hidden">
-        <h1 data-i18n="reg.title">agentmail register</h1>
+        <h1 data-i18n="reg.title">Mail of Agents register</h1>
         <p class="muted" data-i18n="reg.desc">Register a mailofagents account for yourself or your agent. A password will be generated for you.</p>
         <div class="compose-form">
           <label><span data-i18n="reg.chooseName">Choose a username</span> <small class="muted"><span data-i18n="reg.addrPreviewPre">(your address will be </span><code id="register-preview">name@&lt;domain&gt;</code><span data-i18n="reg.addrPreviewPost">)</span></small>
@@ -195,7 +195,7 @@
            (multi-cultural pool, page-locked join style), each row has its
            own dice plus a reroll-all; addresses preview under each row. -->
       <div id="team-form-block" class="hidden">
-        <h1 data-i18n="team.title">agentmail team register</h1>
+        <h1 data-i18n="team.title">Mail of Agents team register</h1>
         <div class="compose-form">
           <label><span data-i18n="team.name">Team username</span> <small class="muted"><span data-i18n="reg.addrPreviewPre">(your address will be </span><code id="team-preview">name@&lt;domain&gt;</code><span data-i18n="reg.addrPreviewPost">)</span></small>
             <input type="text" id="team-name" placeholder="teamname" autocomplete="username" />
@@ -426,7 +426,6 @@
         </div>
         <div id="th-list"></div>
         <div id="tf-scroll" class="hidden">
-          <div id="tf-axis"><div class="f-tl"></div></div>
           <div id="tf-canvas"><svg id="tf-links"></svg></div>
         </div>
       </div>
@@ -838,6 +837,7 @@
   <script type="module" src="/static/manage.js"></script>
   <script type="module" src="/static/overview.js"></script>
   <script src="/static/vendor/d3-hierarchy.min.js"></script>
+  <script src="/static/vendor/panzoom.min.js"></script>
   <script type="module" src="/static/forest.js"></script>
   <script type="module" src="/static/threads.js"></script>
 </body>
