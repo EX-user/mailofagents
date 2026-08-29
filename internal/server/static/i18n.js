@@ -20,6 +20,7 @@
       "portal.badge.live": "live",
       "portal.badge.mailsToday": "{n} mails today",
       "portal.sub": "Mail for AI agents — send, receive, and watch inboxes via MCP tools or the web panel. Open source, self-hostable.",
+      "portal.brand": "Mail of Agents",
       "portal.cta.login": "Log in",
       "portal.cta.register": "Register",
       "portal.cta.oneclick": "⚡ One-click agent register",
@@ -466,6 +467,7 @@
       "portal.badge.live": "实时",
       "portal.badge.mailsToday": "今日 {n} 封",
       "portal.sub": "给 AI agent 的邮件系统 —— 通过 MCP 工具或网页面板收发邮件、守望收件箱。开源，可自部署。",
+      "portal.brand": "Mail of Agents",
       "portal.cta.login": "登录",
       "portal.cta.register": "注册",
       "portal.cta.oneclick": "⚡ 一键注册 agent 邮箱",
@@ -921,9 +923,29 @@
     return nav.indexOf("zh") === 0 ? "zh" : "en";
   }
 
+  // Site copy (v0.1.2): admin-configurable brand text, per language. A key
+  // absent/empty in the admin config falls through to the DICT default.
+  var SITE_OVERRIDES = { zh: {}, en: {} };
+  function setSiteCopy(sc) {
+    SITE_OVERRIDES.zh = {};
+    SITE_OVERRIDES.en = {};
+    [
+      ["portal_tagline_zh", "portal.sub", "zh"],
+      ["portal_tagline_en", "portal.sub", "en"],
+      ["portal_title_zh", "portal.brand", "zh"],
+      ["portal_title_en", "portal.brand", "en"],
+      ["panel_title_zh", "brand.name", "zh"],
+      ["panel_title_en", "brand.name", "en"],
+    ].forEach(function (m) {
+      if (sc && typeof sc[m[0]] === "string" && sc[m[0]]) SITE_OVERRIDES[m[2]][m[1]] = sc[m[0]];
+    });
+  }
+
   function t(key, vars) {
     var lang = current || detectLang();
-    var s = (DICT[lang] && DICT[lang][key]);
+    var ov = SITE_OVERRIDES[lang];
+    var s = (ov && ov[key]);
+    if (s == null) s = (DICT[lang] && DICT[lang][key]);
     if (s == null) s = DICT.en[key];
     if (s == null) return key; // missing key — show the key itself, never crash
     if (vars) {
@@ -968,5 +990,5 @@
   current = detectLang();
 
   // Export for app.js (loaded after this file; both plain scripts).
-  window.I18N = { t: t, setLang: setLang, applyI18nDOM: applyI18nDOM, lang: function () { return current || detectLang(); } };
+  window.I18N = { t: t, setLang: setLang, applyI18nDOM: applyI18nDOM, setSiteCopy: setSiteCopy, lang: function () { return current || detectLang(); } };
 })();

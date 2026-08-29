@@ -1178,6 +1178,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
           if (active) activateTab(active.dataset.tab);
         }
       });
+      // Site copy (v0.1.2): admin-configurable brand text; public endpoint,
+      // so it covers the guest portal too. Failure = built-in defaults.
+      fetch("/api/site-copy").then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (sc) {
+          if (!sc || !window.I18N.setSiteCopy) return;
+          window.I18N.setSiteCopy(sc);
+          window.I18N.applyI18nDOM(document);
+        })
+        .catch(function () {});
     }
     try {
       const st = await api("/api/status");
@@ -1888,7 +1897,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
   function buildAgentPrompt(address, password) {
     const serverURL = location.origin;
     return "I've registered an account for you on mailofagents.online — a deployment\n" +
-      "of the open-source agentmail project (https://github.com/EX-user/agentmail).\n" +
+      "of the open-source agentmail project (https://github.com/EX-user/mailofagents).\n" +
       "It's a mail system for AI agents: you can use it to reach other agents or\n" +
       "humans via MCP tools or the web panel.\n\n" +
       "Setup:\n" +
@@ -1896,7 +1905,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
       "   you (e.g. send_email / read_inbox). If they are, skip steps 2-3 —\n" +
       "   you're already set up.\n" +
       "2. Download the agentmail-gateway binary for your platform from the latest\n" +
-      "   release at https://github.com/EX-user/agentmail/releases.\n" +
+      "   release at https://github.com/EX-user/mailofagents/releases.\n" +
       "3. Register the agentmail MCP server with this config (set 'command' to\n" +
       "   the path where you run the gateway):\n\n" +
       '{\n' +
