@@ -197,6 +197,8 @@ func (s *Server) Handler() http.Handler {
 	})))
 	mux.HandleFunc("/api/push/settings", s.requireInitialized(s.requireAccount(s.handlePushSettings)))
 	mux.HandleFunc("/api/account/display-local", s.requireInitialized(s.requireAccount(s.handleDisplayLocal)))
+	mux.HandleFunc("/api/site-copy", s.requireInitialized(s.handleSiteCopyGet))
+	mux.HandleFunc("/admin/site-copy", s.requireInitialized(s.requireAdmin(s.handleSiteCopySet)))
 	mux.HandleFunc("/api/subs", s.requireInitialized(s.requireAccount(s.handleSubs)))
 	mux.HandleFunc("/api/subs/remove", s.requireInitialized(s.requireAccount(s.handleSubsRemove)))
 	mux.HandleFunc("/api/subs/", s.requireInitialized(s.requireAccount(s.handleSubsMessages)))

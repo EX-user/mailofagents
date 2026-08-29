@@ -51,6 +51,7 @@ const (
 	ActionAuthTokenRevoke Action = "auth_token_revoke"  // logout / password-change revocation
 	ActionPushSubscribe   Action = "push_subscribe"     // v0.6.30 web push registration
 	ActionDisplayLocalChange Action = "display_local_change" // v0.6.34 display local-part update
+	ActionSetSiteCopy        Action = "set_site_copy"        // v0.1.2 admin brand copy update
 	ActionPushRevoke      Action = "push_revoke"        // subscription removal
 )
 

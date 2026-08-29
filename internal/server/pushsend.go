@@ -9,6 +9,7 @@ import (
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 
+	"github.com/agentmail/agentmail/internal/audit"
 	"github.com/agentmail/agentmail/internal/store"
 )
 
@@ -241,4 +242,43 @@ func (s *Server) handleDisplayLocal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"display_local": d})
+}
+
+// --- site copy (v0.1.2, admin-configurable brand surfaces) ---
+
+// handleSiteCopyGet serves the configured copy (empty fields = built-in
+// defaults in use). Public: the guest portal renders before login.
+//   GET /api/site-copy
+func (s *Server) handleSiteCopyGet(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w)
+		return
+	}
+	sc, err := s.store.GetSiteCopy()
+	if err != nil {
+		internalError(w, "read site copy: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, sc.PublicMap())
+}
+
+// handleSiteCopySet updates brand copy (admin only, partial update).
+//   PUT /admin/site-copy {portal_tagline_zh?: "...", ...}
+func (s *Server) handleSiteCopySet(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		methodNotAllowed(w)
+		return
+	}
+	var sc store.SiteCopy
+	if err := decodeJSON(r, &sc); err != nil {
+		badRequest(w, "decode body: "+err.Error())
+		return
+	}
+	if err := s.store.SetSiteCopy(sc); err != nil {
+		badRequest(w, "site copy: "+err.Error())
+		return
+	}
+	who := accountFrom(r.Context())
+	_ = s.audit.Record(r.Context(), audit.ActionSetSiteCopy, who, "brand copy updated")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
