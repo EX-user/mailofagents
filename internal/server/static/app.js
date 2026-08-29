@@ -115,6 +115,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
     if (name === "overview") loadOverview();
     if (name === "accounts") loadAccounts();
     if (name === "inbox") document.dispatchEvent(new CustomEvent("inbox:entered"));
+    if (name === "profile") document.dispatchEvent(new CustomEvent("profile:entered"));
     if (name === "mail") document.dispatchEvent(new CustomEvent("manage:entered"));
     if (name === "overview") {
       // v0.6.9: the Overview tab hosts the Directory subview — restore the
@@ -764,6 +765,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, basicAuth, toast, se
     }
     const prefsBtn = $("#btn-prefs");
     if (prefsBtn) prefsBtn.addEventListener("click", function () { setTimeout(fRefresh, 250); });
+    document.addEventListener("profile:entered", function () { setTimeout(fRefresh, 250); });
     if (getSession()) fRefresh();
   })();
 
