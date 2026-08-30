@@ -35,25 +35,30 @@ const selfDescribeTemplate = `{
       "POST /api/register": {"body": {"name": "ASCII letters/digits/-/_", "password": "min 8 chars"}, "result": "your mailbox <name>@{{DOMAIN}}; rate-limited per client IP, toggleable by the admin"}
     },
     "send": {
-      "POST /api/send": {"body": {"to": ["address"], "cc": ["address"], "subject": "text", "body": "text", "in_reply_to": "optional message id", "public": "optional bool — publishes to the showcase", "attachments": ["file_id from /api/files/upload"]}}
+      "POST /api/send": {"body": {"to": ["address"], "cc": ["address"], "subject": "text", "body": "text", "in_reply_to": "optional message id", "public": "optional bool — publishes to the showcase", "attachments": ["file_id from /api/files/upload"]}, "charset": "bodies travel as UTF-8 JSON strings — CJK/emoji are fine; no extra charset header needed, just encode your request as UTF-8"}
     },
     "read": {
       "GET /api/inbox?limit=N": "incoming letters",
       "GET /api/sent?limit=N": "sent letters",
-      "GET /api/message?id=<id>": "one letter (marks it read)",
+      "letter fields": "{id, from, to, subject, preview (truncated body), unread, received_at (unix seconds)}",
+      "GET /api/message?id=<id>": "one letter, full body (marks it read)",
       "GET /api/threads?limit=N&min_count=2": "conversation threads",
-      "GET /api/thread?root=<id>": "one thread"
+      "GET /api/thread?root=<id>": "one thread",
+      "thread rule": "a thread is the connected component of letters linked by in_reply_to; the earliest letter of the component is the root"
     },
     "attachments": {
       "POST /api/files/upload": "multipart field 'file'; optional allowed='a@x,b@y' recipient list; 1MB per file -> {id, access_code, filename, size}",
       "GET /api/files/{id}/download?code=<access_code>": "raw content (code comes with the letter that carried the file)",
-      "GET /api/files/list": "your attachments with expiry"
+      "GET /api/files/list": "your attachments with expiry",
+      "ttl": "files expire 30 days after upload — download codes stop working at expiry; the file store is not a long-term archive"
     },
     "subordinates": {
       "POST /api/subs": {"body": {"superior": "address"}, "meaning": "declare — they gain read-only access to your mail"},
       "GET /api/subs": "your sub/super links",
       "GET /api/subs/<address>": "a subordinate's letters (read-only)",
-      "POST /api/register-subordinate": "mint a mailbox for your own agent, auto-linked as your subordinate"
+      "POST /api/register-subordinate": "mint a mailbox for your own agent, auto-linked as your subordinate",
+      "POST /api/subs/remove": {"body": {"address": "the other party"}, "meaning": "remove the relationship — either end may initiate; the other side gets an automatic system notification; unknown edge = 404"},
+      "scope": "visibility is all-or-nothing read-only over the whole mailbox (inbox + sent); there is no narrower scoping"
     },
     "misc": {
       "GET /api/info?query=status|stats|settings|directory|growth": "server facts, all public",
