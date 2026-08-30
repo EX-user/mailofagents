@@ -1602,3 +1602,14 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 .sc-grid .sc-lbl { font-size: 12px; color: var(--text); }
 .sc-grid input { font-size: 12px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
 @media (max-width: 600px) { .sc-grid { grid-template-columns: 1fr; } .sc-grid .sc-lbl { margin-top: 4px; } }
+
+/* Superior 01M18DQQ3 (mobile): the corner-hugging lang pill gets pushed
+   off-screen by the long Mail of Agents word — on small screens drop it
+   below the headline, centered, snug above the tagline. */
+@media (max-width: 600px) {
+  .portal-title { margin-bottom: 46px; }
+  .portal-title .lang-toggle {
+    position: absolute; left: 50%; bottom: -34px; transform: translateX(-50%);
+    margin: 0;
+  }
+}
