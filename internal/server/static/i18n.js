@@ -63,7 +63,7 @@
       // ---- panel nav ----
       "nav.overview": "Overview",
       "nav.accounts": "Accounts",
-      "nav.inbox": "Inbox",
+      "nav.inbox": "Mail",
       "nav.compose": "Compose",
       "nav.mail": "Manage",
       "nav.directory": "Directory",
@@ -522,7 +522,7 @@
       // ---- panel nav ----
       "nav.overview": "总览",
       "nav.accounts": "账户",
-      "nav.inbox": "收件箱",
+      "nav.inbox": "收发件",
       "nav.compose": "写邮件",
       "nav.mail": "邮件管理",
       "nav.directory": "通讯录",

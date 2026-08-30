@@ -278,7 +278,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     if (fPz || !window.panzoom || !c) return;
     c.style.transformOrigin = "0 0";
     fPz = window.panzoom(c, {
-      minZoom: 0.25, maxZoom: 4, zoomSpeed: 0.065,
+      minZoom: 0.05, maxZoom: 4, zoomSpeed: 0.065,
       bounds: false, boundsPadding: 0.05,
       dblClickZoomEnabled: false,
       // 拖拽平移由 forest 自管（panzoom 的鼠标拖拽位移异常放大），只让库管缩放。
@@ -312,7 +312,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     // 适配并居中），不是只适配宽度。
     var w = parseFloat(c.style.width) || c.scrollWidth;
     var h = parseFloat(c.style.height) || c.scrollHeight;
-    var fZ = Math.min(1.15, Math.max(0.25, Math.min(
+    var fZ = Math.min(1.15, Math.max(0.05, Math.min(
       (fScroller.clientWidth - 48) / w,
       (fScroller.clientHeight - 48) / h)));
     fPz.zoomAbs(0, 0, fZ);
@@ -348,10 +348,12 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     var bOrph = document.createElement("button");
     bOrph.type = "button"; bOrph.className = "f-fbtn"; bOrph.id = "tf-orphbtn";
     bOrph.textContent = "孤信";
+    bOrph.classList.add("off"); // 默认不显示孤立信——按钮文字变淡（对齐数字按钮 .off）
     bOrph.title = "show orphans";
     bOrph.addEventListener("click", function () {
       fHideOrphans = !fHideOrphans;
       bOrph.classList.toggle("on", !fHideOrphans);
+      bOrph.classList.toggle("off", fHideOrphans);
       if (fCache) fDraw();
     });
     // 行距滑杆

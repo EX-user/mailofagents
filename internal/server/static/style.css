@@ -1566,6 +1566,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   display: flex; align-items: center; justify-content: center; padding: 0 10px; }
 #tf-bar .f-fbtn:hover { border-color: var(--accent, #3b82f6); }
 #tf-bar .f-fbtn.on { border-color: var(--accent, #3b82f6); color: var(--accent); font-weight: 600; }
+#tf-bar .f-fbtn.off { opacity: .45; }
 #tf-density { display: flex;
   align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--border); background: rgba(255,255,255,.92); font-size: 12px;
