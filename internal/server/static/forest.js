@@ -122,9 +122,9 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     // 改为 JS 实测 breakout：左缘吸到 12px、宽度吃满视口。
     try {
       var r0 = fScroller.getBoundingClientRect();
-      if (Math.abs(r0.left - 24) > 1 || Math.abs(r0.width - (window.innerWidth - 48)) > 1) {
-        fScroller.style.marginLeft = (24 - r0.left) + "px";
-        fScroller.style.width = (window.innerWidth - 48) + "px";
+      if (Math.abs(r0.left - 12) > 1 || Math.abs(r0.width - (window.innerWidth - 24)) > 1) {
+        fScroller.style.marginLeft = (12 - r0.left) + "px";
+        fScroller.style.width = (window.innerWidth - 24) + "px";
       }
     } catch (_) {}
     fClear();
@@ -278,40 +278,17 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       dblClickZoomEnabled: false,
       // 拖拽平移由 forest 自管（panzoom 的鼠标拖拽位移异常放大），只让库管缩放。
       beforeMouseDown: function () { return true; },
-      // 上级 01M17AJ97 续：触摸全部自管——panzoom 的单指触摸会并行平移
-      // （拖卡时视野跟着动）且 preventDefault 吞掉点按；其「忽略事件」选项
-      // 实为 onTouch 而非 beforeTouch（内部函数名），且单指处理无法单独关。
-      // 故 pause() 掉全部事件监听，panzoom 只作变换 API；滚轮/捏合/平移全在
-      // forest 自管（fWireWheel / fWireDrag 触摸分支）。
-      beforeTouch: function () { return true; },
     });
-    fPz.pause();
     window.__fPz = fPz; // test handle
   }
-  // 滚轮锚点缩放（panzoom pause 后自管）：指针下的内容点缩放后不动。
-  (function fWireWheel() {
-    if (!fScroller) return;
-    fScroller.addEventListener("wheel", function (e) {
-      e.preventDefault();
-      if (!fPz) return;
-      var r = fScroller.getBoundingClientRect();
-      var ns = Math.min(4, Math.max(0.25, fPz.getTransform().scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
-      fPz.zoomAbs(e.clientX - r.left, e.clientY - r.top, ns);
-    }, { passive: false });
-  })();
   function fFitWidth() {
     if (!fPz) { fInitPz(); }
     if (!fPz) return;
     var c = $("#tf-canvas");
-    // 上级 01M17AJ97 后续：进入森林视图时视野调整到显示全部树（宽高都
-    // 适配并居中），不是只适配宽度。
     var w = parseFloat(c.style.width) || c.scrollWidth;
-    var h = parseFloat(c.style.height) || c.scrollHeight;
-    var fZ = Math.min(1.15, Math.max(0.25, Math.min(
-      (fScroller.clientWidth - 48) / w,
-      (fScroller.clientHeight - 48) / h)));
+    var fZ = Math.min(1.15, Math.max(0.25, (fScroller.clientWidth - 24) / w));
     fPz.zoomAbs(0, 0, fZ);
-    fPz.moveTo((fScroller.clientWidth - w * fZ) / 2, (fScroller.clientHeight - h * fZ) / 2);
+    fPz.moveTo(8, 0);
     fFitted = true;
   }
   // 重排保视图在 fLayout 内做：开头取当前变换，末尾原样放回（fDraw 异步，
@@ -402,35 +379,18 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       document.querySelectorAll(".f-card.sel").forEach(function (x) { x.classList.remove("sel"); });
       card.classList.add("sel");
     }
-    var tdrag = null, fpinch = null;
+    var tdrag = null;
     fScroller.addEventListener("touchstart", function (e) {
-      if (e.target.closest && e.target.closest("#tf-density")) return;
-      if (e.touches.length === 2) {
-        tdrag = null;
-        fpinch = { d: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) };
-        return;
-      }
       if (e.touches.length !== 1) return;
       var t0 = e.touches[0];
       var card = e.target.closest && e.target.closest(".f-card");
       if (card && card.__fnode) {
         tdrag = { mode: "card", card: card, n: card.__fnode, x: t0.clientX, y: t0.clientY, ox: card.__fnode.x, oy: card.__fnode.y, dx: 0, dy: 0, moved: false, t0: Date.now() };
-      } else {
+      } else if (!e.target.closest || !e.target.closest("#tf-density")) {
         tdrag = { mode: "pan", x: t0.clientX, y: t0.clientY, px: fPz.getTransform().x, py: fPz.getTransform().y, dx: 0, dy: 0, moved: false, t0: Date.now(), target: e.target };
       }
     }, { passive: true });
     fScroller.addEventListener("touchmove", function (e) {
-      if (fpinch && e.touches.length === 2) {
-        e.preventDefault();
-        var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        var r = fScroller.getBoundingClientRect();
-        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
-        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
-        var ns = Math.min(4, Math.max(0.25, fPz.getTransform().scale * (d / fpinch.d)));
-        fPz.zoomAbs(mx, my, ns);
-        fpinch.d = d;
-        return;
-      }
       if (!tdrag || e.touches.length !== 1) return;
       e.preventDefault();
       tdrag.dx = e.touches[0].clientX - tdrag.x;
@@ -442,14 +402,10 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
         tdrag.card.style.left = (tdrag.ox + tdrag.dx) + "px";
       }
     }, { passive: false });
-    fScroller.addEventListener("touchend", function (e) {
-      if (fpinch && e.touches.length < 2) fpinch = null;
+    fScroller.addEventListener("touchend", function () {
       var t = tdrag; tdrag = null;
       if (!t) return;
       if (!t.moved && Date.now() - t.t0 < 400) {
-        // 触摸端点按由这里统一合成——preventDefault 压掉浏览器合成 click，
-        // 避免与 fTapCard 双重触发。
-        if (e && e.cancelable) e.preventDefault();
         var card = t.mode === "card" ? t.card : (t.target && t.target.closest ? t.target.closest(".f-card") : null);
         if (card) fTapCard(card);
         return;
