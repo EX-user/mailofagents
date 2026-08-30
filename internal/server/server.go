@@ -152,6 +152,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Public API (no auth) — requires initialization.
 	mux.HandleFunc("/api/register", s.requireInitialized(s.handleRegister))
+	mux.HandleFunc("/api/self", s.requireInitialized(s.handleSelfDescribe))
 	mux.HandleFunc("/api/register-team", s.requireInitialized(s.handleRegisterTeam))
 	mux.HandleFunc("/api/verify-password", s.requireInitialized(s.handleVerifyPassword))
 	mux.HandleFunc("/api/info", s.handleInfo)
