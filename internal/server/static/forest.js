@@ -207,20 +207,25 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
         + '<div class="f-body">' + esc(fClip(n.m.body || n.m.preview || "", 84)) + "</div>";
       el.dataset.id = n.m.id;
       el.__fnode = n; // 触摸端点按/拖动定位节点用
-      // Superior 01M15G…: 单击=只选中；卡可横向拖动；双击=进话题详情。
+      // Superior 01M15G…: 单击=只选中；卡可自由拖动（横向+纵向，纵向即时间
+      // 方向，按上级 01M1* 续修令放开）；双击=进话题详情。
       el.addEventListener("mousedown", function (ev) {
         ev.stopPropagation(); // 卡上按下不触发画布平移
-        var startX = ev.clientX, origX = n.x, moved = false;
+        var startX = ev.clientX, startY = ev.clientY, origX = n.x, origY = n.y, moved = false;
         function mv(e2) {
-          var dx = e2.clientX - startX;
-          if (Math.abs(dx) > 3) moved = true;
-          if (moved) el.style.left = (origX + dx) + "px";
+          var dx = e2.clientX - startX, dy = e2.clientY - startY;
+          if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+          if (moved) {
+            el.style.left = (origX + dx) + "px";
+            el.style.top = (origY + dy) + "px";
+          }
         }
         function fUp(e2) {
           window.removeEventListener("mousemove", mv);
           window.removeEventListener("mouseup", fUp);
           if (moved) {
             n.x = origX + (e2.clientX - startX);
+            n.y = origY + (e2.clientY - startY);
             el.__dragged = true;
             if (fVis && fNodes) fLinksDraw();
           }
@@ -440,6 +445,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
         fPz.moveTo(tdrag.px + tdrag.dx, tdrag.py + tdrag.dy);
       } else if (tdrag.moved && tdrag.mode === "card") {
         tdrag.card.style.left = (tdrag.ox + tdrag.dx) + "px";
+        tdrag.card.style.top = (tdrag.oy + tdrag.dy) + "px";
       }
     }, { passive: false });
     fScroller.addEventListener("touchend", function (e) {
@@ -459,6 +465,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       }
       if (t.moved && t.mode === "card") {
         t.n.x = t.ox + t.dx;
+        t.n.y = t.oy + t.dy;
         fLinksDraw();
       }
     });
