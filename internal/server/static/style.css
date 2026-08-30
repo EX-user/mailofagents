@@ -1616,3 +1616,9 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     margin: 0;
   }
 }
+
+/* Inbox mode pill (superior 01M18D521): segmented receive/sent/all control,
+   same family as the language toggle. */
+.seg-pill { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.seg-pill button { border: 0; background: transparent; padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text); }
+.seg-pill button.on { background: var(--accent, #3b82f6); color: #fff; }

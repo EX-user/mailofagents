@@ -428,11 +428,21 @@
 
     <!-- Inbox (personal inbox, all users) -->
     <section id="tab-inbox" class="tab-panel hidden">
-      <h2>Inbox <small class="muted" data-i18n="sub.inbox">— your incoming mail</small></h2>
+      <h2><span data-i18n="inbox.title">Inbox</span> <small class="muted" data-i18n="sub.inbox">— mail in &amp; out</small></h2>
       <div class="row">
         <button id="btn-load-inbox" class="primary" data-i18n="inbox.load">Load inbox</button>
         <button id="btn-mark-all" class="row-action" data-i18n="inbox.markAll">✓ Mark all read</button>
         <span id="inbox-status" class="muted"></span>
+      </div>
+      <!-- Superior 01M18D521: mode pill (receive / sent / both) + search
+           filter, same interaction family as the Mail tab controls. -->
+      <div class="row" style="align-items:center; gap:8px; flex-wrap:wrap;">
+        <span class="seg-pill" id="inbox-mode-pill">
+          <button type="button" class="on" data-imode="in" data-i18n="inbox.modeIn">Inbox</button>
+          <button type="button" data-imode="sent" data-i18n="inbox.modeSent">Sent</button>
+          <button type="button" data-imode="both" data-i18n="inbox.modeBoth">All</button>
+        </span>
+        <input type="search" id="inbox-search" style="flex:1 1 160px; max-width:280px;" data-i18n-ph="inbox.search" placeholder="Search mail…" />
       </div>
       <!-- Mobile (<=800px): List | Message tabs (see Mail tab note). -->
       <div class="mail-tabs" data-grid="inbox">

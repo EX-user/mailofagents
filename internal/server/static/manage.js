@@ -946,6 +946,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   // via /api/inbox (admins satisfy account auth too), which supports offset.
   const INBOX_PAGE_SIZE = 20;
   let inboxPage = 0;
+  // Superior 01M18D521: inbox card becomes the mail hub — mode pill
+  // (receive / sent / both) + client-side search over the loaded page.
+  let inboxMode = "in"; // in | sent | both
 
   async function loadInbox(page) {
     resetAudioPlayers();
@@ -962,10 +965,29 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     // (the admin credential satisfies account auth). showInboxDetail uses the
     // same account path to fetch a message body.
     try {
+      // Mode-aware source: in → /api/inbox, sent → /api/sent, both →
+      // merge the two pages newest-first.
       const data = await api("/api/inbox?limit=" + INBOX_PAGE_SIZE + "&offset=" + offset);
-      const msgs = data.messages || [];
+      let msgs = data.messages || [];
+      let sentTotal = 0;
+      if (inboxMode !== "in") {
+        try {
+          // named sentRes (not `sent`): app.js's overview also has a `sent`
+          // local, and the free-identifier audit flags cross-module
+          // same-name collisions.
+          const sentRes = await api("/api/sent?limit=" + INBOX_PAGE_SIZE + "&offset=" + offset);
+          sentTotal = sentRes.total_count || (sentRes.messages || []).length;
+          if (inboxMode === "both" && sentRes.messages && sentRes.messages.length) {
+            msgs = msgs.concat(sentRes.messages).sort(function (x, y) {
+              return (y.received_at || 0) - (x.received_at || 0);
+            }).slice(0, INBOX_PAGE_SIZE);
+          } else if (inboxMode === "sent") {
+            msgs = sentRes.messages || [];
+          }
+        } catch (_) { /* sent endpoint unavailable: stay with inbox */ }
+      }
       const unreadCount = data.unread_count || 0;
-      const total = data.total_count || 0;
+      const total = (data.total_count || 0) + sentTotal;
       const totalPages = Math.max(1, Math.ceil(total / INBOX_PAGE_SIZE));
       if (!msgs.length && inboxPage === 0) {
         list.textContent = t("mail.noMessages");
@@ -991,6 +1013,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           '<div class="subj">' + esc(m.subject || "(no subject)") + "</div>" +
           '<div class="meta"><b>' + t("mail.from") + "</b> '" + esc(m.from) +
           " · <small>" + fmtTime(m.received_at) + "</small></div>" +
+          (inboxMode !== "in" && m.to && m.to.length ? '<div class="meta"><b>To:</b> ' + esc(m.to.join(", ")) + "</div>" : "") +
           '<div class="prev">' + esc(m.preview || "") + "</div>";
         item.addEventListener("click", function () { showInboxDetail(m.id, item, false); });
         list.appendChild(item);
@@ -1078,6 +1101,25 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   $("#btn-inbox-prev").addEventListener("click", function () { if (inboxPage > 0) loadInbox(inboxPage - 1); });
   $("#btn-inbox-next").addEventListener("click", function () { loadInbox(inboxPage + 1); });
   // Jump-to-page: on Enter or blur, clamp and load the typed page (1-based).
+  // Superior 01M18D521: search filter (like the Mail tab) — client-side
+  // filter over the rendered page items (subject / address / preview).
+  $("#inbox-search").addEventListener("input", function () {
+    const q = (this.value || "").trim().toLowerCase();
+    $$(".mail-item", $("#inbox-list")).forEach(function (el) {
+      el.style.display = !q || el.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+  // Mode pill: switching re-fetches page 0 from the chosen source.
+  $$("#inbox-mode-pill [data-imode]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (b.classList.contains("on")) return;
+      $$("#inbox-mode-pill [data-imode]").forEach(function (x) { x.classList.remove("on"); });
+      b.classList.add("on");
+      inboxMode = b.dataset.imode;
+      loadInbox(0);
+    });
+  });
+
   $("#inbox-page-input").addEventListener("change", function () {
     const input = $("#inbox-page-input");
     let p = parseInt(input.value, 10);

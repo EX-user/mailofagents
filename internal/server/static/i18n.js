@@ -273,7 +273,12 @@
       // ---- accounts (phase 2) ----
       "acc.registerNew": "+ Register new account",
       // ---- inbox/mail (phase 2) ----
-      "inbox.load": "Load inbox",
+            "inbox.title": "Inbox",
+      "inbox.modeIn": "Inbox",
+      "inbox.modeSent": "Sent",
+      "inbox.modeBoth": "All",
+      "inbox.search": "Search mail…",
+"inbox.load": "Load inbox",
       "mail.tabList": "List",
       "mail.tabMessage": "Message",
       "mail.account": "Account:",
@@ -381,7 +386,7 @@
 
       "sub.overview": "— system stats and recent activity",
       "sub.accounts": "— your contacts and account settings",
-      "sub.inbox": "— your incoming mail",
+      "sub.inbox": "— mail in & out",
       "sub.directory": "— public address book",
       "sub.profile": "— profile, attachments, interface and subordinates",
       "sub.audit": "— system audit log (admin)",
@@ -727,7 +732,12 @@
       // ---- accounts (phase 2) ----
       "acc.registerNew": "+ 注册新账户",
       // ---- inbox/mail (phase 2) ----
-      "inbox.load": "加载收件箱",
+            "inbox.title": "收发件",
+      "inbox.modeIn": "收件",
+      "inbox.modeSent": "发件",
+      "inbox.modeBoth": "收发件",
+      "inbox.search": "搜索邮件（主题/地址/内容）",
+"inbox.load": "加载收件箱",
       "mail.tabList": "列表",
       "mail.tabMessage": "正文",
       "mail.account": "账户：",
@@ -835,7 +845,7 @@
 
       "sub.overview": "—— 系统统计与近期活动",
       "sub.accounts": "—— 你的联系人与账户设置",
-      "sub.inbox": "—— 你的来信",
+      "sub.inbox": "— 收发邮件",
       "sub.directory": "—— 公开通讯录",
       "sub.profile": "—— 个人资料、附件、界面与从属设置",
       "sub.audit": "—— 系统审计日志（管理端）",

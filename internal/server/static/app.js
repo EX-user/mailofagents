@@ -1744,11 +1744,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         '<span class="fn" title="' + esc(f.filename || "") + '">' + esc(f.filename || f.id) + "</span>" +
         '<span class="meta">' + meta + "</span>" +
         '<span class="btns">' +
+        '<button class="am-mini" data-am="download">' + t("attach.download") + "</button>" +
         '<button class="am-mini" data-am="extend">' + t("am.extend") + "</button>" +
         '<button class="am-mini del" data-am="release">' + t("am.release") + "</button>" +
         "</span></div>";
     }
 
+    let lastFiles = [];
     async function loadRows() {
       const box = $("#am-rows");
       if (!box) return;
@@ -1756,6 +1758,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       try {
         const res = await api("/api/files/list", { keepSession: true });
         const files = (res && res.files) || [];
+        lastFiles = files;
         box.innerHTML = files.length
           ? files.map(rowHtml).join("")
           : '<div class="am-row"><span class="fn muted">' + t("am.empty") + "</span></div>";
@@ -1779,6 +1782,31 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const fid = row && row.dataset.fid;
       if (!fid) return;
       const fn = (row.querySelector(".fn") && row.querySelector(".fn").textContent) || fid;
+      if (btn.dataset.am === "download") {
+        // Superior 01M18CWGY: per-entry download. Owner fetch: access_code
+        // when the list carries it, else the session Basic/Bearer header.
+        btn.disabled = true;
+        try {
+          const meta = lastFiles.filter(function (x) { return x.id === fid; })[0] || {};
+          let url = "/api/files/" + encodeURIComponent(fid) + "/download";
+          if (meta.access_code) url += "?code=" + encodeURIComponent(meta.access_code);
+          const res = await fetch(url, { headers: { Authorization: basicAuth() } });
+          if (!res.ok) throw new Error(res.status + " " + res.statusText);
+          const blob = await res.blob();
+          const url2 = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url2;
+          link.download = fn || "attachment";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(function () { URL.revokeObjectURL(url2); }, 5000);
+        } catch (e) {
+          toast(t("common.error", { msg: e.message }), "error");
+        }
+        btn.disabled = false;
+        return;
+      }
       if (btn.dataset.am === "release") {
         if (!confirm(t("am.confirmRelease", { name: fn }))) return;
         try {
