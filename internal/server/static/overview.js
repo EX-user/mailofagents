@@ -153,12 +153,17 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
   // Live graph handle (v0.6.8): kept for re-fit on tab re-entry so the
   // viewport stays centered on the nodes between visits.
   var mgmtNetwork = null;
+  // Superior 01M186FW6Y: keep the edge DataSet + per-edge metadata so the
+  // linear/log (and numbers) toggles restyle IN PLACE — a full re-render
+  // re-ran physics and visibly jiggled the layout.
+  var mgmtEdgeSet = null, mgmtEdgeMeta = [], mgmtMaxCount = 1;
   function renderMgmtGraph(graph, subs) {
     var el = $("#mgmt-graph");
     if (!el) return;
     var nodes = (graph && graph.nodes) || [];
     var edges = (graph && graph.edges) || [];
     mgmtNetwork = null; // fresh render invalidates the old instance
+    mgmtEdgeSet = null;
     if (!nodes.length) { el.textContent = ""; return; }
     var livenessByAddr = {};
     (subs || []).forEach(function (s) { livenessByAddr[String(s.address).toLowerCase()] = mgmtIsActive(s); });
@@ -193,38 +198,39 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       // choice: LINEAR (default) maps strength straight to width/alpha;
       // LOG compresses contrast so a wide range stays readable.
       var maxCount = 1;
+      mgmtEdgeMeta = [];
       edges.forEach(function (e) {
         maxCount = Math.max(maxCount, e.a_to_b || 0, e.b_to_a || 0);
       });
+      mgmtMaxCount = maxCount;
       var logDen = Math.log(1 + maxCount);
       function graphScale(count) {
         var c = count || 0;
         if (graphPrefs.map === "log") return Math.log(1 + c) / logDen;
         return c / maxCount;
       }
-      edges.forEach(function (e) {
+      edges.forEach(function (e, ei) {
         var ab = e.a_to_b || 0, ba = e.b_to_a || 0;
         var last = e.last_at ? "\n" + fmtTime(e.last_at) : "";
         if (!ab && !ba) {
-          ve.push({ from: e.a, to: e.b, label: (graphPrefs.nums ? "—" : "") + last, dashes: true,
+          var eid0 = "ge" + ei + "z";
+          mgmtEdgeMeta.push({ id: eid0, count: -1 });
+          ve.push({ id: eid0, from: e.a, to: e.b, label: (graphPrefs.nums ? "—" : "") + last, dashes: true,
             color: { color: "#c4ccd6" }, width: 0.8, font: { size: 9, face: "Consolas" },
             smooth: { type: "curvedCW", roundness: 0.16 }, _sub: pickGraphSub(e, myAddr) });
           return;
         }
         // Two directed arcs per pair (superior: arrows in both directions,
         // each with its own count) — A4 wedges scale with volume.
-        if (ab) ve.push(mgmtGraphEdge(e.a, e.b, ab, last, e));
-        if (ba) ve.push(mgmtGraphEdge(e.b, e.a, ba, last, e));
+        if (ab) ve.push(mgmtGraphEdge(e.a, e.b, ab, last, e, "ge" + ei + "a"));
+        if (ba) ve.push(mgmtGraphEdge(e.b, e.a, ba, last, e, "ge" + ei + "b"));
       });
-      function mgmtGraphEdge(from, to, count, last, orig) {
+      function mgmtGraphEdge(from, to, count, last, orig, eid) {
         var k = graphScale(count);
-        // v0.6.6: alpha rides the same normalization as width — light
-        // traffic reads thin AND faint. Label = count only; the
-        // last-activity time moved to the hover tooltip (it occluded the
-        // graph at real volumes). Number color/opacity rides the SAME k
-        // as the arrow (superior request); the numbers button hides them.
+        mgmtEdgeMeta.push({ id: eid, count: count });
         var alpha = 0.15 + 0.85 * k;
         return {
+          id: eid,
           from: from, to: to, label: graphPrefs.nums ? String(count) : undefined,
           title: count + " · " + last,
           arrows: { to: { enabled: true, scaleFactor: 0.3 + 0.7 * k } },
@@ -243,6 +249,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
         return null;
       }
       var data = { nodes: vn, edges: new vis.DataSet(ve) };
+      mgmtEdgeSet = data.edges;
       // Keep the instance: re-entering the tab re-fits the viewport so the
       // graph never drifts off-center between visits (superior feedback).
       mgmtNetwork = new vis.Network(el, data, {
@@ -303,17 +310,39 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
 
   // Floating graph controls: one click cycles the value, persists, and
   // re-renders. map/nums reuse the cached payload; days refetches.
+  function restyleGraphEdges() {
+    if (!mgmtNetwork || !mgmtEdgeSet) {
+      if (mgmtOverviewData) renderMgmtGraph(mgmtOverviewData.graph, mgmtOverviewData.subs || []);
+      return;
+    }
+    var logDen = Math.log(1 + mgmtMaxCount);
+    var updates = mgmtEdgeMeta.map(function (meta) {
+      if (meta.count < 0) return { id: meta.id, label: graphPrefs.nums ? "—" : "" };
+      var c = meta.count || 0;
+      var k = graphPrefs.map === "log" ? Math.log(1 + c) / logDen : c / mgmtMaxCount;
+      var alpha = 0.15 + 0.85 * k;
+      return {
+        id: meta.id,
+        label: graphPrefs.nums ? String(meta.count) : undefined,
+        arrows: { to: { enabled: true, scaleFactor: 0.3 + 0.7 * k } },
+        width: 0.3 + 2.5 * k,
+        color: { color: "rgba(91,107,125," + alpha.toFixed(2) + ")", highlight: "#3b82f6" },
+        font: { size: 9, face: "Consolas", color: "rgba(35,48,63," + Math.min(1, 0.35 + 0.65 * k).toFixed(2) + ")" }
+      };
+    });
+    mgmtEdgeSet.update(updates);
+  }
   function wireGraphControls() {
     var b1 = $("#gg-map"), b2 = $("#gg-nums"), b3 = $("#gg-days");
     if (b1) b1.addEventListener("click", function () {
       graphPrefs.map = graphPrefs.map === "linear" ? "log" : "linear";
       saveGraphPrefs(); syncGraphControlLabels();
-      if (mgmtOverviewData) renderMgmtGraph(mgmtOverviewData.graph, mgmtOverviewData.subs || []);
+      restyleGraphEdges();
     });
     if (b2) b2.addEventListener("click", function () {
       graphPrefs.nums = !graphPrefs.nums;
       saveGraphPrefs(); syncGraphControlLabels();
-      if (mgmtOverviewData) renderMgmtGraph(mgmtOverviewData.graph, mgmtOverviewData.subs || []);
+      restyleGraphEdges();
     });
     if (b3) b3.addEventListener("click", function () {
       graphPrefs.days = graphPrefs.days === 7 ? 30 : (graphPrefs.days === 30 ? 0 : 7);

@@ -1262,6 +1262,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           // used to render every session as regular).
           const s = getSession(); s.is_admin = !!me.is_admin; setSession(s);
           updateTokenRole(me.is_admin);
+      maybeMarqueeWhoami(); // role suffix changes text width (01M1836CAK)
           showApp(me.is_admin);
           activateTab("overview");
         } catch (e) {
@@ -2097,6 +2098,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   }
   if (window.matchMedia && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     window.addEventListener("resize", maybeMarqueeWhoami);
+  // Superior 01M1836CAK: app-side addresses degraded to ellipsis — the
+  // measurement was stale (webfonts arrive late, the (admin) suffix is
+  // written back after first measure). Re-measure once fonts are ready.
+  if (document.fonts && document.fonts.ready && window.matchMedia &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    document.fonts.ready.then(function () { maybeMarqueeWhoami(); });
+  }
   }
   window.addEventListener("resize", maybeMarqueeWhoami);
 
@@ -2165,6 +2173,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     try {
       const me = await api("/api/account/info?query=self");
       const s = getSession(); s.is_admin = !!me.is_admin; setSession(s);
+      maybeMarqueeWhoami(); // role suffix changes text width (01M1836CAK)
       // v0.6.27 token: acquire after login, store per "remember me" pref.
       // Password is NEVER stored in localStorage (alice red line).
       try {
