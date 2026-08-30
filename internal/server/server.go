@@ -390,6 +390,24 @@ func (s *Server) basicAuthAccount(w http.ResponseWriter, r *http.Request) (strin
 //   - the bcrypt hash matches, and
 //   - the account has IsAdmin == true.
 func (s *Server) basicAuthAdmin(w http.ResponseWriter, r *http.Request) bool {
+	// Bearer session tokens (remember-login) must clear the admin gate too:
+	// the panel's post-login /admin/* calls carry the token, not Basic. A
+	// logged-in admin getting 401 here bounced the whole panel to login
+	// (v0.1.3 P1: the session-role fix lit this path up for real admins).
+	// Semantics mirror authAccount: a present-but-invalid bearer is final.
+	if tok := bearerToken(r.Header.Get("Authorization")); tok != "" {
+		addr, err := s.store.ResolveSessionToken(tok)
+		if err != nil {
+			unauthorized(w)
+			return false
+		}
+		acc, err := s.store.GetAccount(addr)
+		if err != nil || !acc.IsAdmin {
+			unauthorized(w)
+			return false
+		}
+		return true
+	}
 	user, pass, ok := parseBasicAuth(r.Header.Get("Authorization"))
 	if !ok {
 		unauthorized(w)
