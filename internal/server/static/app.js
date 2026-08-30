@@ -796,15 +796,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     scSave.addEventListener("click", async function () {
       scSave.disabled = true;
       scHint.textContent = "";
+      // alice 01M18GRC5 修单：置空=恢复默认——所有键都提交，空值由后端删除
+      // 覆盖回落内置默认（不再「留空=保留」）。
       const body = {};
-      let any = false;
       scKeys.forEach(function (kv) {
-        const el = $("#" + kv[0]);
-        const v = el && el.value.trim();
-        if (v) { body[kv[1]] = v; any = true; }
+        const el = document.getElementById(kv[0]);
+        body[kv[1]] = (el && el.value.trim()) || "";
       });
       try {
-        if (any) await api("/admin/site-copy", {
+        await api("/admin/site-copy", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
