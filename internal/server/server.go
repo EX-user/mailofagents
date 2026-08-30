@@ -233,8 +233,10 @@ func (s *Server) Handler() http.Handler {
 
 	// Admin web panel: static files under /static/*, plus the index page at "/".
 	// These are always served (the panel JS checks /api/status to decide
-	// whether to show the setup wizard or the normal UI).
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSubFS))))
+	// whether to show the setup wizard or the normal UI). Both carry a strong
+	// ETag + Cache-Control: no-cache so a new release is never masked by a
+	// cached shell (v0.1.7: stale-shell false reports, superior order).
+	mux.HandleFunc("/static/", handleStaticCached)
 	mux.HandleFunc("/", s.serveIndex)
 
 	return mux
@@ -268,8 +270,7 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "index not found", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(data)
+	serveIndexCached(w, r, data)
 }
 
 // ListenAndServe starts the HTTP server. Blocks until ctx is cancelled.
