@@ -378,7 +378,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     if (!fScroller) return;
     var drag = null;
     fScroller.addEventListener("mousedown", function (e) {
-      if (e.target.closest && e.target.closest("#tf-density")) return;
+      if (e.target.closest && (e.target.closest("#tf-density") || e.target.closest("#tf-bar"))) return;
       drag = { x: e.clientX, y: e.clientY, px: fPz.getTransform().x, py: fPz.getTransform().y };
       e.preventDefault();
     });
@@ -447,11 +447,14 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       var t = tdrag; tdrag = null;
       if (!t) return;
       if (!t.moved && Date.now() - t.t0 < 400) {
-        // 触摸端点按由这里统一合成——preventDefault 压掉浏览器合成 click，
-        // 避免与 fTapCard 双重触发。
-        if (e && e.cancelable) e.preventDefault();
+        // 触摸端点按由这里统一合成——仅当命中卡片时才 preventDefault 压掉
+        // 浏览器合成 click（避免与 fTapCard 双重触发）；非卡片区域（如悬浮
+        // 按钮）绝不能压，否则原生 click 被吞、按钮在移动端失联（01M196HH8）。
         var card = t.mode === "card" ? t.card : (t.target && t.target.closest ? t.target.closest(".f-card") : null);
-        if (card) fTapCard(card);
+        if (card) {
+          if (e && e.cancelable) e.preventDefault();
+          fTapCard(card);
+        }
         return;
       }
       if (t.moved && t.mode === "card") {

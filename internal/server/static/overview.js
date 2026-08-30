@@ -332,7 +332,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       return {
         id: meta.id,
         // vis DataSet.update 忽略 undefined 字段——必须用空串才能真正清掉标签
-        label: graphPrefs.nums ? String(meta.count) : "",
+        label: graphPrefs.nums ? String(meta.count) : " ",
         arrows: { to: { enabled: true, scaleFactor: 0.3 + 0.7 * k } },
         width: 0.3 + 2.5 * k,
         color: { color: "rgba(91,107,125," + alpha.toFixed(2) + ")", highlight: "#3b82f6" },
