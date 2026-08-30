@@ -409,7 +409,11 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     }
     var tdrag = null, fpinch = null;
     fScroller.addEventListener("touchstart", function (e) {
-      if (e.target.closest && e.target.closest("#tf-density")) return;
+      // #tf-bar buttons (v0.1.6) handle their own clicks: a toolbar touch
+      // must never enter pan/card mode, or the jitter touchmove's
+      // preventDefault cancels the browser's click synthesis on mobile
+      // (superior retest 01M196E31, issue 2 — Felix p2 instrumentation).
+      if (e.target.closest && (e.target.closest("#tf-density") || e.target.closest("#tf-bar"))) return;
       if (e.touches.length === 2) {
         tdrag = null;
         fpinch = { d: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) };
