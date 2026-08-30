@@ -57,6 +57,36 @@ func (s *Store) SetSiteCopy(sc SiteCopy) error {
 	})
 }
 
+// UpdateSiteCopy applies a partial update with explicit clears. Values in
+// set are written (must be non-empty and within the length cap); keys in
+// clear are deleted so the built-in default shows through again (v0.1.5:
+// "empty = reset to default" — the old skip-empty semantics made configured
+// values impossible to clear). Keys absent from both are untouched.
+func (s *Store) UpdateSiteCopy(set map[string]string, clear []string) error {
+	for k, v := range set {
+		if len(v) > maxSiteCopyLen {
+			return fmt.Errorf("site copy %s too long (max %d)", k, maxSiteCopyLen)
+		}
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		mb := tx.Bucket(bMeta)
+		if mb == nil {
+			return nil
+		}
+		for k, v := range set {
+			if err := mb.Put([]byte(k), []byte(v)); err != nil {
+				return err
+			}
+		}
+		for _, k := range clear {
+			if err := mb.Delete([]byte(k)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // GetSiteCopy returns the configured copy (empty fields = defaults in use).
 func (s *Store) GetSiteCopy() (SiteCopy, error) {
 	var sc SiteCopy

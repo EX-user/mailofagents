@@ -264,17 +264,47 @@ func (s *Server) handleSiteCopyGet(w http.ResponseWriter, r *http.Request) {
 
 // handleSiteCopySet updates brand copy (admin only, partial update).
 //   PUT /admin/site-copy {portal_tagline_zh?: "...", ...}
+// Semantics (v0.1.5): an ABSENT key leaves its value untouched; a key set
+// to "" CLEARS the override so the built-in default shows through again
+// (the panel submits all six keys on every save). Unknown keys are rejected.
 func (s *Server) handleSiteCopySet(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		methodNotAllowed(w)
 		return
 	}
-	var sc store.SiteCopy
-	if err := decodeJSON(r, &sc); err != nil {
+	var raw map[string]json.RawMessage
+	if err := decodeJSON(r, &raw); err != nil {
 		badRequest(w, "decode body: "+err.Error())
 		return
 	}
-	if err := s.store.SetSiteCopy(sc); err != nil {
+	metaByKey := map[string]string{
+		"portal_tagline_zh": "site_portal_tagline_zh",
+		"portal_tagline_en": "site_portal_tagline_en",
+		"portal_title_zh":   "site_portal_title_zh",
+		"portal_title_en":   "site_portal_title_en",
+		"panel_title_zh":    "site_panel_title_zh",
+		"panel_title_en":    "site_panel_title_en",
+	}
+	set := make(map[string]string, len(raw))
+	var clear []string
+	for k, rv := range raw {
+		meta, ok := metaByKey[k]
+		if !ok {
+			badRequest(w, "unknown key: "+k)
+			return
+		}
+		var val string
+		if err := json.Unmarshal(rv, &val); err != nil {
+			badRequest(w, k+": value must be a string")
+			return
+		}
+		if val == "" {
+			clear = append(clear, meta)
+			continue
+		}
+		set[meta] = val
+	}
+	if err := s.store.UpdateSiteCopy(set, clear); err != nil {
 		badRequest(w, "site copy: "+err.Error())
 		return
 	}
