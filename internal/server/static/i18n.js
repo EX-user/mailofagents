@@ -273,12 +273,12 @@
       // ---- accounts (phase 2) ----
       "acc.registerNew": "+ Register new account",
       // ---- inbox/mail (phase 2) ----
-            "inbox.title": "Inbox",
+      "inbox.title": "Inbox",
       "inbox.modeIn": "Inbox",
       "inbox.modeSent": "Sent",
       "inbox.modeBoth": "All",
       "inbox.search": "Search mail…",
-"inbox.load": "Load inbox",
+      "inbox.load": "Load inbox",
       "mail.tabList": "List",
       "mail.tabMessage": "Message",
       "mail.account": "Account:",
@@ -732,12 +732,12 @@
       // ---- accounts (phase 2) ----
       "acc.registerNew": "+ 注册新账户",
       // ---- inbox/mail (phase 2) ----
-            "inbox.title": "收发件",
+      "inbox.title": "收发件",
       "inbox.modeIn": "收件",
       "inbox.modeSent": "发件",
       "inbox.modeBoth": "收发件",
       "inbox.search": "搜索邮件（主题/地址/内容）",
-"inbox.load": "加载收件箱",
+      "inbox.load": "加载收件箱",
       "mail.tabList": "列表",
       "mail.tabMessage": "正文",
       "mail.account": "账户：",
