@@ -115,19 +115,20 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     var gp = JSON.parse(localStorage.getItem("mgmtGraphPrefs") || "{}");
     if (gp.map === "log" || gp.map === "linear") graphPrefs.map = gp.map;
     if (typeof gp.nums === "boolean") graphPrefs.nums = gp.nums;
-    if (gp.days === 7 || gp.days === 30 || gp.days === 0) graphPrefs.days = gp.days;
+    // 上级 01M186FW6Y 续：时间档改 1d/7d/30d，不留全部历史档
+    if (gp.days === 1 || gp.days === 7 || gp.days === 30) graphPrefs.days = gp.days;
   } catch (_) {}
   function saveGraphPrefs() {
     try { localStorage.setItem("mgmtGraphPrefs", JSON.stringify(graphPrefs)); } catch (_) {}
   }
-  function windowLabel(days) { return days === 0 ? "all" : days + "d"; }
+  function windowLabel(days) { return days + "d"; }
   function syncGraphControlLabels() {
     // Circular on-canvas buttons stay terse (superior request): map shows
     // the active mode, numbers a filled/hollow dot, range the window.
     var b1 = $("#gg-map"), b2 = $("#gg-nums"), b3 = $("#gg-days");
     if (b1) b1.textContent = graphPrefs.map === "log" ? t("mgmt.mapLog") : t("mgmt.mapLinear");
     if (b2) { b2.textContent = t("mgmt.gNumsShort"); b2.classList.toggle("off", !graphPrefs.nums); }
-    if (b3) b3.textContent = graphPrefs.days === 0 ? "∞" : String(graphPrefs.days) + "d";
+    if (b3) b3.textContent = graphPrefs.days + "d";
   }
 
   function shortAddr(a) {
@@ -228,6 +229,11 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       function mgmtGraphEdge(from, to, count, last, orig, eid) {
         var k = graphScale(count);
         mgmtEdgeMeta.push({ id: eid, count: count });
+        // v0.6.6: alpha rides the same normalization as width — light
+        // traffic reads thin AND faint. Label = count only; the
+        // last-activity time moved to the hover tooltip (it occluded the
+        // graph at real volumes). Number color/opacity rides the SAME k
+        // as the arrow (superior request); the numbers button hides them.
         var alpha = 0.15 + 0.85 * k;
         return {
           id: eid,
@@ -310,6 +316,8 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
 
   // Floating graph controls: one click cycles the value, persists, and
   // re-renders. map/nums reuse the cached payload; days refetches.
+  // Superior 01M186FW6Y: map/nums restyle edges IN PLACE (DataSet.update of
+  // visual props never re-runs physics — nodes stay exactly where they are).
   function restyleGraphEdges() {
     if (!mgmtNetwork || !mgmtEdgeSet) {
       if (mgmtOverviewData) renderMgmtGraph(mgmtOverviewData.graph, mgmtOverviewData.subs || []);
@@ -323,7 +331,8 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       var alpha = 0.15 + 0.85 * k;
       return {
         id: meta.id,
-        label: graphPrefs.nums ? String(meta.count) : undefined,
+        // vis DataSet.update 忽略 undefined 字段——必须用空串才能真正清掉标签
+        label: graphPrefs.nums ? String(meta.count) : "",
         arrows: { to: { enabled: true, scaleFactor: 0.3 + 0.7 * k } },
         width: 0.3 + 2.5 * k,
         color: { color: "rgba(91,107,125," + alpha.toFixed(2) + ")", highlight: "#3b82f6" },
@@ -345,7 +354,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       restyleGraphEdges();
     });
     if (b3) b3.addEventListener("click", function () {
-      graphPrefs.days = graphPrefs.days === 7 ? 30 : (graphPrefs.days === 30 ? 0 : 7);
+      graphPrefs.days = graphPrefs.days === 1 ? 7 : (graphPrefs.days === 7 ? 30 : 1);
       saveGraphPrefs();
       loadMgmtOverview();
     });

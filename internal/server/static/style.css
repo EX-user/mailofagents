@@ -1557,7 +1557,13 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 /* Item 3 (superior 01M15DKW1): on-canvas floating row-density slider,
    graph-overlay button style — sits outside the transformed canvas so it
    stays put while panning/zooming. */
-#tf-density { position: sticky; top: 10px; margin-left: auto; margin-right: 12px; width: max-content; z-index: 5; display: flex;
+#tf-bar { position: sticky; top: 10px; z-index: 5; display: flex;
+  align-items: center; gap: 8px; padding: 0 12px; height: 34px; }
+#tf-bar .f-fbtn { font-size: 11px; padding: 3px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: rgba(255,255,255,.92);
+  color: var(--text); cursor: pointer; box-shadow: 0 1px 4px rgba(20,30,60,.12); }
+#tf-bar .f-fbtn.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+#tf-density { display: flex;
   align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--border); background: rgba(255,255,255,.92); font-size: 12px;
   box-shadow: 0 1px 4px rgba(20,30,60,.12); }

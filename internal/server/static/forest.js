@@ -122,9 +122,9 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     // 改为 JS 实测 breakout：左缘吸到 12px、宽度吃满视口。
     try {
       var r0 = fScroller.getBoundingClientRect();
-      if (Math.abs(r0.left - 12) > 1 || Math.abs(r0.width - (window.innerWidth - 24)) > 1) {
-        fScroller.style.marginLeft = (12 - r0.left) + "px";
-        fScroller.style.width = (window.innerWidth - 24) + "px";
+      if (Math.abs(r0.left - 24) > 1 || Math.abs(r0.width - (window.innerWidth - 48)) > 1) {
+        fScroller.style.marginLeft = (24 - r0.left) + "px";
+        fScroller.style.width = (window.innerWidth - 48) + "px";
       }
     } catch (_) {}
     fClear();
@@ -278,36 +278,85 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       dblClickZoomEnabled: false,
       // 拖拽平移由 forest 自管（panzoom 的鼠标拖拽位移异常放大），只让库管缩放。
       beforeMouseDown: function () { return true; },
+      // 上级 01M17AJ97 续：触摸全部自管——panzoom 的单指触摸会并行平移
+      // （拖卡时视野跟着动）且 preventDefault 吞掉点按；其「忽略事件」选项
+      // 实为 onTouch 而非 beforeTouch（内部函数名），且单指处理无法单独关。
+      // 故 pause() 掉全部事件监听，panzoom 只作变换 API；滚轮/捏合/平移全在
+      // forest 自管（fWireWheel / fWireDrag 触摸分支）。
+      beforeTouch: function () { return true; },
     });
+    fPz.pause();
     window.__fPz = fPz; // test handle
   }
+  // 滚轮锚点缩放（panzoom pause 后自管）：指针下的内容点缩放后不动。
+  (function fWireWheel() {
+    if (!fScroller) return;
+    fScroller.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      if (!fPz) return;
+      var r = fScroller.getBoundingClientRect();
+      var ns = Math.min(4, Math.max(0.25, fPz.getTransform().scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+      fPz.zoomAbs(e.clientX - r.left, e.clientY - r.top, ns);
+    }, { passive: false });
+  })();
   function fFitWidth() {
     if (!fPz) { fInitPz(); }
     if (!fPz) return;
     var c = $("#tf-canvas");
+    // 上级 01M17AJ97 后续：进入森林视图时视野调整到显示全部树（宽高都
+    // 适配并居中），不是只适配宽度。
     var w = parseFloat(c.style.width) || c.scrollWidth;
-    var fZ = Math.min(1.15, Math.max(0.25, (fScroller.clientWidth - 24) / w));
+    var h = parseFloat(c.style.height) || c.scrollHeight;
+    var fZ = Math.min(1.15, Math.max(0.25, Math.min(
+      (fScroller.clientWidth - 48) / w,
+      (fScroller.clientHeight - 48) / h)));
     fPz.zoomAbs(0, 0, fZ);
-    fPz.moveTo(8, 0);
+    fPz.moveTo((fScroller.clientWidth - w * fZ) / 2, (fScroller.clientHeight - h * fZ) / 2);
     fFitted = true;
   }
   // 重排保视图在 fLayout 内做：开头取当前变换，末尾原样放回（fDraw 异步，
   // 在外层包不住）。
 
-  // ---- item 3: 行距滑杆（canvas 悬浮控件，连接图悬浮按钮同款风格）----
+  // ---- 画布悬浮工具条（上级 01M18HQ2C）：树数循环 + 孤信开关（左）+
+  // 行距滑杆（右），sticky 常驻画布顶部，互不遮挡。树数/孤信原是头部一排
+  // 药丸（#tf-ctl），归一为连接图 1d/7d/30d 同款悬浮按钮。 ----
   var fRowKey = "tf-row-h";
   function fRowH() {
     try { return parseInt(localStorage.getItem(fRowKey), 10) || 78; } catch (_) { return 78; }
   }
-  (function fWireDensity() {
+  (function fWireChrome() {
     var host = $("#tf-scroll");
-    if (!host || $("#tf-density")) return;
-    // 滑杆挂在滚动容器的兄弟定位层上——absolute 在滚动容器内会随内容滚走，
-    // 移动端就再也碰不到（上级 01M176QXG）。
+    if (!host || $("#tf-bar")) return;
+    var bar = document.createElement("div");
+    bar.id = "tf-bar";
+    // 树数循环按钮：5→10→20→5
+    var bTrees = document.createElement("button");
+    bTrees.type = "button"; bTrees.className = "f-fbtn"; bTrees.id = "tf-trees";
+    bTrees.textContent = String(fTreeCount);
+    bTrees.title = "trees 5/10/20";
+    bTrees.addEventListener("click", function () {
+      fTreeCount = fTreeCount === 5 ? 10 : (fTreeCount === 10 ? 20 : 5);
+      bTrees.textContent = String(fTreeCount);
+      if (fCache) fDraw();
+    });
+    // 孤信开关：按下=显示孤立信（默认不显示）
+    var bOrph = document.createElement("button");
+    bOrph.type = "button"; bOrph.className = "f-fbtn"; bOrph.id = "tf-orphbtn";
+    bOrph.textContent = "孤信";
+    bOrph.title = "show orphans";
+    bOrph.addEventListener("click", function () {
+      fHideOrphans = !fHideOrphans;
+      bOrph.classList.toggle("on", !fHideOrphans);
+      if (fCache) fDraw();
+    });
+    // 行距滑杆
     var ctl = document.createElement("div");
     ctl.id = "tf-density";
     ctl.innerHTML = '<span>▤</span><input type="range" min="48" max="160" step="4" value="' + fRowH() + '" aria-label="row density">';
-    host.insertBefore(ctl, host.firstChild);
+    bar.appendChild(bTrees);
+    bar.appendChild(bOrph);
+    bar.appendChild(ctl);
+    host.insertBefore(bar, host.firstChild);
     ctl.querySelector("input").addEventListener("input", function (e) {
       var v = parseInt(e.target.value, 10) || 78;
       try { localStorage.setItem(fRowKey, String(v)); } catch (_) {}
@@ -353,18 +402,35 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       document.querySelectorAll(".f-card.sel").forEach(function (x) { x.classList.remove("sel"); });
       card.classList.add("sel");
     }
-    var tdrag = null;
+    var tdrag = null, fpinch = null;
     fScroller.addEventListener("touchstart", function (e) {
+      if (e.target.closest && e.target.closest("#tf-density")) return;
+      if (e.touches.length === 2) {
+        tdrag = null;
+        fpinch = { d: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) };
+        return;
+      }
       if (e.touches.length !== 1) return;
       var t0 = e.touches[0];
       var card = e.target.closest && e.target.closest(".f-card");
       if (card && card.__fnode) {
         tdrag = { mode: "card", card: card, n: card.__fnode, x: t0.clientX, y: t0.clientY, ox: card.__fnode.x, oy: card.__fnode.y, dx: 0, dy: 0, moved: false, t0: Date.now() };
-      } else if (!e.target.closest || !e.target.closest("#tf-density")) {
+      } else {
         tdrag = { mode: "pan", x: t0.clientX, y: t0.clientY, px: fPz.getTransform().x, py: fPz.getTransform().y, dx: 0, dy: 0, moved: false, t0: Date.now(), target: e.target };
       }
     }, { passive: true });
     fScroller.addEventListener("touchmove", function (e) {
+      if (fpinch && e.touches.length === 2) {
+        e.preventDefault();
+        var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        var r = fScroller.getBoundingClientRect();
+        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+        var ns = Math.min(4, Math.max(0.25, fPz.getTransform().scale * (d / fpinch.d)));
+        fPz.zoomAbs(mx, my, ns);
+        fpinch.d = d;
+        return;
+      }
       if (!tdrag || e.touches.length !== 1) return;
       e.preventDefault();
       tdrag.dx = e.touches[0].clientX - tdrag.x;
@@ -376,10 +442,14 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
         tdrag.card.style.left = (tdrag.ox + tdrag.dx) + "px";
       }
     }, { passive: false });
-    fScroller.addEventListener("touchend", function () {
+    fScroller.addEventListener("touchend", function (e) {
+      if (fpinch && e.touches.length < 2) fpinch = null;
       var t = tdrag; tdrag = null;
       if (!t) return;
       if (!t.moved && Date.now() - t.t0 < 400) {
+        // 触摸端点按由这里统一合成——preventDefault 压掉浏览器合成 click，
+        // 避免与 fTapCard 双重触发。
+        if (e && e.cancelable) e.preventDefault();
         var card = t.mode === "card" ? t.card : (t.target && t.target.closest ? t.target.closest(".f-card") : null);
         if (card) fTapCard(card);
         return;
@@ -388,23 +458,6 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
         t.n.x = t.ox + t.dx;
         fLinksDraw();
       }
-    });
-  })();
-
-  (function fWire() {
-    var orph = $("#tf-orphans");
-    if (orph) orph.addEventListener("click", function () {
-      orph.classList.toggle("on");
-      fHideOrphans = orph.classList.contains("on");
-      fLoad();
-    });
-    $$("#tf-ctl .f-pill[data-fn]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        $$("#tf-ctl .f-pill[data-fn]").forEach(function (x) { x.classList.remove("on"); });
-        b.classList.add("on");
-        fTreeCount = parseInt(b.dataset.fn, 10) || 5;
-        fDraw();
-      });
     });
   })();
 })();
