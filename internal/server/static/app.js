@@ -2357,11 +2357,19 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         var btn = card.querySelector("button.cp");
         lines.push(who + ": " + btn.dataset.cpAddr + "  " + btn.dataset.cpPw);
       });
-      copyText(lines.join("\n")).then(function (ok) {
-        var st = $("#team-copy-status");
-        st.textContent = ok ? t("common.copied") : t("common.copyManual");
-        setTimeout(function () { st.textContent = ""; }, 2000);
-      });
+      // Superior 08-31: one-click DOWNLOAD instead of clipboard — easier
+      // to persist safely. Real passwords ride in the button datasets.
+      var blob = new Blob([lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" });
+      var dl = document.createElement("a");
+      dl.href = URL.createObjectURL(blob);
+      dl.download = "team-credentials.txt";
+      document.body.appendChild(dl);
+      dl.click();
+      dl.remove();
+      setTimeout(function () { URL.revokeObjectURL(dl.href); }, 1000);
+      var st = $("#team-copy-status");
+      st.textContent = t("team.downloadDone");
+      setTimeout(function () { st.textContent = ""; }, 2000);
     });
   })();
   $("#link-back-portal").addEventListener("click", function (e) { e.preventDefault(); showPortal(); });
