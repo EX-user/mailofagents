@@ -1958,23 +1958,31 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   // renderTeamSuccess builds the credential cards (v2 design): owner card
   // highlighted, one card per member with per-card copy buttons.
-  function renderTeamSuccess(res) {
+  function renderTeamSuccess(res, ownerPw) {
     var box = $("#team-cred-cards");
     if (!box) return;
     var html = "";
-    function card(cls, who, addr, pw, extraBtn) {
+    function card(cls, who, addr, pwShow, pwReal, extraBtn) {
+      // Address and password each get their own block line so member
+      // cards stack identically regardless of name length (drill B3).
       return '<div class="cred-card ' + cls + '">' +
         '<div><div class="who">' + who + "</div>" +
-        "<code>" + esc(addr) + '</code> <span class="pw">' + esc(pw) + "</span></div>" +
-        '<div class="btns"><button class="cp" data-cp-addr="' + esc(addr) + '" data-cp-pw="' + esc(pw) + '">' + t("team.copyCreds") + "</button>" +
+        "<div><code>" + esc(addr) + "</code></div>" +
+        '<div><span class="pw">' + esc(pwShow) + "</span></div></div>" +
+        '<div class="btns"><button class="cp" data-cp-addr="' + esc(addr) + '" data-cp-pw="' + esc(pwReal) + '">' + t("team.copyCreds") + "</button>" +
         (extraBtn || "") + "</div></div>";
     }
     if (res && res.owner) {
+      // Owner password is user-set: show the keep-it reminder, never echo
+      // it (parity with single-account register; drill B2). Copy buttons
+      // still carry the real value the user just typed.
       html += card("owner", t("team.owner") + " - " + t("team.ownerCan"),
-        res.owner.address, res.owner.password);
+        res.owner.address,
+        ownerPw ? t("reg.pwUserSet") : (res.owner.password || t("reg.pwUserSet")),
+        ownerPw || res.owner.password || "");
     }
     (res && res.members || []).forEach(function (m, i) {
-      html += card("", t("team.member") + " " + (i + 1), m.address, m.password,
+      html += card("", t("team.member") + " " + (i + 1), m.address, m.password, m.password,
         '<button class="cp" data-cp-prompt="' + esc(m.address) + '" data-cp-prompt-pw="' + esc(m.password) + '">' + t("team.copyPrompt") + "</button>");
     });
     box.innerHTML = html;
@@ -2036,7 +2044,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // Human-set passwords never echo back (server returns none) — the page
     // just reminds the user to keep it; server-generated ones (one-click)
     // still show once.
-    $("#register-success-password").textContent = password || t("reg.pwUserSet");
+    const pwEl = $("#register-success-password");
+    pwEl.textContent = password || t("reg.pwUserSet");
+    // Self-set password flag: the reminder text is NOT a credential —
+    // the success-screen login button must not auto-submit it (drill A1).
+    pwEl.dataset.selfSet = password ? "" : "1";
     // Agent prompt block no longer shows on the human register channel —
     // that content lives in the one-click agent flow's modal only
     // (feedback). Hidden here so the block can stay in the markup for
@@ -2227,7 +2239,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       activateTab("overview");
     } catch (e) {
       setSession(null);
-      status.textContent = "Login failed: " + e.message;
+      // The tentative session (set above) makes core's 401 path report
+      // "session expired" — but during login that means the credentials
+      // are wrong (drill A2).
+      status.textContent = /session expired/i.test(e.message)
+        ? t("login.badCreds")
+        : "Login failed: " + e.message;
     }
   });
 
@@ -2303,7 +2320,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           // it ("invalid character 'o'"). Every other call site stringifies.
           body: JSON.stringify({ username: name, password: pw, team_size: members.length, members: members }),
         });
-        renderTeamSuccess(res);
+        renderTeamSuccess(res, pw);
         $("#team-copy-status").textContent = "";
         $("#team-form-block").classList.add("hidden");
         $("#team-success-block").classList.remove("hidden");
@@ -2335,9 +2352,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       var lines = [];
       $$("#team-cred-cards .cred-card").forEach(function (card) {
         var who = card.querySelector(".who").textContent;
-        var addr = card.querySelector("code").textContent;
-        var pw = card.querySelector(".pw").textContent;
-        lines.push(who + ": " + addr + "  " + pw);
+        // Copy from the button dataset: the owner card displays the
+        // keep-it reminder, but the real password must still copy.
+        var btn = card.querySelector("button.cp");
+        lines.push(who + ": " + btn.dataset.cpAddr + "  " + btn.dataset.cpPw);
       });
       copyText(lines.join("\n")).then(function (ok) {
         var st = $("#team-copy-status");
@@ -2379,10 +2397,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // Success-screen buttons.
   $("#btn-register-login").addEventListener("click", function () {
     const addr = $("#register-success-address").textContent;
-    const pw = $("#register-success-password").textContent;
+    const pwEl = $("#register-success-password");
     $("#login-address").value = addr;
-    $("#login-password").value = pw;
     showLoginForm();
+    if (pwEl.dataset.selfSet) {
+      // Self-set password: nothing to prefill — focus the field and let
+      // the user type it (auto-submitting the reminder text guaranteed
+      // a 401; drill A1).
+      $("#login-password").focus();
+      return;
+    }
+    $("#login-password").value = pwEl.textContent;
     $("#btn-login").click();
   });
   $("#btn-register-another").addEventListener("click", showRegisterForm);

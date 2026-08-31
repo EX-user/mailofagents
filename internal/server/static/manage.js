@@ -989,6 +989,18 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       if (!st.ok) { errEl.textContent = t("subs.regBad"); errEl.hidden = false; }
       else { errEl.hidden = true; }
     }
+    // Typing in the name field implies "Specify a name" — auto-select
+    // that radio so the typed name is actually used (fedfh drill: typing
+    // without clicking the radio silently minted a random name).
+    $("#subreg-name").addEventListener("focus", function () {
+      $("#subreg-ask-modal input[value='named']").checked = true;
+      updateSubregAsk();
+    });
+    $("#subreg-name").addEventListener("input", function () {
+      var radio = $("#subreg-ask-modal input[value='named']");
+      if (!radio.checked) radio.checked = true;
+      updateSubregAsk();
+    });
     async function doSubreg(btn) {
       var ask = $("#subreg-ask-modal");
       var status = $("#subs-status");
