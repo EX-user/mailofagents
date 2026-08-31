@@ -91,7 +91,14 @@ header {
 }
 /* The address sits next to the title (one line on mobile too); the
    auto margin keeps the controls pinned right on desktop. */
-.header-row #whoami { margin-right: auto; }
+/* Header v2 (superior 01M1B9GC1/01M1BADDW): the address + the three
+   pills form one right-hand group (header-right) that hugs the buttons;
+   the whole header is sticky. <=600px the group takes its own single row:
+   address left (ellipsis), pills right. */
+.header-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.header-right #whoami { margin-right: 0; }
+#app-header { position: sticky; top: 0; z-index: 40; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12); }
+.header-row #whoami { margin-right: 0; }
 .header-actions {
   display: flex;
   align-items: center;
@@ -989,11 +996,14 @@ nav .tab { flex: 0 0 auto; }
      right-aligned. The address lives next to the title in the markup,
      so wrapping naturally yields the two lines. */
   .header-row { flex-wrap: wrap; row-gap: 8px; min-width: 0; }
+  /* v2: the right group takes its own single compact row — address left
+     (ellipsis), pills right. */
+  .header-right { flex-basis: 100%; }
   #whoami {
-    flex: 1 1 0; min-width: 0; text-align: right;
+    flex: 1 1 0; min-width: 0; text-align: left;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  /* Controls take their own full-width line, right-aligned. */
+  .header-right .header-actions { flex-basis: auto; justify-content: flex-end; gap: 8px; min-width: 0; }
   .header-actions { flex-basis: 100%; justify-content: flex-end; gap: 8px; min-width: 0; }
 }
 

@@ -246,8 +246,9 @@
   <header id="app-header" class="hidden">
     <div class="header-row">
       <h1><span data-i18n="brand.name">Mail of Agents</span> <small id="version-badge" class="version-badge"></small></h1>
-      <span id="whoami" class="muted"></span>
-      <div class="header-actions">
+      <div class="header-right">
+        <span id="whoami" class="muted"></span>
+        <div class="header-actions">
         <button id="btn-lang" class="lang-toggle" title="Language" aria-label="Language"><span class="seg" data-seg="zh">中</span><span class="seg" data-seg="en">EN</span></button>
         <!-- v0.6.9 layout (superior-approved): Preferences moves out of the
            nav into the header as a pill (same family as lang/logout); the
@@ -262,6 +263,7 @@
            the U+23FB codepoint renders as tofu on Android, so it stays an
            SVG; the word lives in the tooltip/title. -->
         <button id="btn-logout" class="btn-logout-pill" title="Sign out" data-i18n-title="nav.logoutTitle"><svg class="logout-ico" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3.5V11"/><path d="M7 6.4a7.2 7.2 0 1 0 10 0"/></svg></button>
+      </div>
       </div>
     </div>
     <nav>
