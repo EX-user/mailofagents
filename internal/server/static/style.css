@@ -1562,7 +1562,8 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 #tf-scroll { position: relative; overflow: auto; background: var(--panel);
   border: 1px solid var(--border); border-radius: 10px;
   height: max(640px, calc(100vh - 240px)); }
-#tf-canvas { position: relative; touch-action: none; }
+#tf-canvas { position: relative; touch-action: none;
+  user-select: none; -webkit-user-select: none; }
 #tf-links { position: absolute; inset: 0; width: 100%; height: 100%; }
 .f-card { position: absolute; width: 224px; border-radius: 8px; padding: 6px 9px;
   font-size: 11px; line-height: 1.45; box-shadow: 0 1px 2px rgba(20,30,60,.08); cursor: pointer; }
@@ -1646,3 +1647,8 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 /* Expanded card (superior 0.1.7 v2, Iris d771548): selected card + click = full text with a scrollable region; click again collapses. Multiple cards may stay expanded; card keeps its 224px width. */
 .f-card.expanded { z-index: 3; }
 .f-card.expanded .f-body { display: block; -webkit-line-clamp: unset; white-space: normal; max-height: 672px; overflow-y: auto; }
+
+/* Canvas text selection (superior 08-31, Iris): canvas-wide drag must not
+   select text; an expanded card opts back in so its body stays copyable. */
+.f-card.expanded { user-select: text; -webkit-user-select: text; }
+
