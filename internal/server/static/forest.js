@@ -60,6 +60,13 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     return { fBg: "rgba(243,245,248,0.97)", fBd: "#b7c0cc" };
   }
   function fClip(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+  // 展开/收起全文（上级 0.1.7 精修）：正文全量替换+限高滑动。模块级——
+  // 卡片 click 与触摸 fTapCard 两个路径都要用。
+  function fToggleExpand(card) {
+    var on = card.classList.toggle("expanded");
+    var body = card.querySelector(".f-body");
+    if (body) body.textContent = on ? (card.__full || "…") : fClip(card.__full, 84);
+  }
   function fDepthMap(t) {
     var fDepth = {}; fDepth[t.root_id] = 0; var changed = true;
     while (changed) { changed = false;
@@ -202,6 +209,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       el.style.borderLeft = "3px solid " + n.edge;
       el.style.left = n.x + "px"; el.style.top = n.y + "px";
       var subj = n.isRoot ? (n.subj || n.m.subject || "—") : (n.m.subject || n.subj || "—");
+      el.__full = String(n.m.body || n.m.preview || ""); // 展开全文用
       el.innerHTML = '<div class="f-head">' + esc(shortAddr(n.m.from)) + " · " + esc(fmtTime(n.m.received_at)) + "</div>"
         + '<div class="f-subj">' + esc(fClip(subj, 24)) + "</div>"
         + '<div class="f-body">' + esc(fClip(n.m.body || n.m.preview || "", 84)) + "</div>";
@@ -209,6 +217,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       el.__fnode = n; // 触摸端点按/拖动定位节点用
       // Superior 01M15G…: 单击=只选中；卡可自由拖动（横向+纵向，纵向即时间
       // 方向，按上级 01M1* 续修令放开）；双击=进话题详情。
+      var lastTap = 0; // 自管双击检测（原生 dblclick 在部分环境不合成）
       el.addEventListener("mousedown", function (ev) {
         ev.stopPropagation(); // 卡上按下不触发画布平移
         var startX = ev.clientX, startY = ev.clientY, origX = n.x, origY = n.y, moved = false;
@@ -235,11 +244,28 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       });
       el.addEventListener("click", function () {
         if (el.__dragged) { el.__dragged = false; return; }
+        // Superior 0.1.7 精修：已选中的卡再单击=展开/收起全文；350ms 内
+        // 第二次点击=双击进详情（自带计时检测，不依赖原生 dblclick——
+        // headless/TWA 环境可能不合成）。
+        var now = Date.now();
+        if (now - lastTap < 350) {
+          lastTap = 0;
+          if (el.__expTimer) { clearTimeout(el.__expTimer); el.__expTimer = null; }
+          document.dispatchEvent(new CustomEvent("threads:open", { detail: { root: n.rootId } }));
+          return;
+        }
+        lastTap = now;
+        if (el.classList.contains("sel")) {
+          if (!el.__expTimer) {
+            el.__expTimer = setTimeout(function () {
+              el.__expTimer = null;
+              fToggleExpand(el);
+            }, 350);
+          }
+          return;
+        }
         document.querySelectorAll(".f-card.sel").forEach(function (x) { x.classList.remove("sel"); });
         el.classList.add("sel");
-      });
-      el.addEventListener("dblclick", function () {
-        document.dispatchEvent(new CustomEvent("threads:open", { detail: { root: n.rootId } }));
       });
       box.appendChild(el);
     });
@@ -278,7 +304,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     if (fPz || !window.panzoom || !c) return;
     c.style.transformOrigin = "0 0";
     fPz = window.panzoom(c, {
-      minZoom: 0.05, maxZoom: 4, zoomSpeed: 0.065,
+      minZoom: 0.02, maxZoom: 4, zoomSpeed: 0.065,
       bounds: false, boundsPadding: 0.05,
       dblClickZoomEnabled: false,
       // 拖拽平移由 forest 自管（panzoom 的鼠标拖拽位移异常放大），只让库管缩放。
@@ -300,7 +326,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       e.preventDefault();
       if (!fPz) return;
       var r = fScroller.getBoundingClientRect();
-      var ns = Math.min(4, Math.max(0.25, fPz.getTransform().scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+      var ns = Math.min(4, Math.max(0.02, fPz.getTransform().scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
       fPz.zoomAbs(e.clientX - r.left, e.clientY - r.top, ns);
     }, { passive: false });
   })();
@@ -308,11 +334,12 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     if (!fPz) { fInitPz(); }
     if (!fPz) return;
     var c = $("#tf-canvas");
-    // 上级 01M17AJ97 后续：进入森林视图时视野调整到显示全部树（宽高都
-    // 适配并居中），不是只适配宽度。
+    // 上级 01M17AJ97 后续 + 01M1ARCH1 复测令：进入森林视图时视野调整到
+    // 显示全部树（宽高都适配并居中）。下限降到 0.02——超大图也要完整可见；
+    // 上限 1.15 保留（小图不放大）。
     var w = parseFloat(c.style.width) || c.scrollWidth;
     var h = parseFloat(c.style.height) || c.scrollHeight;
-    var fZ = Math.min(1.15, Math.max(0.05, Math.min(
+    var fZ = Math.min(1.15, Math.max(0.02, Math.min(
       (fScroller.clientWidth - 48) / w,
       (fScroller.clientHeight - 48) / h)));
     fPz.zoomAbs(0, 0, fZ);
@@ -356,12 +383,24 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       bOrph.classList.toggle("off", fHideOrphans);
       if (fCache) fDraw();
     });
+    // 重置按钮（上级 01M1ARCH1）：一键回到初始态——清除所有拖拽位移
+    // （fDraw 重排即恢复布局原位）+ 视图回 fit-all。
+    var bReset = document.createElement("button");
+    bReset.type = "button"; bReset.className = "f-fbtn"; bReset.id = "tf-reset";
+    bReset.textContent = t("forest.reset");
+    bReset.title = "reset view & layout";
+    bReset.addEventListener("click", function () {
+      fFitted = false;
+      if (fCache) fDraw(); else fLoad();
+    });
+    document.addEventListener("i18n:change", function () { bReset.textContent = t("forest.reset"); });
     // 行距滑杆
     var ctl = document.createElement("div");
     ctl.id = "tf-density";
     ctl.innerHTML = '<span>▤</span><input type="range" min="48" max="160" step="4" value="' + fRowH() + '" aria-label="row density">';
     bar.appendChild(bTrees);
     bar.appendChild(bOrph);
+    bar.appendChild(bReset);
     bar.appendChild(ctl);
     host.insertBefore(bar, host.firstChild);
     ctl.querySelector("input").addEventListener("input", function (e) {
@@ -398,14 +437,22 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     // 点按/双点按/卡片横拖全部自管：短触未移动=点按（选中），350ms 内两次
     // 点按同一卡=进详情；单指横拖=平移，卡上单指横拖=拖卡。
     var fLastTap = { t: 0, card: null };
+    var fTapTimer = null;
     function fTapCard(card) {
       var now = Date.now();
       if (fLastTap.card === card && now - fLastTap.t < 350) {
         fLastTap = { t: 0, card: null };
+        if (fTapTimer) { clearTimeout(fTapTimer); fTapTimer = null; }
         document.dispatchEvent(new CustomEvent("threads:open", { detail: { root: card.dataset.root } }));
         return;
       }
       fLastTap = { t: now, card: card };
+      if (fTapTimer) { clearTimeout(fTapTimer); fTapTimer = null; }
+      if (card.classList.contains("sel")) {
+        // 已选中：延迟切换展开/收起（给双点让路）
+        fTapTimer = setTimeout(function () { fTapTimer = null; fToggleExpand(card); }, 300);
+        return;
+      }
       document.querySelectorAll(".f-card.sel").forEach(function (x) { x.classList.remove("sel"); });
       card.classList.add("sel");
     }
