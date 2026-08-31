@@ -127,6 +127,8 @@
       "act.disable": "Disable",
       "act.changePw": "Change password",
       "pager.prev": "← Prev",
+      "pager.page": "Page",
+      "pager.of": "of {n}",
       "pager.next": "Next →",
       // ---- phase 3 closing slice ----
       "mail.allAccounts": "All accounts",
@@ -239,6 +241,8 @@
       "login.password": "Password",
       "login.submit": "Log in",
       "login.remember": "Remember me",
+      "login.addrLabel": "Address",
+      "login.pwLabel": "Password",
       "login.register": "Register a new account",
       "login.addrPh": "you@agentmail.local",
       "login.pwPh": "password",
@@ -275,6 +279,8 @@
       "acc.registerNew": "+ Register new account",
       // ---- inbox/mail (phase 2) ----
       "inbox.title": "Inbox",
+      "inbox.pageStat": "{n} on this page · {m} total",
+      "inbox.unreadCnt": "{u} unread",
       "inbox.modeIn": "Inbox",
       "inbox.modeSent": "Sent",
       "inbox.modeBoth": "All",
@@ -447,8 +453,14 @@
       "subs.subGroup": "Subordinate accounts",
       // ---- directory/profile (phase 2) ----
       "dir.refresh": "Refresh",
+      "dir.desc": "Public address book. Accounts that have opted in (Visible) appear here with their signature.",
       "prof.visible": "Visible in public directory",
       "prof.signature": "Signature",
+      "hdr.address": "Address",
+      "hdr.tags": "Tags",
+      "hdr.created": "Created",
+      "hdr.actions": "Actions",
+      "hdr.signature": "Signature",
       "prof.save": "Save profile",
       "prof.sigPh": "a short tagline (max 200 chars)",
       // ---- settings (phase 2) ----
@@ -591,6 +603,8 @@
       "act.disable": "停用",
       "act.changePw": "修改密码",
       "pager.prev": "← 上一页",
+      "pager.page": "页码",
+      "pager.of": "共 {n} 页",
       "pager.next": "下一页 →",
       // ---- phase 3 closing slice ----
       "mail.allAccounts": "全部账户",
@@ -703,6 +717,8 @@
       "login.password": "密码",
       "login.submit": "登录",
       "login.remember": "记住我",
+      "login.addrLabel": "地址",
+      "login.pwLabel": "密码",
       "login.register": "注册新账户",
       "login.addrPh": "you@agentmail.local",
       "login.pwPh": "密码",
@@ -739,6 +755,8 @@
       "acc.registerNew": "+ 注册新账户",
       // ---- inbox/mail (phase 2) ----
       "inbox.title": "收发件",
+      "inbox.pageStat": "本页 {n} 封 · 共 {m} 封",
+      "inbox.unreadCnt": "{u} 封未读",
       "inbox.modeIn": "收件",
       "inbox.modeSent": "发件",
       "inbox.modeBoth": "收发件",
@@ -911,8 +929,14 @@
       "subs.subGroup": "从属账户",
       // ---- directory/profile (phase 2) ----
       "dir.refresh": "刷新",
+      "dir.desc": "公开通讯录：勾选 Visible（可见）的账户会连同签名列在这里。",
       "prof.visible": "在公开通讯录中可见",
       "prof.signature": "签名",
+      "hdr.address": "地址",
+      "hdr.tags": "标签",
+      "hdr.created": "创建时间",
+      "hdr.actions": "操作",
+      "hdr.signature": "签名",
       "prof.save": "保存资料",
       "prof.sigPh": "一句话简介（最多 200 字符）",
       // ---- settings (phase 2) ----

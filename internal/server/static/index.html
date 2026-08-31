@@ -121,10 +121,10 @@
         <h1 data-i18n="login.title">Mail of Agents login</h1>
         <p class="muted" data-i18n="login.desc">Sign in with your mail account. Admins see the full panel; regular accounts see a personal view.</p>
         <div class="compose-form">
-          <label>Address
+          <label><span data-i18n="login.addrLabel">Address</span>
             <input type="text" id="login-address" placeholder="you@agentmail.local" data-i18n-ph="login.addrPh" autocomplete="username" />
           </label>
-          <label>Password
+          <label><span data-i18n="login.pwLabel">Password</span>
             <input type="password" id="login-password" placeholder="password" data-i18n-ph="login.pwPh" autocomplete="current-password" />
           </label>
           <div class="row" style="gap:12px;align-items:center;">
@@ -280,7 +280,7 @@
   <main>
     <!-- Overview -->
     <section id="tab-overview" class="tab-panel">
-      <h2>Overview <small class="muted" data-i18n="sub.overview">— system stats and recent activity</small></h2>
+      <h2><span data-i18n="nav.overview">Overview</span> <small class="muted" data-i18n="sub.overview">— system stats and recent activity</small></h2>
       <!-- v0.6.9 layout (superior-approved): Directory becomes the second
            in-page view of Overview (same pill pattern as Manage's
            Messages|Overview). Nav stays at five cards. -->
@@ -302,7 +302,7 @@
            System/Activity groups (superior feedback: 640px cap too narrow).
            Day count adapts to the viewport (7/10/14) — see renderOverviewGrowth. -->
       <div id="ovw-growth-card" class="portal-card hidden" style="margin-top:16px;">
-        <div class="chart-head"><span class="t">Mail growth</span><span class="u" id="ovw-growth-sub">messages · last 7 days</span></div>
+        <div class="chart-head"><span class="t" data-i18n="portal.growth.title">Mail growth</span><span class="u" id="ovw-growth-sub">messages · last 7 days</span></div>
         <div class="bars" id="ovw-growth-bars"></div>
         <div class="bar-lbls" id="ovw-growth-lbls"></div>
       </div>
@@ -337,11 +337,11 @@
       <div id="recent-activity">Loading…</div>
       </div>
       <div id="ovw-directory" class="hidden">
-        <h2>Directory <small class="muted" data-i18n="sub.directory">— public address book</small></h2>
-        <p class="muted">Public address book. Accounts that have opted in (Visible) appear here with their signature. Anyone can query this via <code>/api/info?query=directory</code>.</p>
+        <h2><span data-i18n="nav.directory">Directory</span> <small class="muted" data-i18n="sub.directory">— public address book</small></h2>
+        <p class="muted"><span data-i18n="dir.desc">Public address book. Accounts that have opted in (Visible) appear here with their signature.</span> Anyone can query this via <code>/api/info?query=directory</code>.</p>
         <button id="btn-refresh-directory" class="row-action" data-i18n="dir.refresh">Refresh</button>
         <table id="directory-table">
-          <thead><tr><th>Address</th><th>Signature</th><th>Actions</th></tr></thead>
+          <thead><tr><th data-i18n="hdr.address">Address</th><th data-i18n="hdr.signature">Signature</th><th data-i18n="hdr.actions">Actions</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -362,7 +362,7 @@
         <div class="muted" style="font-size: 12px; margin-top: 6px;" data-i18n="subs.registerNote">Creates a new mailbox for your AI assistant (Codex, Claude, etc.). You can read its mail here anytime.</div>
       </div>
       <table id="accounts-table">
-        <thead><tr><th>Address</th><th>Tags</th><th data-i18n="prof.signature">Signature</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th data-i18n="hdr.address">Address</th><th data-i18n="hdr.tags">Tags</th><th data-i18n="prof.signature">Signature</th><th data-i18n="hdr.created">Created</th><th data-i18n="hdr.actions">Actions</th></tr></thead>
         <tbody></tbody>
       </table>
       </div>
@@ -459,7 +459,7 @@
       </div>
       <div class="row inbox-pager">
         <button id="btn-inbox-prev" class="row-action" disabled data-i18n="pager.prev">← Prev</button>
-        <span class="muted">Page</span>
+        <span class="muted" data-i18n="pager.page">Page</span>
         <input type="number" id="inbox-page-input" value="1" min="1" max="1" style="width:64px" />
         <span id="inbox-page-total" class="muted">of 1</span>
         <button id="btn-inbox-next" class="row-action" disabled data-i18n="pager.next">Next →</button>

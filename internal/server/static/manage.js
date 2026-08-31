@@ -1178,7 +1178,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         list.appendChild(item);
       });
       updateInboxPager(totalPages, inboxPage + 1);
-      status.textContent = msgs.length + " on this page · " + total + " total" + (unreadCount ? " · " + unreadCount + " unread" : "");
+      status.textContent = t("inbox.pageStat", { n: msgs.length, m: total }) +
+        (unreadCount ? " · " + t("inbox.unreadCnt", { u: unreadCount }) : "");
       // Direct write with sequencing: supersede any in-flight poll so a
       // stale "unread" response cannot re-light the dot after this point.
       document.dispatchEvent(new CustomEvent("badge:refresh"));
@@ -1255,7 +1256,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     next.disabled = currentPage >= totalPages;
     input.max = String(totalPages);
     input.value = String(currentPage);
-    totalLabel.textContent = "of " + totalPages;
+    totalLabel.textContent = t("pager.of", { n: totalPages });
   }
 
   // Server-side full-text search (contract v1: GET /api/search, response

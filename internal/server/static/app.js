@@ -1445,7 +1445,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(lbl);
       if (m) {
         const dt = new Date(+m[1], +m[2] - 1, +m[3]);
-        if (!isNaN(dt.getTime())) lbl = dt.toLocaleDateString(undefined, { weekday: "short" });
+        if (!isNaN(dt.getTime())) {
+          // Label language follows the UI language (<html lang>, kept in
+          // sync by i18n), not the browser locale — EN UI must not show
+          // 周二-style labels (fedfh inspection).
+          const loc = (document.documentElement.lang || "").toLowerCase().indexOf("zh") === 0 ? "zh-CN" : "en";
+          lbl = dt.toLocaleDateString(loc, { weekday: "short" });
+        }
       }
       return "<span>" + esc(lbl) + "</span>";
     }).join("");
