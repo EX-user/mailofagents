@@ -1623,3 +1623,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 .seg-pill { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .seg-pill button { border: 0; background: transparent; padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text); }
 .seg-pill button.on { background: var(--accent, #3b82f6); color: #fff; }
+
+/* Expanded card (superior 0.1.7 v2, Iris d771548): selected card + click = full text with a scrollable region; click again collapses. Multiple cards may stay expanded; card keeps its 224px width. */
+.f-card.expanded { z-index: 3; }
+.f-card.expanded .f-body { display: block; -webkit-line-clamp: unset; white-space: normal; max-height: 672px; overflow-y: auto; }
