@@ -1267,6 +1267,11 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
 .img-lightbox-dl:hover { background: rgba(255, 255, 255, 0.22); }
 @media (prefers-reduced-motion: reduce) { .img-lightbox { animation: none; } }
 
+/* Image lightbox zoom (superior 01M1B6J5W): the lightbox img is
+   transform-driven (JS); touch-action none keeps page gestures out of the
+   way while pinching. */
+.img-lightbox img { touch-action: none; cursor: zoom-in; will-change: transform; }
+
 /* Attachment TTL badge (v0.5.3). */
 .attach-ttl { flex: 0 0 auto; font-size: 11px; color: var(--muted); }
 .attach-ttl-over { color: var(--error); }

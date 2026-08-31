@@ -389,6 +389,20 @@ func (s *Store) ReadSent(address string, limit int) ([]MessageSummary, error) {
 	return s.readIndex(bSent, acc.UUID, acc.UUID, limit, 0)
 }
 
+// ReadSentPaged returns up to limit sent messages for the account, skipping
+// the first offset (newest-first). Mirrors ReadInboxPaged so /api/sent pages
+// the same way as /api/inbox.
+func (s *Store) ReadSentPaged(address string, limit, offset int) ([]MessageSummary, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	acc, err := s.GetAccount(address)
+	if err != nil {
+		return nil, err
+	}
+	return s.readIndex(bSent, acc.UUID, acc.UUID, limit, offset)
+}
+
 // ListContacts returns the deduplicated, sorted list of addresses the account
 // has exchanged mail with: senders in the account's inbox plus recipients in
 // the account's sent messages. The account's own address is excluded. Scans up

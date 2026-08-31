@@ -360,6 +360,83 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       // Swallow so a click on the picture doesn't close or download.
       ev.stopPropagation();
     });
+    // 上级 01M1B6J5W：预览可放大——滚轮/双击/双指捏合（1–6×，指针锚点式），
+    // 放大后拖拽平移；拖拽过的收尾点按不当作关闭手势（关闭仍走背景/Esc）。
+    let lbScale = 1, lbTx = 0, lbTy = 0;
+    const lbApply = function () {
+      im.style.transform = "translate(" + lbTx + "px," + lbTy + "px) scale(" + lbScale + ")";
+      im.style.cursor = lbScale > 1 ? "grab" : "zoom-in";
+    };
+    const lbZoomAt = function (cx, cy, factor) {
+      const ns = Math.min(6, Math.max(1, lbScale * factor));
+      if (ns === lbScale) return;
+      const r = im.getBoundingClientRect();
+      const lbpX = cx - r.left, lbpY = cy - r.top;
+      lbTx += lbpX * (1 - ns / lbScale);
+      lbTy += lbpY * (1 - ns / lbScale);
+      lbScale = ns;
+      if (lbScale === 1) { lbTx = 0; lbTy = 0; }
+      lbApply();
+    };
+    im.style.transformOrigin = "0 0";
+    im.style.touchAction = "none";
+    lb.style.touchAction = "none";
+    lb.addEventListener("wheel", function (ev) {
+      ev.preventDefault();
+      lbZoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.2 : 1 / 1.2);
+    }, { passive: false });
+    lb.addEventListener("dblclick", function (ev) {
+      ev.preventDefault();
+      lbZoomAt(ev.clientX, ev.clientY, lbScale > 1 ? 1 / lbScale : 2.5);
+    });
+    let lbPinch = null;
+    let lbDrag = null;
+    let lbLastTap = 0;
+    lb.addEventListener("touchstart", function (ev) {
+      if (ev.touches.length === 2) {
+        lbPinch = {
+          d: Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX,
+                        ev.touches[0].clientY - ev.touches[1].clientY),
+        };
+        lbDrag = null;
+      } else if (ev.touches.length === 1) {
+        lbDrag = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, bx: lbTx, by: lbTy, moved: false };
+      }
+    }, { passive: true });
+    lb.addEventListener("touchmove", function (ev) {
+      ev.preventDefault();
+      if (lbPinch && ev.touches.length === 2) {
+        const d = Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX,
+                             ev.touches[0].clientY - ev.touches[1].clientY);
+        lbZoomAt((ev.touches[0].clientX + ev.touches[1].clientX) / 2,
+                 (ev.touches[0].clientY + ev.touches[1].clientY) / 2, d / lbPinch.d);
+        lbPinch.d = d;
+        return;
+      }
+      if (lbDrag && ev.touches.length === 1 && lbScale > 1) {
+        const dx = ev.touches[0].clientX - lbDrag.x, dy = ev.touches[0].clientY - lbDrag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 6) lbDrag.moved = true;
+        lbTx = lbDrag.bx + dx;
+        lbTy = lbDrag.by + dy;
+        lbApply();
+      }
+    }, { passive: false });
+    lb.addEventListener("touchend", function (ev) {
+      if (lbPinch && ev.touches.length < 2) lbPinch = null;
+      if (lbScale > 1 && lbScale < 1.02) { lbScale = 1; lbTx = 0; lbTy = 0; lbApply(); }
+      // 双击（双点）切换放大/还原——自带计时，不依赖合成 dblclick
+      if (!lbDrag || !lbDrag.moved) {
+        const now = Date.now();
+        const t0 = ev.changedTouches[0];
+        if (t0 && now - lbLastTap < 350) {
+          lbLastTap = 0;
+          lbZoomAt(t0.clientX, t0.clientY, lbScale > 1 ? 1 / lbScale : 2.5);
+        } else {
+          lbLastTap = now;
+        }
+      }
+      if (lbDrag) lbDrag = null;
+    });
     lb.appendChild(im);
     const dl = document.createElement("button");
     dl.className = "img-lightbox-dl";

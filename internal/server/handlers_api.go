@@ -667,9 +667,10 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSent lists the authenticated account's sent messages.
-//   GET /api/sent?limit=50  -> {"messages": [...], "count": N, "total_count": T}
-// total_count is the full sent count regardless of the page limit (mirrors
+//   GET /api/sent?limit=50&offset=M  -> {"messages": [...], "count": N, "total_count": T}
+// total_count is the full sent count regardless of the page window (mirrors
 // /api/inbox; the My-activity cards request limit=1 and read total_count).
+// offset pages newest-first, same contract as the inbox endpoint.
 func (s *Server) handleSent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w)
@@ -677,7 +678,8 @@ func (s *Server) handleSent(w http.ResponseWriter, r *http.Request) {
 	}
 	who := accountFrom(r.Context())
 	limit := queryInt(r, "limit", 50)
-	msgs, err := s.store.ReadSent(who, limit)
+	offset := queryInt(r, "offset", 0)
+	msgs, err := s.store.ReadSentPaged(who, limit, offset)
 	if err != nil {
 		internalError(w, "read sent: "+err.Error())
 		return

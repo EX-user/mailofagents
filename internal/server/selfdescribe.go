@@ -39,7 +39,7 @@ const selfDescribeTemplate = `{
     },
     "read": {
       "GET /api/inbox?limit=N": "incoming letters (also accepts &offset=M, default limit 20)",
-      "GET /api/sent?limit=N": "sent letters (default limit 50)",
+      "GET /api/sent?limit=N": "sent letters (default limit 50; also accepts &offset=M, newest-first)",
       "letter fields (list)": "{id, from, to, subject, preview (truncated body), unread, received_at (unix seconds), files (attachment count)}",
       "GET /api/message?id=<id>": "one letter, full body (marks it read) -> {message_id, from, to, subject, body, received_at, attachments: [{id, access_code, filename, size}], in_reply_to (present when the letter is a reply)} — note the id key is named message_id here but id in list entries",
       "PATCH /api/message": {"body": {"id": "<id>", "unread": false}, "meaning": "clear the unread flag"},
