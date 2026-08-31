@@ -1638,11 +1638,13 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   }
 }
 
-/* Inbox mode pill (superior 01M18D521): segmented receive/sent/all control,
-   same family as the language toggle. */
-.seg-pill { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
-.seg-pill button { border: 0; background: transparent; padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text); }
-.seg-pill button.on { background: var(--accent, #3b82f6); color: #fff; }
+/* Inbox mode pill (superior 01M18D521): segmented receive/sent/all control.
+   Restyled onto the .mgmt-seg capsule grammar (superior 01M1C2C3K): padded
+   track + rounded thumb, matching Overview/Manage switches; no own margin
+   because the pill sits inline beside the search box. */
+.seg-pill { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); }
+.seg-pill button { font-size: 12px; padding: 4px 16px; border-radius: 999px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-family: inherit; line-height: 1.4; }
+.seg-pill button.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
 
 /* Expanded card (superior 0.1.7 v2, Iris d771548): selected card + click = full text with a scrollable region; click again collapses. Multiple cards may stay expanded; card keeps its 224px width. */
 .f-card.expanded { z-index: 3; }
