@@ -1197,7 +1197,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         '<div class="detail-row"><b>Subject:</b> ' + esc(m.subject || "") + "</div>" +
         '<div class="detail-row"><b>Date:</b> ' + fmtTime(m.received_at) + "</div>" +
         '<div class="row" style="margin:8px 0;">' +
-        '<button class="row-action" id="btn-inbox-reply" data-reply-to="' + esc(m.from) + '" data-reply-subject="' + esc(m.subject || "") + '" data-reply-id="' + esc(m.id || m.message_id || "") + '">' + t("act.reply") + "</button>" +
+        (String(m.from || "").toLowerCase() === String(getSession().address || "").toLowerCase()
+          ? // Superior 01M1AWXF: own sent mail gets Follow-up (recipients kept,
+            // irt wired, subject prefixed) instead of Reply.
+            '<button class="row-action" id="btn-inbox-followup" data-follow-to="' + esc((m.to || []).join(", ")) + '" data-follow-subject="' + esc(m.subject || "") + '" data-follow-id="' + esc(m.id || m.message_id || "") + '">' + t("act.followUp") + "</button>"
+          : '<button class="row-action" id="btn-inbox-reply" data-reply-to="' + esc(m.from) + '" data-reply-subject="' + esc(m.subject || "") + '" data-reply-id="' + esc(m.id || m.message_id || "") + '">' + t("act.reply") + "</button>") +
         '<button class="row-action" id="btn-inbox-forward" style="margin-left:8px;">' + t("act.forward") + "</button></div>" +
         "<hr><pre class=\"body\">" + esc(m.body || "") + "</pre>" + attachmentCards(m));
       wireAttachmentDownloads(detail, m);
@@ -1212,6 +1216,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       const replyBtn = $("#btn-inbox-reply");
       if (replyBtn) replyBtn.addEventListener("click", function () {
         document.dispatchEvent(new CustomEvent("compose:reply", { detail: { to: replyBtn.dataset.replyTo, subject: replyBtn.dataset.replySubject, parentId: replyBtn.dataset.replyId } }));
+      });
+      const followBtn = $("#btn-inbox-followup");
+      if (followBtn) followBtn.addEventListener("click", function () {
+        document.dispatchEvent(new CustomEvent("compose:followUp", { detail: { to: followBtn.dataset.followTo, subject: followBtn.dataset.followSubject, parentId: followBtn.dataset.followId } }));
       });
       const fwdBtn = $("#btn-inbox-forward");
       if (fwdBtn) fwdBtn.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:forward", { detail: { m: m } })); });

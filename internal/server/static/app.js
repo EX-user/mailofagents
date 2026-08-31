@@ -770,7 +770,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   })();
 
   // v0.1.3 site copy (admin-only): three faces × zh/en → PUT /admin/site-copy
-  // (partial update: empty input keeps the server value; ≤200 chars/key).
+  // (all six keys submitted on every save; an empty value clears the override
+  // so the built-in default shows through again — alice 01M18GRC5; ≤200 chars/key).
   // Card visibility gates on the authoritative session.is_admin.
   (function wireSiteCopy() {
     const scCard = $("#sitecopy-card");
@@ -2189,6 +2190,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   // ---- login ----
 
+  // v0.1.9 (Felix): select-on-focus — the remembered address is prefilled;
+  // typing over it without select used to create franken addresses that could
+  // not log in (found while reproducing the v0.1.3 P1 locally).
+  $("#login-address").addEventListener("focus", function () { this.select(); });
   $("#btn-login").addEventListener("click", async function () {
     const address = $("#login-address").value.trim();
     const password = $("#login-password").value;

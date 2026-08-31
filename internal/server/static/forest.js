@@ -325,9 +325,9 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     fScroller.addEventListener("wheel", function (e) {
       e.preventDefault();
       if (!fPz) return;
-      var r = fScroller.getBoundingClientRect();
+      var cr = $("#tf-canvas").getBoundingClientRect();
       var ns = Math.min(4, Math.max(0.02, fPz.getTransform().scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
-      fPz.zoomAbs(e.clientX - r.left, e.clientY - r.top, ns);
+      fPz.zoomAbs(e.clientX - cr.left, e.clientY - cr.top, ns);
     }, { passive: false });
   })();
   function fFitWidth() {
@@ -369,6 +369,8 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     bTrees.addEventListener("click", function () {
       fTreeCount = fTreeCount === 5 ? 10 : (fTreeCount === 10 ? 20 : 5);
       bTrees.textContent = String(fTreeCount);
+      // 上级 01M1AWXF：树数变化后重新 fit-all——新树要进入视野。
+      fFitted = false;
       if (fCache) fDraw();
     });
     // 孤信开关：按下=显示孤立信（默认不显示）
@@ -481,10 +483,10 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       if (fpinch && e.touches.length === 2) {
         e.preventDefault();
         var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        var r = fScroller.getBoundingClientRect();
-        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
-        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
-        var ns = Math.min(4, Math.max(0.25, fPz.getTransform().scale * (d / fpinch.d)));
+        var cr = $("#tf-canvas").getBoundingClientRect();
+        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - cr.left;
+        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - cr.top;
+        var ns = Math.min(4, Math.max(0.02, fPz.getTransform().scale * (d / fpinch.d)));
         fPz.zoomAbs(mx, my, ns);
         fpinch.d = d;
         return;

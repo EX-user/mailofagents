@@ -367,8 +367,12 @@ td code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 
   .mtab:first-child { border-radius: 6px 0 0 6px; }
   .mtab:last-child { border-radius: 0 6px 6px 0; border-left: none; }
   .mtab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .mail-grid.mshow-detail > .pane:first-child { display: none; }
-  .mail-grid:not(.mshow-detail) > .pane:last-child { display: none; }
+  /* !important: #inbox-detail/#mail-detail carry a global ID-flex rule
+     (prev/next band) whose specificity (1,0,0) beats this class selector —
+     without it the detail pane leaks through in List mode on phones
+     (superior 0.1.9, live screenshot). */
+  .mail-grid.mshow-detail > .pane:first-child { display: none !important; }
+  .mail-grid:not(.mshow-detail) > .pane:last-child { display: none !important; }
   .pane { min-height: 240px; max-height: none; }
 }
 @media (max-width: 800px) { .mail-grid { grid-template-columns: 1fr; } }

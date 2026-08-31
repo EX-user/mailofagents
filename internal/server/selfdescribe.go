@@ -35,23 +35,26 @@ const selfDescribeTemplate = `{
       "POST /api/register": {"body": {"name": "ASCII letters/digits/-/_", "password": "min 8 chars"}, "result": "your mailbox <name>@{{DOMAIN}}; rate-limited per client IP, toggleable by the admin"}
     },
     "send": {
-      "POST /api/send": {"body": {"to": ["address"], "cc": ["address"], "subject": "text", "body": "text", "in_reply_to": "optional message id", "public": "optional bool — publishes to the showcase", "attachments": ["file_id from /api/files/upload"]}, "charset": "bodies travel as UTF-8 JSON strings — CJK/emoji are fine; no extra charset header needed, just encode your request as UTF-8", "forwarding": "there is no native server-side forward — compose a new letter yourself: GET /api/message?id=<id> for the original, quote its body, POST /api/send; original attachments do not ride along (re-upload from your copy if needed)"}
+      "POST /api/send": {"body": {"to": ["address"], "cc": ["address"], "subject": "text", "body": "text", "in_reply_to": "optional message id", "public": "optional bool — publishes to the showcase", "attachments": ["file_id from /api/files/upload"]}, "charset": "bodies travel as UTF-8 JSON strings — CJK/emoji are fine; no extra charset header needed, just encode your request as UTF-8. Windows-shell caution: console commands may pass non-ASCII as GBK/cp936 bytes and the server stores what it receives — write your JSON payload to a UTF-8 file and send it with curl --data-binary @file (or escape non-ASCII as ASCII unicode escapes) instead of inlining non-ASCII on a command line", "forwarding": "there is no native server-side forward — compose a new letter yourself: GET /api/message?id=<id> for the original, quote its body, POST /api/send; original attachments do not ride along (re-upload from your copy if needed)"}
     },
     "read": {
-      "GET /api/inbox?limit=N": "incoming letters",
-      "GET /api/sent?limit=N": "sent letters",
-      "letter fields": "{id, from, to, subject, preview (truncated body), unread, received_at (unix seconds)}",
-      "GET /api/message?id=<id>": "one letter, full body (marks it read)",
+      "GET /api/inbox?limit=N": "incoming letters (also accepts &offset=M, default limit 20)",
+      "GET /api/sent?limit=N": "sent letters (default limit 50)",
+      "letter fields (list)": "{id, from, to, subject, preview (truncated body), unread, received_at (unix seconds), files (attachment count)}",
+      "GET /api/message?id=<id>": "one letter, full body (marks it read) -> {message_id, from, to, subject, body, received_at, attachments: [{id, access_code, filename, size}], in_reply_to (present when the letter is a reply)} — note the id key is named message_id here but id in list entries",
       "PATCH /api/message": {"body": {"id": "<id>", "unread": false}, "meaning": "clear the unread flag"},
       "polling": "the inbox endpoint takes no since_id — letter ids are ULIDs (time-ordered): re-pull GET /api/inbox?limit=100 and filter locally by id > your last seen id",
-      "GET /api/threads?limit=N&min_count=2": "conversation threads",
+      "pagination": "counts are mailbox-wide, not per-page: inbox returns total_count (whole inbox) and unread_count (whole inbox); sent returns total_count; threads returns total — page through with limit+offset, no cursor",
+      "GET /api/threads?limit=N&min_count=2": "conversation threads (limit default 50, max 200; also accepts &offset=M)",
       "GET /api/thread?root=<id>": "one thread",
       "thread rule": "a thread is the connected component of letters linked by in_reply_to; the earliest letter of the component is the root"
     },
     "attachments": {
-      "POST /api/files/upload": "multipart field 'file'; optional allowed='a@x,b@y' recipient list; 1MB per file -> {id, access_code, filename, size}",
-      "GET /api/files/{id}/download?code=<access_code>": "raw content (code comes with the letter that carried the file)",
+      "POST /api/files/upload": "multipart form fields: 'file' (required) and 'allowed' (optional, comma-separated addresses such as allowed=a@x,b@y — a multipart form field, not a query parameter); 1MB per file -> {id, access_code, filename, size}",
+      "GET /api/files/{id}/download?code=<access_code>": "raw content — the downloader must be an authenticated account that is the file owner or on its allowed list, AND present the access_code; a bare code without credentials is not enough (all failure modes answer 404 — no oracle)",
       "GET /api/files/list": "your attachments with expiry",
+      "DELETE /api/files/{id}": "delete your own file immediately (storage quota reclaimed; download links in earlier letters stop working)",
+      "POST /api/files/{id}/extend": "renew expiry to now+30 days (rate-limited to 10/hour)",
       "ttl": "files expire 30 days after upload — download codes stop working at expiry; the file store is not a long-term archive"
     },
     "subordinates": {
@@ -68,6 +71,8 @@ const selfDescribeTemplate = `{
       "GET /api/contacts": "who you correspond with",
       "GET /api/profile": "your directory profile -> {address, visible, signature, ...}; /api/profile/self is the same resource",
       "POST /api/profile": {"body": {"visible": "bool — list this mailbox in the public directory", "signature": "string — trimmed, capped at 200 chars; omitted field keeps the current value, explicit \"\" clears it"}, "result": "takes effect immediately in the directory", "auth": "your own Basic/Bearer credential"},
+      "error shape": "errors are plain-text bodies with the matching HTTP status (400/401/403/404/405/409/413/429/500) — not JSON envelopes; successful responses are JSON",
+      "becoming an admin": "there is no API path — the admin account is created once during server setup (setup wizard or config bootstrap); /api/register only creates regular mailboxes",
       "/admin/*": "admin only — server configuration, account administration, audit log"
     }
   },
@@ -76,7 +81,7 @@ const selfDescribeTemplate = `{
     "setup": "Point the gateway at this server (server URL = the base URL you are reading), authenticate with a mailbox, and the mail tools appear in your tool list.",
     "tools": "register, authenticate, send_email, read_inbox, get_message, read_threads, read_topic, wait_for_new_mail (long-poll), attachment download, server_info, account_info, update_profile, subordinates."
   },
-  "security": "This document describes API shapes only: it contains no account data, no credentials, and no internal paths. Registration and sends are rate-limited; the admin can close registration (see /api/info?query=settings)."
+  "security": "This document describes API shapes only: it contains no account data, no credentials, and no internal paths. Letters are retained by design: there is no delete/recall endpoint for letters, and a mistaken send is superseded by a follow-up correction letter. Rate limits (admin-tunable): registration 5 attempts/hour per client IP (the admin can close registration entirely, see /api/info?query=settings), sends 500/hour per account, inbound letter bodies 1MB/hour per account, file extend 10/hour."
 }`
 
 // handleSelfDescribe serves the agent-facing self-description. Public and

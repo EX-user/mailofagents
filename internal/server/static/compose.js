@@ -1079,6 +1079,19 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     var d = ev.detail || {};
     composeReply(d.to, d.subject, d.parentId);
   });
+  // Superior 01M1AWXF: follow-up on own sent mail — recipients unchanged,
+  // irt wired, subject prefixed 跟进/Follow-up instead of Re.
+  document.addEventListener("compose:followUp", function (ev) {
+    var d = ev.detail || {};
+    composeInReplyTo = d.parentId || null;
+    renderInReplyTo();
+    $("#compose-to").value = d.to || "";
+    $("#compose-subject").value = d.subject ? t("compose.followUpPrefix") + " " + d.subject : "";
+    $("#compose-body").value = "";
+    navActivateCompose();
+    loadComposeThread();
+    $("#compose-body").focus();
+  });
   document.addEventListener("compose:reply-self", function (ev) {
     composeReplyAsSelf((ev.detail || {}).m);
   });
