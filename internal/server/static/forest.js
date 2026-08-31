@@ -62,10 +62,46 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
   function fClip(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
   // 展开/收起全文（上级 0.1.7 精修）：正文全量替换+限高滑动。模块级——
   // 卡片 click 与触摸 fTapCard 两个路径都要用。
+  // 上级 01M1B3Q8（0.1.9 实测）：展开显示不全——话题接口给的是摘要正文
+  // （preview），首次展开时懒加载全信替换：先自身信箱（/api/message），
+  // 404 再按从属列表逐账号找（/api/subs/{A}/message）。空串=找不到，缓存
+  // 免重试，摘要顶住。
+  var fFullCache = {};
+  function fFetchFullBody(id, fcb) {
+    if (id in fFullCache) { fcb(fFullCache[id]); return; }
+    api("/api/message?id=" + encodeURIComponent(id), { keepSession: true }).then(function (m) {
+      fFullCache[id] = String((m && m.body) || "");
+      fcb(fFullCache[id]);
+    }, function () {
+      api("/api/subs", { keepSession: true }).then(function (d) {
+        var edges = (d && d.subordinates) || [];
+        var i = 0;
+        (function next() {
+          var addr = edges[i] && edges[i].address;
+          i++;
+          if (!addr) { fFullCache[id] = ""; fcb(""); return; }
+          api("/api/subs/" + encodeURIComponent(addr) + "/message?id=" + encodeURIComponent(id),
+            { keepSession: true }).then(function (r) {
+            fFullCache[id] = String((r && r.message && r.message.body) || "");
+            fcb(fFullCache[id]);
+          }, next);
+        })();
+      }, function () { fcb(""); });
+    });
+  }
   function fToggleExpand(card) {
     var on = card.classList.toggle("expanded");
     var body = card.querySelector(".f-body");
-    if (body) body.textContent = on ? (card.__full || "…") : fClip(card.__full, 84);
+    if (!body) return;
+    if (!on) { body.textContent = fClip(card.__full, 84); return; }
+    body.textContent = card.__full || "…";
+    var fid = card.dataset.id;
+    fFetchFullBody(fid, function (full) {
+      if (full && card.classList.contains("expanded")) {
+        card.__full = full;
+        body.textContent = full;
+      }
+    });
   }
   function fDepthMap(t) {
     var fDepth = {}; fDepth[t.root_id] = 0; var changed = true;
@@ -325,9 +361,12 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     fScroller.addEventListener("wheel", function (e) {
       e.preventDefault();
       if (!fPz) return;
-      var cr = $("#tf-canvas").getBoundingClientRect();
+      // 上级 01M1B4DT：锚点必须在父容器（scroller）空间——panzoom 按
+      // 「缩放后该父空间点不动」处理；canvas rect 含当前 translate，差出
+      // 一截就视野飘走（v0.1.9 回归，恢复 v0.1.8 手感）。
+      var r = fScroller.getBoundingClientRect();
       var ns = Math.min(4, Math.max(0.02, fPz.getTransform().scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
-      fPz.zoomAbs(e.clientX - cr.left, e.clientY - cr.top, ns);
+      fPz.zoomAbs(e.clientX - r.left, e.clientY - r.top, ns);
     }, { passive: false });
   })();
   function fFitWidth() {
@@ -483,9 +522,10 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       if (fpinch && e.touches.length === 2) {
         e.preventDefault();
         var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        var cr = $("#tf-canvas").getBoundingClientRect();
-        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - cr.left;
-        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - cr.top;
+        // 同滚轮：锚点用父容器（scroller）空间（01M1B4DT 回归修）
+        var r = fScroller.getBoundingClientRect();
+        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
         var ns = Math.min(4, Math.max(0.02, fPz.getTransform().scale * (d / fpinch.d)));
         fPz.zoomAbs(mx, my, ns);
         fpinch.d = d;

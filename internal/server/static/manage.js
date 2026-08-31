@@ -1206,7 +1206,19 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         "<hr><pre class=\"body\">" + esc(m.body || "") + "</pre>" + attachmentCards(m));
       wireAttachmentDownloads(detail, m);
       hydrateAttachmentPreviews(detail, m);
-      wireReplyRef(detail, m, function (pid) { showInboxDetail(pid, null, false); });
+      wireReplyRef(detail, m, function (pid) {
+        // irt cross-view fallback (superior 01M1AVGJY): the parent letter may
+        // live in a subordinate mailbox the Inbox tab cannot read
+        // (/api/message answers not found). Probe the own path first; on a
+        // miss hand the jump to Manage > Browse, which reads subordinate
+        // mailboxes and — when nothing can see it either — shows its own
+        // not-found error.
+        api("/api/message?id=" + encodeURIComponent(pid)).then(function () {
+          showInboxDetail(pid, null, false);
+        }, function () {
+          mgmtRefJumpToBrowse(pid);
+        });
+      });
       document.dispatchEvent(new CustomEvent("badge:refresh"));
       {
         const p1 = $('[data-nav="-1"]', detail), n1 = $('[data-nav="1"]', detail);
@@ -1230,6 +1242,47 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       if (p1) p1.addEventListener("click", function () { inboxStepNav(item, -1); });
       if (n1) n1.addEventListener("click", function () { inboxStepNav(item, 1); });
     }
+  }
+
+  // mgmtRefJumpToBrowse (superior 01M1AVGJY): open an in_reply_to target the
+  // Inbox tab cannot see. Switches to Manage > Browse, probes the read-only
+  // subordinate detail endpoints (first hit wins — the 从属 badge renders as
+  // usual), and when nothing can see the letter falls back to the plain self
+  // detail, whose catch shows the not-found error in Browse.
+  async function mgmtRefJumpToBrowse(pid) {
+    try {
+      const subs = await loadSubs(false);
+      const edges = (subs && subs.subordinates) || [];
+      for (let i = 0; i < edges.length; i++) {
+        const addr = edges[i] && edges[i].address;
+        if (!addr) continue;
+        try {
+          await api("/api/subs/" + encodeURIComponent(addr) +
+            "/message?id=" + encodeURIComponent(pid), { keepSession: true });
+          mgmtRefRenderBrowse(function () { showSubDetail(addr, { id: pid }, null); });
+          return;
+        } catch (_) { /* not in this mailbox — try the next */ }
+      }
+    } catch (_) { /* subs unavailable — drop to the self path */ }
+    mgmtRefRenderBrowse(function () { showDetail(pid, null); });
+  }
+
+  // mgmtRefRenderBrowse switches to Manage > Browse and runs render once the
+  // entry auto-load (manage:entered → loadMailList) has done its own detail
+  // reset — that reset would otherwise wipe the letter rendered before it.
+  function mgmtRefRenderBrowse(renderFn) {
+    const navBtn = document.querySelector('.tab[data-tab="mail"]');
+    if (navBtn) navBtn.click();
+    const segBtn = document.querySelector('#mgmt-seg button[data-mview="browse"]');
+    if (segBtn) segBtn.click();
+    const sel = document.querySelector("#mail-account");
+    let n = 0;
+    (function tick() {
+      n++;
+      const ready = !sel || sel.dataset.loaded === "1" || n > 40;
+      if (!ready) { setTimeout(tick, 25); return; }
+      setTimeout(renderFn, 120);
+    })();
   }
 
   (function wireMgmt() {
