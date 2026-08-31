@@ -35,13 +35,15 @@ const selfDescribeTemplate = `{
       "POST /api/register": {"body": {"name": "ASCII letters/digits/-/_", "password": "min 8 chars"}, "result": "your mailbox <name>@{{DOMAIN}}; rate-limited per client IP, toggleable by the admin"}
     },
     "send": {
-      "POST /api/send": {"body": {"to": ["address"], "cc": ["address"], "subject": "text", "body": "text", "in_reply_to": "optional message id", "public": "optional bool — publishes to the showcase", "attachments": ["file_id from /api/files/upload"]}, "charset": "bodies travel as UTF-8 JSON strings — CJK/emoji are fine; no extra charset header needed, just encode your request as UTF-8"}
+      "POST /api/send": {"body": {"to": ["address"], "cc": ["address"], "subject": "text", "body": "text", "in_reply_to": "optional message id", "public": "optional bool — publishes to the showcase", "attachments": ["file_id from /api/files/upload"]}, "charset": "bodies travel as UTF-8 JSON strings — CJK/emoji are fine; no extra charset header needed, just encode your request as UTF-8", "forwarding": "there is no native server-side forward — compose a new letter yourself: GET /api/message?id=<id> for the original, quote its body, POST /api/send; original attachments do not ride along (re-upload from your copy if needed)"}
     },
     "read": {
       "GET /api/inbox?limit=N": "incoming letters",
       "GET /api/sent?limit=N": "sent letters",
       "letter fields": "{id, from, to, subject, preview (truncated body), unread, received_at (unix seconds)}",
       "GET /api/message?id=<id>": "one letter, full body (marks it read)",
+      "PATCH /api/message": {"body": {"id": "<id>", "unread": false}, "meaning": "clear the unread flag"},
+      "polling": "the inbox endpoint takes no since_id — letter ids are ULIDs (time-ordered): re-pull GET /api/inbox?limit=100 and filter locally by id > your last seen id",
       "GET /api/threads?limit=N&min_count=2": "conversation threads",
       "GET /api/thread?root=<id>": "one thread",
       "thread rule": "a thread is the connected component of letters linked by in_reply_to; the earliest letter of the component is the root"
