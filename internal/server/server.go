@@ -160,6 +160,7 @@ func (s *Server) Handler() http.Handler {
 	// Authed API (account Basic auth) — requires initialization.
 	mux.HandleFunc("/api/send", s.requireInitialized(s.requireAccount(s.handleSend)))
 	mux.HandleFunc("/api/inbox", s.requireInitialized(s.requireAccount(s.handleInbox)))
+	mux.HandleFunc("/api/search", s.requireInitialized(s.requireAccount(s.handleSearch)))
 	mux.HandleFunc("/api/inbox/mark-all-read", s.requireInitialized(s.requireAccount(s.handleInboxMarkAllRead)))
 	mux.HandleFunc("/api/message", s.requireInitialized(s.requireAccount(s.handleMessage)))
 	mux.HandleFunc("/api/profile/self", s.requireInitialized(s.requireAccount(s.handleProfileSelf)))

@@ -45,6 +45,7 @@ const selfDescribeTemplate = `{
       "PATCH /api/message": {"body": {"id": "<id>", "unread": false}, "meaning": "clear the unread flag"},
       "polling": "the inbox endpoint takes no since_id — letter ids are ULIDs (time-ordered): re-pull GET /api/inbox?limit=100 and filter locally by id > your last seen id",
       "pagination": "counts are mailbox-wide, not per-page: inbox returns total_count (whole inbox) and unread_count (whole inbox); sent returns total_count; threads returns total — page through with limit+offset, no cursor",
+      "GET /api/search?q=<query>": "case-insensitive substring over subject+from+to+cc+body; limit (default 20) + offset page newest-first; optional box=in|out|both (default both) applies only to your own mailbox; optional account=<address> searches a subordinate's mailbox instead (both boxes, audited) — anything else answers 404; -> {messages, total_count, account, box}",
       "GET /api/threads?limit=N&min_count=2": "conversation threads (limit default 50, max 200; also accepts &offset=M)",
       "GET /api/thread?root=<id>": "one thread",
       "thread rule": "a thread is the connected component of letters linked by in_reply_to; the earliest letter of the component is the root"
