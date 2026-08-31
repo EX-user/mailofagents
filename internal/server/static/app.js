@@ -1961,6 +1961,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function renderTeamSuccess(res, ownerPw) {
     var box = $("#team-cred-cards");
     if (!box) return;
+    // Hotfix v0.1.12.1: an empty/abnormal response must never blank the
+    // success page (drill caught intermittent empty cards + empty txt).
+    // Refuse loudly instead and let the handler keep the form visible.
+    var members = (res && res.members) || [];
+    if (!res || !res.owner || !members.length) {
+      console.error("[team-register] abnormal response:", typeof res,
+        res && typeof res === "object" ? JSON.stringify(Object.keys(res)) : String(res).slice(0, 80));
+      return false;
+    }
     var html = "";
     function card(cls, who, addr, pwShow, pwReal, extraBtn) {
       // Address and password each get their own block line so member
@@ -1986,6 +1995,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         '<button class="cp" data-cp-prompt="' + esc(m.address) + '" data-cp-prompt-pw="' + esc(m.password) + '">' + t("team.copyPrompt") + "</button>");
     });
     box.innerHTML = html;
+    return true;
   }
 
   // buildAgentPrompt returns the ready-to-paste agent setup prompt for an
@@ -2353,10 +2363,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           // it ("invalid character 'o'"). Every other call site stringifies.
           body: JSON.stringify({ username: name, password: pw, team_size: members.length, members: members }),
         });
-        renderTeamSuccess(res, pw);
-        $("#team-copy-status").textContent = "";
-        $("#team-form-block").classList.add("hidden");
-        $("#team-success-block").classList.remove("hidden");
+        if (renderTeamSuccess(res, pw) !== false) {
+          $("#team-copy-status").textContent = "";
+          $("#team-form-block").classList.add("hidden");
+          $("#team-success-block").classList.remove("hidden");
+        } else {
+          status.textContent = t("common.error", { msg: "empty team response" });
+        }
       } catch (e) {
         status.textContent = t("common.error", { msg: e.message });
       }
@@ -2380,16 +2393,23 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     });
     $("#btn-team-copy").addEventListener("click", function () {
       var box = $("#team-cred-cards");
-      var res = null;
-      // Rebuild the copy-all text from the rendered cards (source of truth).
+      // Rebuild the download text from the rendered cards (source of
+      // truth), scoped to the box: an unscoped selector once collected
+      // zero rows and produced an empty txt (hotfix v0.1.12.1).
       var lines = [];
-      $$("#team-cred-cards .cred-card").forEach(function (card) {
+      if (box) $$(".cred-card", box).forEach(function (card) {
         var who = card.querySelector(".who").textContent;
-        // Copy from the button dataset: the owner card displays the
-        // keep-it reminder, but the real password must still copy.
+        // Real passwords ride in the button dataset (owner shows the
+        // keep-it reminder instead of echoing the password).
         var btn = card.querySelector("button.cp");
-        lines.push(who + ": " + btn.dataset.cpAddr + "  " + btn.dataset.cpPw);
+        if (btn) lines.push(who + ": " + btn.dataset.cpAddr + "  " + btn.dataset.cpPw);
       });
+      if (!lines.length) {
+        var stE = $("#team-copy-status");
+        stE.textContent = t("common.error", { msg: "no credentials rendered" });
+        setTimeout(function () { stE.textContent = ""; }, 2500);
+        return;
+      }
       // Superior 08-31: one-click DOWNLOAD instead of clipboard — easier
       // to persist safely. Real passwords ride in the button datasets.
       var blob = new Blob([lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" });
