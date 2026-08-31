@@ -66,6 +66,8 @@ const selfDescribeTemplate = `{
       "GET /api/info?query=status|stats|settings|directory|growth": "server facts, all public",
       "GET /api/site-copy": "brand copy in use on the portals",
       "GET /api/contacts": "who you correspond with",
+      "GET /api/profile": "your directory profile -> {address, visible, signature, ...}; /api/profile/self is the same resource",
+      "POST /api/profile": {"body": {"visible": "bool — list this mailbox in the public directory", "signature": "string — trimmed, capped at 200 chars; omitted field keeps the current value, explicit \"\" clears it"}, "result": "takes effect immediately in the directory", "auth": "your own Basic/Bearer credential"},
       "/admin/*": "admin only — server configuration, account administration, audit log"
     }
   },

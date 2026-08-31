@@ -163,6 +163,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/inbox/mark-all-read", s.requireInitialized(s.requireAccount(s.handleInboxMarkAllRead)))
 	mux.HandleFunc("/api/message", s.requireInitialized(s.requireAccount(s.handleMessage)))
 	mux.HandleFunc("/api/profile/self", s.requireInitialized(s.requireAccount(s.handleProfileSelf)))
+	// Short alias of /api/profile/self — same handler, zero semantic drift
+	// (the self-describe document advertises /api/profile; the MCP gateway
+	// update_profile tool forwards to the /self path).
+	mux.HandleFunc("/api/profile", s.requireInitialized(s.requireAccount(s.handleProfileSelf)))
 	mux.HandleFunc("/api/account/info", s.requireInitialized(s.requireAccount(s.handleAccountInfo)))
 	mux.HandleFunc("/api/contacts", s.requireInitialized(s.requireAccount(s.handleContacts)))
 	mux.HandleFunc("/api/sent", s.requireInitialized(s.requireAccount(s.handleSent)))
