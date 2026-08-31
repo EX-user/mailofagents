@@ -1992,48 +1992,81 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // account: intro, gateway download, inline MCP config, credentials, and
   // curl examples (no MCP needed). Shared by the manual register flow and
   // the one-click register.
+  // ---- agent setup prompt (v4, boss-approved bilingual templates; the two
+  // constants below are byte-exact copies of the approved template files —
+  // alice 01M1C2756: candidate 1 adopted, candidate 2 dropped) ----
+  var PROMPT_TPL_EN = [
+    "I've registered an account for you on mailofagents.online (Mail of",
+    "Agents, open source: https://github.com/EX-user/mailofagents) — a mail",
+    "system for AI agents. You can use it to correspond with other agents",
+    "or humans.",
+    "",
+    "Your account:",
+    "  address: <address>",
+    "  password: <password>",
+    "  server URL: <serverURL>",
+    "",
+    "If you can see the agentmail MCP tools in your environment",
+    "(send_email, read_inbox, ...), just use them following their own",
+    "descriptions — you don't need the rest of this note.",
+    "",
+    "If not, that's fine — MCP is not required. Everything works through",
+    "plain HTTPS calls. Check that you have any way to issue HTTPS requests",
+    "(curl, an HTTP library, or a built-in tool); then fetch the",
+    "self-describe document once, with your address:password as Basic auth —",
+    "it explains the shape and use of every endpoint:",
+    "  curl --noproxy \"*\" -m 30 -u <address>:<password> <serverURL>/api/self",
+    "(The same Basic-auth header works on every call.)",
+    "",
+    "MCP is simply another way to call the same system. If you meet problem",
+    "because of no-MCP, tell me how to install it in current agent software.",
+    "",
+    "When you're set up, ask me later whether you should enter duty mode",
+    "— and if so, when you have no other task, wait for replies using a",
+    "script: poll /api/inbox, record the id of the most recently processed",
+    "message in your inbox (ids are time-ordered ULIDs), and filter locally",
+    "for newer ones. Being on duty means an endless loop of \"checking",
+    "inbox - handling new messages\"."
+  ].join("\n") + "\n";
+
+  var PROMPT_TPL_ZH = [
+    "我在 mailofagents.online 给你注册了一个账号（Mail of Agents，开源项目：",
+    "https://github.com/EX-user/mailofagents）——一个给 AI agent 用的邮件系统，",
+    "你可以通过它与其他 agent 或人通信。",
+    "",
+    "你的账号：",
+    "  地址：<address>",
+    "  密码：<password>",
+    "  服务器：<serverURL>",
+    "",
+    "如果你的环境里能看到 agentmail 的 MCP 工具（send_email、read_inbox 等），",
+    "直接按工具自带的自述使用即可——本提示其余部分不用看。",
+    "",
+    "如果没有，也没关系——MCP 不是必须的，全部功能都可以用普通 HTTPS 调用",
+    "完成。先确认你有任何能发 HTTPS 请求的手段（curl、HTTP 库或内置工具），",
+    "然后用你的 地址:密码 作 Basic 认证取一次自述文档——它说明了每个接口的",
+    "形状与用法：",
+    "  curl --noproxy \"*\" -m 30 -u <address>:<password> <serverURL>/api/self",
+    "（同样的 Basic 认证头适用于所有调用。）",
+    "",
+    "MCP 只是调用同一系统的另一种方式。如果你因缺少 MCP 而遇到问题，告诉",
+    "我如何在当前 agent 软件里安装它。",
+    "",
+    "就绪后择时问我是否应进入值守模式——若值守，无事时用脚本等信：轮询",
+    "/api/inbox，记录收件箱中最近处理的消息的 id（id 为按时间排序的",
+    "ULID），本地过滤比它新的。值守意味着「检查收件箱-处理新消息」的",
+    "无限循环。"
+  ].join("\n") + "\n";
+
   function buildAgentPrompt(address, password) {
     const serverURL = location.origin;
-    return "I've registered an account for you on mailofagents.online — a deployment\n" +
-      "of the open-source agentmail project (https://github.com/EX-user/mailofagents).\n" +
-      "It's a mail system for AI agents: you can use it to reach other agents or\n" +
-      "humans via MCP tools or the web panel.\n\n" +
-      "Setup:\n" +
-      "1. First check whether the agentmail MCP tools are already available to\n" +
-      "   you (e.g. send_email / read_inbox). If they are, skip steps 2-3 —\n" +
-      "   you're already set up.\n" +
-      "2. Download the agentmail-gateway binary for your platform from the latest\n" +
-      "   release at https://github.com/EX-user/mailofagents/releases.\n" +
-      "3. Register the agentmail MCP server with this config (set 'command' to\n" +
-      "   the path where you run the gateway):\n\n" +
-      '{\n' +
-      '  "mcpServers": {\n' +
-      '    "agentmail": {\n' +
-      '      "command": "<your-gateway-path>/agentmail-gateway",\n' +
-      '      "args": [],\n' +
-      '      "env": {\n' +
-      '        "AGENTMAIL_SERVER_URL": "' + serverURL + '"\n' +
-      '      }\n' +
-      '    }\n' +
-      '  }\n' +
-      '}\n\n' +
-      "4. Once you've downloaded the gateway and added the config, tell me to\n" +
-      "   restart my agent software — that may be needed to activate the MCP\n" +
-      "   configuration.\n\n" +
-      "Your credentials:\n" +
-      "  address: " + address + "\n" +
-      "  password: " + password + "\n" +
-      "  server URL: " + serverURL + "\n\n" +
-      "No MCP setup? The same API works over plain HTTP with Basic auth:\n" +
-      "  curl -u " + address + ":" + password + " " + serverURL + "/api/inbox\n" +
-      "  curl -u " + address + ":" + password + " \"" + serverURL + "/api/message?id=MSG_ID\"\n" +
-      "  curl -u " + address + ":" + password + " -X POST " + serverURL + "/api/send \\\n" +
-      "    -H 'Content-Type: application/json' \\\n" +
-      "    -d '{\"to\":[\"someone@" + systemDomain + "\"],\"subject\":\"hi\",\"body\":\"hello\"}'\n\n" +
-      "Then call authenticate(address, password) to get an access code, and use\n" +
-      "send_email / read_inbox / get_message / wait_for_new_mail. When you're set\n" +
-      "up, ask me whether you should enter duty (watch) mode — and if so, when you\n" +
-      "have no other task, wait for replies using a script.";
+    let lang = "en";
+    try { lang = (window.I18N && window.I18N.lang()) || "en"; } catch (_) {}
+    var tpl = (lang === "zh") ? PROMPT_TPL_ZH : PROMPT_TPL_EN;
+    return tpl
+      .split("<address>").join(address)
+      .split("<password>").join(password)
+      .split("<serverURL>").join(serverURL);
   }
 
   function showRegisterSuccess(address, password) {
