@@ -237,20 +237,41 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
             esc(t("mail.pickHint")) + "</p>";
         }
       }
+      mailSearchSrv = false;
       applyMailSearch();
     } catch (e) {
       list.textContent = t("common.error", { msg: e.message });
     }
   }
 
-  // Messages search box (superior's request): instant client-side filter of
-  // the LOADED list (from / subject / preview, case-insensitive). Server-side
-  // full-text search is a separate contract if wanted later.
+  // Messages search box (superior's request). Since the /api/search contract
+  // (superior 2026-08-31): queries of >=2 chars on a CONCRETE account go
+  // server-side for full-text (subject/from/to/body, box=both, result limit
+  // follows the list selector); short queries and pseudo-account aggregate
+  // views (__vis__/__all__) keep the instant client-side page filter, which
+  // is also the fallback for backends without /api/search (404).
+  let mailSearchTimer = null;
+  let mailSearchSrv = false; // last list render came from the server search
   function applyMailSearch() {
     var input = $("#mail-search");
     var list = $("#mail-list");
     if (!input || !list) return;
-    var q = (input.value || "").trim().toLowerCase();
+    var q = (input.value || "").trim();
+    var accEl = $("#mail-account");
+    var account = accEl ? accEl.value : "";
+    var concrete = account && account !== "__vis__" && account !== "__all__";
+    if (q.length >= 2 && concrete) {
+      if (mailSearchTimer) clearTimeout(mailSearchTimer);
+      mailSearchTimer = setTimeout(function () { runMailServerSearch(q, account); }, 300);
+      return;
+    }
+    if (mailSearchSrv && !q) { mailSearchSrv = false; loadMailList(); return; }
+    if (!q) mailSearchSrv = false;
+    applyMailClientFilter(q);
+  }
+  function applyMailClientFilter(q) {
+    q = (q || "").toLowerCase();
+    var list = $("#mail-list");
     var items = $$(".mail-item", list);
     var shown = 0;
     items.forEach(function (el) {
@@ -259,8 +280,60 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       if (hit) shown++;
     });
     var status = $("#mail-search-status");
-    if (status) {
+    if (status && !mailSearchSrv) {
       status.textContent = q ? t("mail.searchCount", { n: shown, m: items.length }) : "";
+    }
+  }
+  async function runMailServerSearch(q, account) {
+    if (ftSearchUnsupported) { mailSearchSrv = false; applyMailClientFilter(q); return; }
+    const list = $("#mail-list");
+    const detail = $("#mail-detail");
+    const status = $("#mail-search-status");
+    const s = getSession();
+    const isRegular = s && !s.is_admin;
+    try {
+      const limit = parseInt($("#mail-limit").value, 10) || 50;
+      const d = await api("/api/search?q=" + encodeURIComponent(q) +
+        "&box=both&account=" + encodeURIComponent(account) + "&limit=" + limit);
+      mailSearchSrv = true;
+      const msgs = d.messages || [];
+      const total = d.total_count || msgs.length;
+      list.innerHTML = "";
+      detail.innerHTML = t("mail.selectHint");
+      if (!msgs.length) {
+        list.textContent = t("mail.noMessages");
+        if (status) status.textContent = t("mail.ftHits", { n: 0 });
+        return;
+      }
+      msgs.forEach(function (m) {
+        const item = document.createElement("div");
+        item.className = "mail-item" + (m.unread ? " unread" : "");
+        item.innerHTML =
+          (m.unread ? '<span class="unread-dot" title="unread">●</span>' : "") +
+          '<div class="subj">' + esc(m.subject || "(no subject)") + "</div>" +
+          '<div class="meta"><b>' + t("mail.from") + "</b> '" + esc(m.from) +
+          ' · <b>to:</b> ' + esc((m.to || []).join(", ")) +
+          " · <small>" + fmtTime(m.received_at) + "</small></div>" +
+          '<div class="prev">' + esc(m.preview || "") + "</div>";
+        item.addEventListener("click", function () {
+          // Same routing as the normal list: regular + other account =
+          // subordinate detail; everything else self detail.
+          if (isRegular && account !== s.address) showSubDetail(account, m, item);
+          else showDetail(m.id, item);
+        });
+        list.appendChild(item);
+      });
+      if (status) {
+        status.textContent = total > msgs.length
+          ? t("mail.ftHits", { n: total }) + " · " + t("mail.ftTrunc", { n: msgs.length })
+          : t("mail.ftHits", { n: total });
+      }
+    } catch (e) {
+      // Endpoint missing or failing (legacy 404 bodies are plain text):
+      // degrade silently to the client filter so the box never appears dead.
+      mailSearchSrv = false;
+      ftSearchUnsupported = true;
+      applyMailClientFilter(q);
     }
   }
   (function wireMailSearch() {
@@ -1026,6 +1099,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   // Superior 01M18D521: inbox card becomes the mail hub — mode pill
   // (receive / sent / both) + client-side search over the loaded page.
   let inboxMode = "in"; // in | sent | both
+  // Full-text search state (superior 2026-08-31, /api/search contract):
+  // >=2 chars switches the card from client-side page filtering to
+  // server-side full-text search; box follows the current mode pill.
+  let inboxSearchQ = "";
+  let inboxSearchTimer = null;
+  // /api/search absent or failing → session-wide fallback to the legacy
+  // client-side page filter (404 bodies are plain text: not detectable
+  // by status string, so any failure degrades silently once).
+  let ftSearchUnsupported = false;
 
   async function loadInbox(page) {
     resetAudioPlayers();
@@ -1149,6 +1231,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       }
       status.textContent = t("inbox.markAllDone");
       toast(t("inbox.markAllDone"));
+      $("#inbox-search").value = "";
+      inboxSearchQ = "";
       await loadInbox(0);
       document.dispatchEvent(new CustomEvent("badge:refresh"));
     } catch (e) {
@@ -1174,17 +1258,97 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     totalLabel.textContent = "of " + totalPages;
   }
 
-  $("#btn-load-inbox").addEventListener("click", function () { loadInbox(0); });
-  $("#btn-inbox-prev").addEventListener("click", function () { if (inboxPage > 0) loadInbox(inboxPage - 1); });
-  $("#btn-inbox-next").addEventListener("click", function () { loadInbox(inboxPage + 1); });
+  // Server-side full-text search (contract v1: GET /api/search, response
+  // {messages,total_count,account,box}; box maps the mode pill; 404 =
+  // legacy backend → fall back to the client-side page filter). Rendering
+  // mirrors loadInbox's item shape; newest-first comes from the server, and
+  // the newest-item preload is skipped (searches must not auto-read bodies).
+  async function loadInboxSearch(page) {
+    if (ftSearchUnsupported) {
+      inboxSearchQ = "";
+      loadInbox(inboxPage).then(applyInboxClientFilter);
+      return;
+    }
+    resetAudioPlayers();
+    if (typeof page === "number") inboxPage = page;
+    if (inboxPage < 0) inboxPage = 0;
+    const list = $("#inbox-list");
+    const detail = $("#inbox-detail");
+    const status = $("#inbox-status");
+    detail.innerHTML = t("mail.selectHint");
+    status.textContent = t("common.loading");
+    list.textContent = "";
+    const box = inboxMode === "in" ? "in" : inboxMode === "sent" ? "out" : "both";
+    try {
+      const d = await api("/api/search?q=" + encodeURIComponent(inboxSearchQ) +
+        "&box=" + box + "&limit=" + INBOX_PAGE_SIZE + "&offset=" + (inboxPage * INBOX_PAGE_SIZE));
+      const msgs = d.messages || [];
+      const total = d.total_count || msgs.length;
+      const totalPages = Math.max(1, Math.ceil(total / INBOX_PAGE_SIZE));
+      list.innerHTML = "";
+      if (!msgs.length) {
+        list.textContent = t("mail.noMessages");
+        updateInboxPager(1, 1);
+        status.textContent = t("mail.ftHits", { n: 0 });
+        return;
+      }
+      msgs.forEach(function (m) {
+        const item = document.createElement("div");
+        item.className = "mail-item" + (m.unread ? " unread" : "");
+        item.innerHTML =
+          (m.unread ? '<span class="unread-dot" title="unread">●</span>' : "") +
+          '<div class="subj">' + esc(m.subject || "(no subject)") + "</div>" +
+          '<div class="meta"><b>' + t("mail.from") + "</b> '" + esc(m.from) +
+          " · <small>" + fmtTime(m.received_at) + "</small></div>" +
+          (box !== "in" && m.to && m.to.length ? '<div class="meta"><b>To:</b> ' + esc(m.to.join(", ")) + "</div>" : "") +
+          '<div class="prev">' + esc(m.preview || "") + "</div>";
+        item.addEventListener("click", function () { showInboxDetail(m.id, item, false); });
+        list.appendChild(item);
+      });
+      updateInboxPager(totalPages, inboxPage + 1);
+      status.textContent = t("mail.ftHits", { n: total });
+    } catch (e) {
+      // Endpoint missing or failing (legacy backends answer 404 with a
+      // plain-text body — not detectable by message string): degrade
+      // silently to the client-side page filter for the whole session.
+      ftSearchUnsupported = true;
+      inboxSearchQ = "";
+      loadInbox(inboxPage).then(applyInboxClientFilter);
+    }
+  }
+  // Client-side filter over the rendered page (pre-search behavior, kept as
+  // the fallback and for sub-2-char queries).
+  function applyInboxClientFilter() {
+    const q = ($("#inbox-search").value || "").trim().toLowerCase();
+    $$(".mail-item", $("#inbox-list")).forEach(function (el) {
+      el.style.display = !q || el.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  }
+  // Dispatcher: search mode routes to the server loader, else the normal one.
+  function refreshInbox(page) {
+    if (inboxSearchQ) return loadInboxSearch(page);
+    return loadInbox(page);
+  }
+  $("#btn-load-inbox").addEventListener("click", function () { refreshInbox(0); });
+  $("#btn-inbox-prev").addEventListener("click", function () { if (inboxPage > 0) refreshInbox(inboxPage - 1); });
+  $("#btn-inbox-next").addEventListener("click", function () { refreshInbox(inboxPage + 1); });
   // Jump-to-page: on Enter or blur, clamp and load the typed page (1-based).
   // Superior 01M18D521: search filter (like the Mail tab) — client-side
   // filter over the rendered page items (subject / address / preview).
   $("#inbox-search").addEventListener("input", function () {
-    const q = (this.value || "").trim().toLowerCase();
-    $$(".mail-item", $("#inbox-list")).forEach(function (el) {
-      el.style.display = !q || el.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
-    });
+    const raw = (this.value || "").trim();
+    if (inboxSearchTimer) clearTimeout(inboxSearchTimer);
+    if (raw.length < 2) {
+      const had = inboxSearchQ;
+      inboxSearchQ = "";
+      if (had) loadInbox(0);          // leaving search: restore the normal list
+      else applyInboxClientFilter();  // short query: instant client filter
+      return;
+    }
+    inboxSearchTimer = setTimeout(function () {
+      inboxSearchQ = raw.toLowerCase();
+      loadInboxSearch(0);
+    }, 300);
   });
   // Mode pill: switching re-fetches page 0 from the chosen source.
   $$("#inbox-mode-pill [data-imode]").forEach(function (b) {
@@ -1193,7 +1357,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       $$("#inbox-mode-pill [data-imode]").forEach(function (x) { x.classList.remove("on"); });
       b.classList.add("on");
       inboxMode = b.dataset.imode;
-      loadInbox(0);
+      refreshInbox(0);
     });
   });
 
@@ -1204,7 +1368,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     if (isNaN(p) || p < 1) p = 1;
     if (p > max) p = max;
     input.value = String(p);
-    loadInbox(p - 1); // loadInbox is 0-based
+    refreshInbox(p - 1); // dispatcher routes search/normal; 0-based
   });
 
   // inboxStepNav (v0.5.4): 上一封/下一封 along the current list order; at a
@@ -1220,7 +1384,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     }
     const page = dir < 0 ? inboxPage - 1 : inboxPage + 1;
     if (page < 0) { toast(t("inbox.noNewer"), "error"); return; }
-    loadInbox(page).then(function () {
+    refreshInbox(page).then(function () {
       const fresh = $$(".mail-item", $("#inbox-list"));
       const target = dir < 0 ? fresh[fresh.length - 1] : fresh[0];
       if (target) target.click();
@@ -1444,7 +1608,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   }
 
   // ---- cross-domain event wiring (protocol surface of this module) ----
-  document.addEventListener("inbox:entered", function () { loadInbox(0); });
+  document.addEventListener("inbox:entered", function () {
+  $("#inbox-search").value = "";
+  inboxSearchQ = "";
+  loadInbox(0);
+});
 
   document.addEventListener("manage:entered", function () {
     ensureMgmtPrefs();
