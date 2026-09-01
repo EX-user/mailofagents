@@ -164,10 +164,15 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     // 上级 01M176QXG：PC 画布左缘出界——CSS vw calc 在网格列内失效，
     // 改为 JS 实测 breakout：左缘吸到 12px、宽度吃满视口。
     try {
-      var r0 = fScroller.getBoundingClientRect();
-      if (Math.abs(r0.left - 24) > 1 || Math.abs(r0.width - (window.innerWidth - 48)) > 1) {
-        fScroller.style.marginLeft = (24 - r0.left) + "px";
-        fScroller.style.width = (window.innerWidth - 48) + "px";
+      // 上级 01M1DGKQ（移动端实测）：重进视图后二次量测把内联 margin/width
+      // 重写成偏移几何（canvas 横移不归中）——该 breakout 本为 PC 网格列
+      // 左缘出界而设，移动端全宽由 CSS 承担，不跑 JS 量测。
+      if (window.innerWidth > 800) {
+        var r0 = fScroller.getBoundingClientRect();
+        if (Math.abs(r0.left - 24) > 1 || Math.abs(r0.width - (window.innerWidth - 48)) > 1) {
+          fScroller.style.marginLeft = (24 - r0.left) + "px";
+          fScroller.style.width = (window.innerWidth - 48) + "px";
+        }
       }
     } catch (_) {}
     fClear();
@@ -415,7 +420,7 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
     // 孤信开关：按下=显示孤立信（默认不显示）
     var bOrph = document.createElement("button");
     bOrph.type = "button"; bOrph.className = "f-fbtn"; bOrph.id = "tf-orphbtn";
-    bOrph.textContent = "孤信";
+    bOrph.textContent = t("forest.orphans");
     bOrph.classList.add("off"); // 默认不显示孤立信——按钮文字变淡（对齐数字按钮 .off）
     bOrph.title = "show orphans";
     bOrph.addEventListener("click", function () {
@@ -434,7 +439,10 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       fFitted = false;
       if (fCache) fDraw(); else fLoad();
     });
-    document.addEventListener("i18n:change", function () { bReset.textContent = t("forest.reset"); });
+    document.addEventListener("i18n:change", function () {
+      bReset.textContent = t("forest.reset");
+      bOrph.textContent = t("forest.orphans");
+    });
     // 行距滑杆
     var ctl = document.createElement("div");
     ctl.id = "tf-density";

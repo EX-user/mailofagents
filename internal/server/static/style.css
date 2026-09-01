@@ -1579,12 +1579,20 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
    stays put while panning/zooming. */
 #tf-bar { position: sticky; top: 10px; z-index: 5; display: flex;
   align-items: center; gap: 8px; padding: 0 12px; height: 34px; }
-#tf-bar .f-fbtn { min-width: 42px; height: 42px; border-radius: 50%;
+#tf-bar .f-fbtn { width: 42px !important; min-width: 42px !important; max-width: 42px !important;
+  height: 42px !important; border-radius: 50% !important; box-sizing: border-box !important;
   border: 1px solid var(--border); background: var(--panel);
-  color: var(--text); font-size: 12px; line-height: 1.1;
+  color: var(--text); font-size: 11px !important; line-height: 1.1;
   cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.15);
-  display: flex; align-items: center; justify-content: center; padding: 0 10px; }
+  display: flex; align-items: center; justify-content: center; padding: 0 !important;
+  white-space: nowrap; overflow: hidden; flex: 0 0 auto !important; }
 #tf-bar .f-fbtn:hover { border-color: var(--accent, #3b82f6); }
+/* Superior 01M1DGKQ: on phones the forest viewport is plain full-width CSS —
+   the PC breakout inline margins must never land here (they re-measure to
+   shifted geometry when the view re-renders, canvas drifts off-center). */
+@media (max-width: 800px) {
+  #tf-scroll { margin-left: 0 !important; margin-right: auto; width: auto !important; max-width: none; }
+}
 #tf-bar .f-fbtn.on { border-color: var(--accent, #3b82f6); color: var(--accent); font-weight: 600; }
 #tf-bar .f-fbtn.off { opacity: .45; }
 #tf-density { display: flex;
