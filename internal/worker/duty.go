@@ -18,6 +18,7 @@ type Duty struct {
 	cfg     *Config
 	mail    *MailClient
 	adapter Adapter
+	fresh   bool // -fresh: ignore the stored session binding and clean worker artifacts
 
 	mu        sync.Mutex
 	sessionID string // current bound session ("" = start a new one next wake)
@@ -25,11 +26,12 @@ type Duty struct {
 	lastAlert  time.Time
 }
 
-func NewDuty(cfg *Config) *Duty {
+func NewDuty(cfg *Config, fresh bool) *Duty {
 	return &Duty{
 		cfg:     cfg,
 		mail:    NewMailClient(cfg.Server, cfg.Address, cfg.Password),
 		adapter: pickAdapter(cfg.CLI),
+		fresh:   fresh,
 	}
 }
 
@@ -37,6 +39,9 @@ func NewDuty(cfg *Config) *Duty {
 func (d *Duty) statePath() string { return filepath.Join(d.cfg.Workdir, ".worker-state.json") }
 
 func (d *Duty) loadState() {
+	if d.fresh {
+		return
+	}
 	b, err := os.ReadFile(d.statePath())
 	if err != nil {
 		return
@@ -66,9 +71,13 @@ func (d *Duty) Run(ctx context.Context) {
 	if err := ensureWorkdir(d.cfg.Workdir); err != nil {
 		log.Printf("workdir: %v", err)
 	}
-	d.loadState()
-	log.Printf("duty start: server=%s address=%s cli=%s workdir=%s session=%q",
-		d.cfg.Server, d.cfg.Address, d.cfg.CLI, d.cfg.Workdir, d.sessionID)
+	if d.fresh {
+		d.cleanWorkdir()
+	} else {
+		d.loadState()
+	}
+	log.Printf("duty start: server=%s address=%s cli=%s workdir=%s fresh=%v session=%q",
+		d.cfg.Server, d.cfg.Address, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.sessionID)
 
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
@@ -81,6 +90,19 @@ func (d *Duty) Run(ctx context.Context) {
 		case <-t.C:
 		}
 	}
+}
+
+// cleanWorkdir implements -fresh: drop the stored session binding and the
+// worker-created artifacts inside the workdir (state file, pi session
+// store) so the next wake starts a brand-new session. Files the agent (or
+// the user) created for other purposes are deliberately left alone.
+func (d *Duty) cleanWorkdir() {
+	log.Printf("fresh start: ignoring stored session, cleaning worker artifacts")
+	_ = os.Remove(d.statePath())
+	if err := os.RemoveAll(filepath.Join(d.cfg.Workdir, ".pi-sessions")); err == nil {
+		log.Printf("fresh: removed .pi-sessions")
+	}
+	d.sessionID = ""
 }
 
 func (d *Duty) checkOnce(ctx context.Context) {

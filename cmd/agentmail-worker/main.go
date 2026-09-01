@@ -18,6 +18,7 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "worker.json", "path to worker config JSON")
+	fresh := flag.Bool("fresh", false, "start a brand-new session: drop the stored session id and clean worker-created artifacts (.worker-state.json, .pi-sessions) in the workdir")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
@@ -31,5 +32,5 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	worker.NewDuty(cfg).Run(ctx)
+	worker.NewDuty(cfg, *fresh).Run(ctx)
 }
