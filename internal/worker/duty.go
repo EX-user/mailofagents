@@ -35,12 +35,30 @@ func NewDuty(cfg *Config, fresh bool) *Duty {
 	}
 }
 
-// state file keeps only the session binding (v4: no cursor).
-func (d *Duty) statePath() string { return filepath.Join(d.cfg.Workdir, ".worker-state.json") }
+// logf prefixes every duty log line with the account local-part so
+// parallel account loops stay distinguishable in one stream.
+func (d *Duty) logf(format string, args ...any) {
+	log.Printf("["+localPart(d.cfg.Address)+"] "+format, args...)
+}
+
+// statePath returns the session binding store — next to the config by
+// default (the workdir is the agent's turf), overridable via "state_file".
+// Legacy location (workdir/.worker-state.json) is migrated once, silently.
+func (d *Duty) statePath() string { return d.cfg.StateFile }
 
 func (d *Duty) loadState() {
 	if d.fresh {
 		return
+	}
+	// one-time migration from the pre-split location
+	legacy := filepath.Join(d.cfg.Workdir, ".worker-state.json")
+	if _, err := os.Stat(d.cfg.StateFile); os.IsNotExist(err) {
+		if b, lerr := os.ReadFile(legacy); lerr == nil {
+			if werr := os.WriteFile(d.cfg.StateFile, b, 0o600); werr == nil {
+				_ = os.Remove(legacy)
+				d.logf("migrated session state %s -> %s", legacy, d.cfg.StateFile)
+			}
+		}
 	}
 	b, err := os.ReadFile(d.statePath())
 	if err != nil {
@@ -69,15 +87,15 @@ func (d *Duty) Run(ctx context.Context) {
 	// (parent must exist — no silent mkdir -p); log-only on failure so the
 	// loop keeps polling (each wake will surface the error too).
 	if err := ensureWorkdir(d.cfg.Workdir); err != nil {
-		log.Printf("workdir: %v", err)
+		d.logf("workdir: %v", err)
 	}
 	if d.fresh {
 		d.cleanWorkdir()
 	} else {
 		d.loadState()
 	}
-	log.Printf("duty start: server=%s address=%s cli=%s workdir=%s fresh=%v session=%q",
-		d.cfg.Server, d.cfg.Address, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.sessionID)
+	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v session=%q",
+		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.sessionID)
 
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
@@ -85,7 +103,7 @@ func (d *Duty) Run(ctx context.Context) {
 		d.checkOnce(ctx)
 		select {
 		case <-ctx.Done():
-			log.Printf("duty stop: %v", ctx.Err())
+			d.logf("duty stop: %v", ctx.Err())
 			return
 		case <-t.C:
 		}
@@ -93,14 +111,16 @@ func (d *Duty) Run(ctx context.Context) {
 }
 
 // cleanWorkdir implements -fresh: drop the stored session binding and the
-// worker-created artifacts inside the workdir (state file, pi session
-// store) so the next wake starts a brand-new session. Files the agent (or
-// the user) created for other purposes are deliberately left alone.
+// worker-created artifacts (state file next to the config; pi session store
+// plus the legacy state file in the workdir) so the next wake starts a
+// brand-new session. Files the agent (or the user) created for other
+// purposes are deliberately left alone.
 func (d *Duty) cleanWorkdir() {
-	log.Printf("fresh start: ignoring stored session, cleaning worker artifacts")
+	d.logf("fresh start: ignoring stored session, cleaning worker artifacts")
 	_ = os.Remove(d.statePath())
+	_ = os.Remove(filepath.Join(d.cfg.Workdir, ".worker-state.json")) // legacy location
 	if err := os.RemoveAll(filepath.Join(d.cfg.Workdir, ".pi-sessions")); err == nil {
-		log.Printf("fresh: removed .pi-sessions")
+		d.logf("fresh: removed .pi-sessions")
 	}
 	d.sessionID = ""
 }
@@ -109,17 +129,17 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	start := time.Now()
 	unread, err := d.mail.UnreadInbox(50)
 	if err != nil {
-		log.Printf("poll error (%dms): %v", time.Since(start).Milliseconds(), err)
+		d.logf("poll error (%dms): %v", time.Since(start).Milliseconds(), err)
 		d.noteFailure("poll: " + err.Error())
 		return
 	}
 	// Heartbeat line every round: the loop is alive, here's the queue size.
-	log.Printf("poll: %d unread (%dms)", len(unread), time.Since(start).Milliseconds())
+	d.logf("poll: %d unread (%dms)", len(unread), time.Since(start).Milliseconds())
 	if len(unread) == 0 {
 		d.failStreak = 0
 		return
 	}
-	log.Printf("wake: %d unread (session %q)", len(unread), d.sessionID)
+	d.logf("wake: %d unread (session %q)", len(unread), d.sessionID)
 
 	wakeCtx, cancel := context.WithTimeout(ctx, time.Duration(d.cfg.TimeoutSec)*time.Second)
 	defer cancel()
@@ -129,7 +149,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		return // shutting down; do not count as failure
 	}
 	if err != nil {
-		log.Printf("wake error: %v", err)
+		d.logf("wake error: %v", err)
 		d.noteFailure("wake: " + err.Error())
 		return
 	}
@@ -138,7 +158,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	d.saveState()
 	d.mu.Unlock()
 	d.failStreak = 0
-	log.Printf("wake ok: session=%s", newID)
+	d.logf("wake ok: session=%s", newID)
 }
 
 // noteFailure tracks consecutive failures and sends a throttled alert mail.
@@ -158,9 +178,9 @@ func (d *Duty) noteFailure(what string) {
 		body := fmt.Sprintf("worker 值守异常告警\n\n账户: %s\n连败: %d 次\n最近错误: %s\n时间: %s\n\n请检查 worker/CLI 环境；未读队列将在恢复后自动追平。",
 			d.cfg.Address, streak, what, time.Now().Format(time.RFC3339))
 		if err := d.mail.SendMail(d.cfg.Alert.To, "[worker] 值守连败告警", body); err != nil {
-			log.Printf("alert send error: %v", err)
+			d.logf("alert send error: %v", err)
 		} else {
-			log.Printf("alert sent to %s (streak=%d)", d.cfg.Alert.To, streak)
+			d.logf("alert sent to %s (streak=%d)", d.cfg.Alert.To, streak)
 		}
 	}
 }
