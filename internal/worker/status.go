@@ -134,6 +134,13 @@ func (b *Board) draw() {
 		if r.detail != "" {
 			line += " | " + r.detail
 		}
+		// Live age of the current detail once it stops refreshing: makes a
+		// silent generation/tool phase read as "moving", not "stuck".
+		if r.state == "working" {
+			if age := time.Since(r.since).Round(time.Second); age >= 3*time.Second {
+				line += fmt.Sprintf(" · %s", age)
+			}
+		}
 		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", clampCols(line, w))
 		b.drawn++
 	}

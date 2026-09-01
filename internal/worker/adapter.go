@@ -136,8 +136,9 @@ func ensureWorkdir(path string) error {
 // stream still accumulates in the buffer for session-id extraction and
 // error diagnostics.
 type lineTee struct {
-	tag string
-	buf bytes.Buffer
+	tag      string
+	buf      bytes.Buffer
+	lastText string // most recent spoken text; its tail anchors the next step_start
 }
 
 func (w *lineTee) Write(p []byte) (int, error) {
@@ -150,7 +151,7 @@ func (w *lineTee) Write(p []byte) (int, error) {
 		}
 		line := append([]byte(nil), b[:i]...)
 		w.buf.Next(i + 1)
-		if s := eventSummary(line); s != "" {
+		if s := w.summarize(line); s != "" {
 			board.Set(w.tag, "", SprintDetail(s))
 		}
 	}
@@ -210,11 +211,14 @@ func usageContext(u map[string]any) int64 {
 		num("cacheWrite") + num("cache_creation_input_tokens")
 }
 
-// eventSummary reduces one stdout line to a restrained board summary: the
+// summarize reduces one stdout line to a restrained board summary: the
 // event type plus whatever is most informative in the payload — spoken text
 // first, then a tool-call digest (name + partial params), then the context
 // size when the event carries usage. Plain lines pass through truncated.
-func eventSummary(line []byte) string {
+// Stateful via lastText: a step_start (generation phase, no payload) is
+// anchored to what the model said last, so the silent stretch still reads
+// as continuation.
+func (w *lineTee) summarize(line []byte) string {
 	line = bytes.TrimSpace(line)
 	if len(line) == 0 {
 		return ""
@@ -231,6 +235,7 @@ func eventSummary(line []byte) string {
 			}
 			var parts []string
 			if s := findText(ev); s != "" {
+				w.lastText = s
 				parts = append(parts, s)
 			} else if s := toolDigest(ev); s != "" {
 				parts = append(parts, s)
@@ -239,12 +244,27 @@ func eventSummary(line []byte) string {
 				parts = append(parts, "ctx≈"+humanTokens(n))
 			}
 			if len(parts) == 0 {
+				if t == "step_start" {
+					if w.lastText != "" {
+						return textTail(w.lastText, 60) + " · thinking…"
+					}
+					return "thinking…"
+				}
 				return t
 			}
 			return t + " | " + truncate(strings.Join(parts, " · "), 100)
 		}
 	}
 	return "out | " + truncate(string(line), 100)
+}
+
+// textTail keeps the last n runes of s, prefixed with an ellipsis when cut.
+func textTail(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return "…" + string(r[len(r)-n:])
 }
 
 func stringOf(v any) string {
