@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -209,8 +210,10 @@ func usageContext(u map[string]any) int64 {
 		num("cacheWrite") + num("cache_creation_input_tokens")
 }
 
-// eventSummary reduces one stdout line to a restrained summary: for JSON
-// events the type plus the first embedded text; plain lines are truncated.
+// eventSummary reduces one stdout line to a restrained board summary: the
+// event type plus whatever is most informative in the payload — spoken text
+// first, then a tool-call digest (name + partial params), then the context
+// size when the event carries usage. Plain lines pass through truncated.
 func eventSummary(line []byte) string {
 	line = bytes.TrimSpace(line)
 	if len(line) == 0 {
@@ -226,10 +229,19 @@ func eventSummary(line []byte) string {
 				}
 				return "json(" + truncate(string(line), 60) + ")"
 			}
+			var parts []string
 			if s := findText(ev); s != "" {
-				return t + " | " + truncate(s, 100)
+				parts = append(parts, s)
+			} else if s := toolDigest(ev); s != "" {
+				parts = append(parts, s)
 			}
-			return t
+			if n := contextTokens(ev); n > 0 {
+				parts = append(parts, "ctx≈"+humanTokens(n))
+			}
+			if len(parts) == 0 {
+				return t
+			}
+			return t + " | " + truncate(strings.Join(parts, " · "), 100)
 		}
 	}
 	return "out | " + truncate(string(line), 100)
@@ -238,6 +250,98 @@ func eventSummary(line []byte) string {
 func stringOf(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+// toolDigest renders "name: params" for tool-call events. The name rides in
+// tool/toolName/name; parameters are scalars from an inputs/args-style map
+// or a bare command/path string; nested payloads (codex item.*, pi parts)
+// are searched recursively.
+func toolDigest(o any) string {
+	switch v := o.(type) {
+	case map[string]any:
+		name := firstString(v, "tool", "toolName", "name")
+		params := ""
+		for _, k := range []string{"inputs", "input", "args", "arguments", "parameters"} {
+			if m, ok := v[k].(map[string]any); ok && len(m) > 0 {
+				params = mapDigest(m)
+				break
+			}
+		}
+		if params == "" {
+			params = firstString(v, "command", "cmd", "file_path", "path", "pattern", "url", "query")
+		}
+		if params == "" {
+			for _, vv := range v {
+				if s := toolDigest(vv); s != "" {
+					return s
+				}
+			}
+			return ""
+		}
+		if name == "" {
+			return params
+		}
+		return name + ": " + params
+	case []any:
+		for _, x := range v {
+			if s := toolDigest(x); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func firstString(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if s, ok := m[k].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// mapDigest renders up to three scalar key=value pairs of a params map,
+// values clamped so the board row stays readable.
+func mapDigest(m map[string]any) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	n := 0
+	for _, k := range keys {
+		val := stringOf(m[k])
+		if val == "" {
+			if f, ok := m[k].(float64); ok {
+				val = strconv.FormatFloat(f, 'g', -1, 64)
+			} else {
+				continue // nested payloads are too wide for one row
+			}
+		}
+		if n > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(k + "=" + truncate(val, 40))
+		n++
+		if n == 3 {
+			break
+		}
+	}
+	return b.String()
+}
+
+// humanTokens renders a token count compactly: 32000 → 32k, 1250000 → 1.2M.
+func humanTokens(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1e6)
+	case n >= 1_000:
+		return fmt.Sprintf("%.0fk", float64(n)/1e3)
+	default:
+		return strconv.FormatInt(n, 10)
+	}
 }
 
 // findText digs out the first non-empty "text" field (events nest it under
