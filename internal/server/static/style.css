@@ -1327,6 +1327,15 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
   background: var(--error);
 }
 
+/* Superior 01M1E6A1F: on PC the Overview segment is Data | Directory — the
+   phone-only System/Mine buttons hide and the Data label shows instead. */
+#ovw-seg .pc-ovw-data { display: none; }
+@media (min-width: 801px) {
+  #ovw-seg .m-ovw-system { display: none; }
+  #ovw-seg [data-oview="mine"] { display: none; }
+  #ovw-seg .pc-ovw-data { display: inline-block; }
+}
+
 /* ===== v0.6 mail management views ===== */
 /* Segment capsule switching Messages | Overview (same family as the
    language toggle). Content-hugging width; both segments equal padding. */
@@ -1696,7 +1705,15 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #tab-overview > h2 { display: none; }
   #ovw-directory > h2 { display: none; }
 
-  #mgmt-browse { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: center; }
+  /* One-screen browse (superior 09-01, ref. inbox): the sub-page is a
+     measured column; the mail grid is the flexible scroll region. */
+  #mgmt-browse:not(.hidden) {
+    display: grid; grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+    height: var(--mgmt-b-1s, calc(100dvh - 320px));
+    min-height: 280px;
+    gap: 0 8px; align-items: center;
+  }
   #mgmt-browse > .row { display: contents; }
   #mgmt-browse > .row > label:first-child { grid-column: 1 / -1; order: 1; margin-bottom: 8px; }
   #tab-mail .m-pair-fl { order: 2; display: flex !important; gap: 8px; margin-bottom: 8px; grid-column: 1 / -1; }
@@ -1719,7 +1736,13 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #mail-search { order: 4; grid-column: 2; width: 100%; flex: none !important; max-width: none !important; margin-bottom: 8px; }
   #mail-search-status { order: 5; grid-column: 1 / -1; }
   #mgmt-browse > .mail-tabs { order: 6; grid-column: 1 / -1; margin-top: 2px; }
-  #mgmt-browse > .mail-grid { order: 7; grid-column: 1 / -1; }
+  #mgmt-browse > .mail-grid {
+    order: 7; grid-column: 1 / -1;
+    min-height: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+    align-self: stretch;
+  }
+  #mail-grid > .pane { flex: 1 1 auto; min-height: 0; overflow-y: auto; max-height: none; }
 
   #mgmt-threads:not(.hidden) {
     display: flex; flex-direction: column;

@@ -72,8 +72,18 @@ export function getSession() {
   catch (_) { return null; }
 }
 export function setSession(s) {
-  if (s && s.address && s.password) sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
-  else sessionStorage.removeItem(SESSION_KEY);
+  if (s && s.address && s.password) {
+    // Identity switch (superior report 01M1E2ACG): a remembered token
+    // belonging to a DIFFERENT address must not survive — getSession()
+    // prefers the token, so the panel would keep authenticating and acting
+    // as the previous user (admin) after logging in / registering as
+    // someone else. Same-address tokens are untouched.
+    try {
+      const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
+      if (t && t.address && t.address !== s.address) localStorage.removeItem(TOKEN_KEY);
+    } catch (_) {}
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  } else sessionStorage.removeItem(SESSION_KEY);
 }
 // setToken stores/retrieves a session token in localStorage ("remember me").
 // The server-verified role travels with the token so the panel renders the

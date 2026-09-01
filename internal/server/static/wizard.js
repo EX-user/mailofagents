@@ -1,6 +1,88 @@
 // agentmail setup wizard — vanilla JS, no build step.
+// Bilingual (superior 09-01): the language follows the panel setup page via
+// localStorage agentmail_lang ("zh" / anything else = en).
 (function () {
   "use strict";
+
+  var WLANG = (function () {
+    try { return localStorage.getItem("agentmail_lang") === "zh" ? "zh" : "en"; }
+    catch (e) { return "en"; }
+  })();
+
+  var DICT = {
+    en: {
+      step1desc: "First-time setup. Configure the mail system before starting the server.",
+      dbPath: "Database path",
+      dbHint0: "Where the bbolt database file is stored.",
+      dbFile: "Database file: ",
+      relPath: "Relative path — resolves next to the server executable as: ./",
+      listen: "Listen address",
+      listenHint: "Use 0.0.0.0:8090 for LAN access.",
+      domain: "Mail domain",
+      adminpw: "Admin password (min 8 chars)",
+      pwPh: "choose a strong password",
+      init: "Initialize",
+      required: "All fields are required.",
+      pwLen: "Password must be at least 8 characters.",
+      initializing: "Initializing…",
+      err: "Error: ",
+      inited: "System initialized.",
+      start: "Start server",
+      starting: "Starting server…",
+      started: "The server is now running on your configured address.",
+      openPanel: "Open panel",
+    },
+    zh: {
+      step1desc: "首次初始化：启动服务器前，请先完成邮件系统配置。",
+      dbPath: "数据库路径",
+      dbHint0: "bbolt 数据库文件的存放位置。",
+      dbFile: "数据库文件：",
+      relPath: "相对路径——将相对于服务器可执行文件解析为：./",
+      listen: "监听地址",
+      listenHint: "局域网访问请使用 0.0.0.0:8090。",
+      domain: "邮件域名",
+      adminpw: "管理员密码（至少 8 位）",
+      pwPh: "请设置一个强密码",
+      init: "初始化",
+      required: "所有字段均为必填项。",
+      pwLen: "密码至少需要 8 个字符。",
+      initializing: "初始化中…",
+      err: "错误：",
+      inited: "系统初始化完成。",
+      start: "启动服务器",
+      starting: "服务器启动中…",
+      started: "服务器已在所配置的地址上运行。",
+      openPanel: "打开面板",
+    },
+  };
+
+  function tw(key) {
+    return (DICT[WLANG] && DICT[WLANG][key]) || DICT.en[key] || key;
+  }
+
+  // Apply the language to every tagged node; the admin-password hint needs
+  // its inner span (live-updated on domain input) rebuilt for Chinese order.
+  function applyWizardLang() {
+    document.documentElement.lang = WLANG === "zh" ? "zh-CN" : "en";
+    var pwHintRebuilt = false;
+    document.querySelectorAll("[data-wz]").forEach(function (el) {
+      var k = el.getAttribute("data-wz");
+      if (k === "pwHint") {
+        if (WLANG === "zh") {
+          el.innerHTML = '设置 <code>admin@<span id="wz-admin-domain">domain</span></code> 的密码。';
+          pwHintRebuilt = true;
+        }
+        return;
+      }
+      el.textContent = tw(k);
+    });
+    if (!pwHintRebuilt && WLANG !== "zh") {
+      var hint = document.getElementById("wz-pw-hint");
+      if (hint) hint.innerHTML = 'Sets the password for <code>admin@<span id="wz-admin-domain">domain</span></code>.';
+    }
+    var pw = document.getElementById("wz-password");
+    if (pw) pw.placeholder = tw("pwPh");
+  }
 
   function $(s) { return document.querySelector(s); }
 
@@ -49,15 +131,34 @@
     // The server process CWD is typically the release directory.
     const hint = $("#wz-db-hint");
     if (p.startsWith("/") || p.match(/^[A-Za-z]:/)) {
-      hint.textContent = "Database file: " + p;
+      hint.textContent = tw("dbFile") + p;
     } else {
-      hint.textContent = "Relative path — resolves next to the server executable as: ./" + p;
+      hint.textContent = tw("relPath") + "./" + p;
     }
   }
 
   // Live-update admin domain hint when domain field changes.
   $("#wz-domain").addEventListener("input", updateAdminDomain);
   $("#wz-db-path").addEventListener("input", updateDbHint);
+
+  // Language pill (superior 09-01): switches the wizard in place and
+  // persists the choice so the panel follows it after initialization.
+  (function wireLang() {
+    var tgl = document.getElementById("wz-lang");
+    if (!tgl) return;
+    tgl.addEventListener("click", function (ev) {
+      var seg = ev.target.closest ? ev.target.closest("[data-seg]") : null;
+      if (!seg) return;
+      WLANG = seg.dataset.seg === "zh" ? "zh" : "en";
+      try { localStorage.setItem("agentmail_lang", WLANG); } catch (e) {}
+      applyWizardLang();
+      updateAdminDomain();
+      updateDbHint();
+    });
+    tgl.querySelectorAll(".seg").forEach(function (s) {
+      s.classList.toggle("on", s.dataset.seg === WLANG);
+    });
+  })();
 
   // --- step 1: submit config ---
   $("#wz-submit").addEventListener("click", async function () {
@@ -69,14 +170,14 @@
     };
     const status = $("#wz-status");
     if (!body.db_path || !body.listen || !body.domain || !body.admin_password) {
-      toast(status, "All fields are required.", false);
+      toast(status, tw("required"), false);
       return;
     }
     if (body.admin_password.length < 8) {
-      toast(status, "Password must be at least 8 characters.", false);
+      toast(status, tw("pwLen"), false);
       return;
     }
-    status.textContent = "Initializing…";
+    status.textContent = tw("initializing");
     try {
       const res = await api("/setup", {
         method: "POST",
@@ -86,121 +187,33 @@
       $("#wz-admin-addr").textContent = res.admin_address || ("admin@" + body.domain);
       $("#wizard-step-config").classList.add("hidden");
       $("#wizard-step-mcp").classList.remove("hidden");
-      buildCapsules(body.listen);
     } catch (e) {
-      toast(status, "Error: " + e.message, false);
+      toast(status, tw("err") + e.message, false);
     }
   });
-
-  // --- step 2: MCP capsules ---
-  function buildCapsules(listen) {
-    const serverURL = "http://" + listen;
-    const container = $("#mcp-capsules");
-    const clients = [
-      { id: "codex", label: "I use Codex CLI", desc: "~/.codex/config.toml" },
-      { id: "zcode", label: "I use zcode", desc: "~/.zcode/cli/config.json" },
-      { id: "opencode", label: "I use opencode", desc: "opencode.json (project-level)" },
-      { id: "claude", label: "I use Claude Code", desc: "claude mcp add command" },
-    ];
-    container.innerHTML = clients.map(function (c) {
-      return '<div class="capsule">' +
-        '<button class="capsule-header" data-capsule="' + c.id + '">' + esc(c.label) +
-        ' <span class="muted capsule-desc">' + esc(c.desc) + '</span>' +
-        ' <span class="capsule-toggle">▾</span></button>' +
-        '<div class="capsule-body hidden" id="capsule-body-' + c.id + '"></div>' +
-        '</div>';
-    }).join("");
-    document.querySelectorAll("[data-capsule]").forEach(function (btn) {
-      btn.addEventListener("click", async function () {
-        const id = btn.dataset.capsule;
-        const body = $("#capsule-body-" + id);
-        if (!body.classList.contains("hidden")) {
-          body.classList.add("hidden");
-          return;
-        }
-        body.classList.remove("hidden");
-        if (body.dataset.loaded !== "1") {
-          try {
-            const info = await api("/api/bootstrap-info");
-            body.innerHTML = renderSnippet(id, info);
-            wireActions(body, id);
-            body.dataset.loaded = "1";
-          } catch (e) {
-            body.innerHTML = '<span class="error-text">Error: ' + esc(e.message) + '</span>';
-          }
-        }
-      });
-    });
-  }
-
-  function renderSnippet(id, info) {
-    const gw = info.gateway_path || "agentmail-gateway";
-    const url = info.server_url || "http://127.0.0.1:8090";
-    const gwEsc = esc(gw);
-    const gwJson = esc(gw.replace(/\\/g, "\\\\"));
-    let snippet = "", where = "";
-    switch (id) {
-      case "codex":
-        snippet = '[mcp_servers.agentmail]\ncommand = "' + gwJson + '"\nargs = ["--server-url", "' + url + '"]';
-        where = "Save to: <code>~/.codex/config.toml</code>";
-        break;
-      case "zcode":
-        snippet = '{\n  "mcp": {\n    "servers": {\n      "agentmail": {\n        "type": "stdio",\n        "command": "' + gwJson + '",\n        "args": ["--server-url", "' + url + '"],\n        "enabled": true\n      }\n    }\n  }\n}';
-        where = "Save to: <code>~/.zcode/cli/config.json</code> (global) or <code>&lt;project&gt;/.zcode/config.json</code> (workspace)";
-        break;
-      case "opencode":
-        snippet = '{\n  "mcp": {\n    "agentmail": {\n      "type": "local",\n      "command": ["' + gwEsc + '", "--server-url", "' + url + '"],\n      "enabled": true\n    }\n  }\n}';
-        where = "Save to: <code>opencode.json</code> in your project root";
-        break;
-      case "claude":
-        snippet = 'claude mcp add agentmail -- ' + gwEsc + ' --server-url ' + url;
-        where = "Run this command in your terminal";
-        break;
-    }
-    return '<div class="muted snippet-where">' + where + '</div>' +
-      '<pre class="snippet">' + esc(snippet) + '</pre>' +
-      '<div class="row"><button class="row-action copy-btn">Copy config</button> <span class="write-status muted"></span></div>';
-  }
-
-  function wireActions(body, id) {
-    const status = body.querySelector(".write-status");
-    const copyBtn = body.querySelector(".copy-btn");
-    if (copyBtn) {
-      copyBtn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        const text = body.querySelector(".snippet").textContent;
-        navigator.clipboard.writeText(text).then(function () {
-          status.textContent = "✓ Copied";
-        });
-      });
-    }
-  }
 
   // --- launch ---
   $("#wz-launch").addEventListener("click", async function () {
     const status = $("#wz-launch-status");
-    status.textContent = "Starting server…";
+    status.textContent = tw("starting");
     try {
       await api("/launch", { method: "POST" });
       const panelURL = "http://" + $("#wz-listen").value.trim() + "/";
       setTimeout(function () {
         document.body.innerHTML = '<div class="setup-card" style="text-align:center;">' +
-          '<h1>Server starting…</h1>' +
-          '<p class="muted">The server is now running on your configured address.</p>' +
-          '<button class="primary" id="open-panel-btn">Open panel</button>' +
+          '<h1>' + tw("starting") + '</h1>' +
+          '<p class="muted">' + tw("started") + '</p>' +
+          '<button class="primary" id="open-panel-btn">' + tw("openPanel") + '</button>' +
           '</div>';
         document.getElementById("open-panel-btn").addEventListener("click", function () {
           window.location.href = panelURL;
         });
       }, 2000);
     } catch (e) {
-      status.textContent = "Error: " + e.message;
+      status.textContent = tw("err") + e.message;
     }
   });
 
-  function esc(s) {
-    return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-
+  applyWizardLang();
   loadDefaults();
 })();

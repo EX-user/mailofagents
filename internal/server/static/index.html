@@ -22,12 +22,15 @@
   <section id="setup-page" class="setup-page hidden">
     <div class="setup-card">
       <h1 data-i18n="setup.title">Mail of Agents setup</h1>
+      <!-- Superior 09-01: language pill on the setup page (same grammar as the
+           header toggle); choice persists and carries into the setup wizard. -->
+      <div class="lang-toggle" id="setup-lang" title="Language" aria-label="Language"><span class="seg" data-seg="zh">中</span><span class="seg" data-seg="en">EN</span></div>
       <p class="muted" data-i18n="setup.desc">First-time initialization. Set the admin password and mail domain to create the system.</p>
       <div class="compose-form">
-        <label>Mail domain
+        <label data-i18n="setup.domain">Mail domain
           <input type="text" id="setup-domain" placeholder="e.g. agentmail.local" data-i18n-ph="setup.domainPh" />
         </label>
-        <label>Admin password (min 8 chars)
+        <label data-i18n="setup.adminpw">Admin password (min 8 chars)
           <input type="password" id="setup-admin-password" placeholder="choose a strong password" data-i18n-ph="setup.pwPh" />
         </label>
         <div class="row">
@@ -226,8 +229,9 @@
         </div>
       </div>
 
-      <!-- Team register result (v2): owner card (highlighted) + one card
-           per member with 复制账密 / 复制引导提示词, plus one copy-all. -->
+      <!-- Team register result (v2): owner card (highlighted, no copy
+           button — its password is self-set) + one card per member with
+           复制账密 / 复制引导提示词, plus one copy-all. -->
       <div id="team-success-block" class="hidden">
         <h1 data-i18n="team.success">team created ✅</h1>
         <p class="muted" data-i18n="reg.saveCreds">Save these credentials — the password is shown only once.</p>
@@ -285,7 +289,8 @@
            Directory; page title row removed (same order). Same pill pattern
            as Manage's segment. Nav stays at five cards. -->
       <div class="mgmt-seg" id="ovw-seg" style="margin-bottom:12px;">
-        <button type="button" data-oview="main" class="on" data-i18n="ovw.tabSystem">System</button>
+        <button type="button" data-oview="main" class="on m-ovw-system" data-i18n="ovw.tabSystem">System</button>
+        <button type="button" data-oview="main" class="on pc-ovw-data" data-i18n="ovw.tabData">Data</button>
         <button type="button" data-oview="mine" data-i18n="ovw.tabMine">Mine</button>
         <button type="button" data-oview="directory" data-i18n="nav.directory">Directory</button>
       </div>
@@ -355,7 +360,7 @@
     <!-- Accounts -->
     <section id="tab-accounts" class="tab-panel hidden">
       <h2>Accounts <small class="muted" data-i18n="sub.accounts">— your contacts and account settings</small></h2>
-      <button id="btn-register" class="primary" data-i18n="acc.registerNew">+ Register new account</button>
+      <button id="btn-register" class="primary" data-i18n="subs.registerBtn">Register a mailbox for your AI agent</button>
       <div id="register-result" class="callout hidden"></div>
       <!-- PC register-subordinate block (superior feedback round 3): the
            button moves out of the table; sub accounts render as leading
@@ -858,8 +863,10 @@
       </div>
       <div class="row">
         <button type="button" id="btn-subreg-copy" class="row-action" data-i18n="subs.copyCreds">Copy credentials</button>
+        <button type="button" id="btn-subreg-copy-prompt" class="row-action" data-i18n="team.copyPrompt">Copy prompt</button>
         <span id="subreg-copy-status" class="muted"></span>
       </div>
+      <pre class="code-block hidden" id="subreg-prompt"></pre>
     </div>
   </div>
 

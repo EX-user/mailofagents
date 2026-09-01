@@ -82,9 +82,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function setOvwView(v) {
     var main = $("#ovw-main"), dir = $("#ovw-directory"), mine = $("#ovw-mine");
     if (!main || !dir || !mine) return;
+    // PC (superior 01M1E6A1F): Overview is two views — Data (system+activity+
+    // mine shown together) | Directory; the separate Mine sub-page is a
+    // phone-only view, so on PC a stored "mine" re-lands on Data.
+    var pc = window.innerWidth > 800;
+    if (pc && v === "mine") v = "main";
     if (v !== "directory" && v !== "mine") v = "main";
     main.classList.toggle("hidden", v !== "main");
-    mine.classList.toggle("hidden", v !== "mine");
+    mine.classList.toggle("hidden", pc ? v !== "main" : v !== "mine");
     dir.classList.toggle("hidden", v !== "directory");
     $$("#ovw-seg button").forEach(function (b) {
       b.classList.toggle("on", b.dataset.oview === v);
@@ -100,6 +105,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (seg) seg.addEventListener("click", function (ev) {
       var b = ev.target.closest("button[data-oview]");
       if (b) setOvwView(b.dataset.oview);
+    });
+    // Re-sync the mine pane when crossing the 800px breakpoint (superior
+    // 01M1E6A1F: PC merges Mine into Data; phone keeps the separate view).
+    window.addEventListener("resize", function () {
+      var segOn = seg && seg.querySelector("button.on");
+      if (segOn && segOn.dataset.oview === "main") setOvwView("main");
     });
     var prefs = $("#btn-prefs");
     if (prefs) prefs.addEventListener("click", function () { activateTab("profile"); });
@@ -139,7 +150,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (name === "compose") document.dispatchEvent(new CustomEvent("compose:entered"));
     if (name === "profile") loadProfile();
     if (name === "settings") loadSettings();
-    if (name === "audit") loadAudit();
+    if (name === "audit") document.dispatchEvent(new CustomEvent("audit:entered"));
   }
 
   $$(".tab").forEach(function (b) {
@@ -618,16 +629,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     }
   }
 
-  // The Accounts-tab "+ Register new account" button opens the login-page
-  // register flow (the single source of truth for registration since v0.2.12).
-  // An older in-tab prompt()-based register handler used to bind this same
-  // button; it was removed because it double-fired alongside the login-page
-  // handler and caused "account already exists" + a confusing "local-part"
-  // prompt. Registration now lives only on the login page.
+  // The Accounts-tab register button is a subordinate-registration entry
+  // (superior 09-02 ruling: accounts-page registration is subordinate-only;
+  // normal registration lives only on the login/portal pages). The flow is
+  // owned by manage.js — request it via the S2 event.
   $("#btn-register").addEventListener("click", function () {
-    setSession(null); // signing out to reach the login page
-    showLogin();
-    showRegisterForm();
+    document.dispatchEvent(new CustomEvent("subs:register"));
   });
 
   // ---- directory (public address book) ----
@@ -744,6 +751,25 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const zh = $("#pref-lang-zh"), en = $("#pref-lang-en");
     if (zh) zh.addEventListener("click", function () { window.I18N.setLang("zh"); });
     if (en) en.addEventListener("click", function () { window.I18N.setLang("en"); });
+    // Setup-page language pill (superior 09-01): same setLang path as the
+    // header toggle, so the choice persists into the setup wizard.
+    (function () {
+      var tgl = document.getElementById("setup-lang");
+      if (!tgl) return;
+      tgl.addEventListener("click", function (ev) {
+        var seg = ev.target.closest ? ev.target.closest("[data-seg]") : null;
+        if (seg) window.I18N.setLang(seg.dataset.seg);
+      });
+      function syncSetupLang() {
+        var cur = "";
+        try { cur = window.I18N.lang(); } catch (_) { return; }
+        tgl.querySelectorAll(".seg").forEach(function (s) {
+          s.classList.toggle("on", s.dataset.seg === cur);
+        });
+      }
+      syncSetupLang();
+      document.addEventListener("i18n:change", syncSetupLang);
+    })();
     // v0.6.27 three-way theme switch (preferences page only, superior ruling).
     $$(".pref-theme-btn").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -1979,24 +2005,28 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       return false;
     }
     var html = "";
-    function card(cls, who, addr, pwShow, pwReal, extraBtn) {
+    function card(cls, who, addr, pwShow, pwReal, extraBtn, noCopy) {
       // Address and password each get their own block line so member
       // cards stack identically regardless of name length (drill B3).
+      var btns = noCopy ? "" :
+        '<button class="cp" data-cp-addr="' + esc(addr) + '" data-cp-pw="' + esc(pwReal) + '">' + t("team.copyCreds") + "</button>";
+      btns += extraBtn || "";
       return '<div class="cred-card ' + cls + '">' +
         '<div><div class="who">' + who + "</div>" +
         "<div><code>" + esc(addr) + "</code></div>" +
         '<div><span class="pw">' + esc(pwShow) + "</span></div></div>" +
-        '<div class="btns"><button class="cp" data-cp-addr="' + esc(addr) + '" data-cp-pw="' + esc(pwReal) + '">' + t("team.copyCreds") + "</button>" +
-        (extraBtn || "") + "</div></div>";
+        (btns ? '<div class="btns">' + btns + "</div>" : "") +
+        "</div>";
     }
     if (res && res.owner) {
       // Owner password is user-set: show the keep-it reminder, never echo
-      // it (parity with single-account register; drill B2). Copy buttons
-      // still carry the real value the user just typed.
+      // it (parity with single-account register; drill B2). No copy button
+      // on the owner card (superior 09-02) — the password is the owner's
+      // own secret, nothing needs handing off.
       html += card("owner", t("team.owner") + " - " + t("team.ownerCan"),
         res.owner.address,
         ownerPw ? t("reg.pwUserSet") : (res.owner.password || t("reg.pwUserSet")),
-        ownerPw || res.owner.password || "");
+        ownerPw || res.owner.password || "", "", true);
     }
     (res && res.members || []).forEach(function (m, i) {
       html += card("", t("team.member") + " " + (i + 1), m.address, m.password, m.password,
@@ -2086,6 +2116,16 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       .split("<password>").join(password)
       .split("<serverURL>").join(serverURL);
   }
+
+  // Subordinate registration success (S2 from manage.js, which owns the
+  // flow but not buildAgentPrompt): fill the modal's hidden prompt with the
+  // fresh credentials so Copy prompt always carries the real secret
+  // (superior 09-02: no visible fold — the copy button is the only surface).
+  document.addEventListener("subreg:success", function (e) {
+    var d = (e && e.detail) || {};
+    var pre = $("#subreg-prompt");
+    if (pre) pre.textContent = buildAgentPrompt(d.address, d.password);
+  });
 
   function showRegisterSuccess(address, password) {
     $("#login-form-block").classList.add("hidden");

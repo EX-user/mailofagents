@@ -265,6 +265,7 @@
       // ---- overview (phase 2) ----
       "ovw.system": "System",
       "ovw.tabSystem": "System",
+      "ovw.tabData": "Data",
       "ovw.tabMine": "Mine",
       "ovw.activity": "Activity",
       "ovw.my": "My activity",
@@ -747,6 +748,7 @@
       // ---- overview (phase 2) ----
       "ovw.system": "系统",
       "ovw.tabSystem": "系统",
+      "ovw.tabData": "数据",
       "ovw.tabMine": "我的",
       "ovw.activity": "活跃",
       "ovw.my": "我的动态",

@@ -1038,6 +1038,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         $("#subreg-address").textContent = res.address || "";
         $("#subreg-password").textContent = res.password || "";
         $("#subreg-copy-status").textContent = "";
+        // Prompt copy lives in app.js (buildAgentPrompt) — hand the fresh
+        // credentials over before the modal is shown (superior 09-02).
+        document.dispatchEvent(new CustomEvent("subreg:success", { detail: { address: res.address || "", password: res.password || "" } }));
         $("#subreg-modal").classList.remove("hidden");
         $("#btn-subreg-close").focus();
         status.textContent = t("subs.regDone");
@@ -1082,6 +1085,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     });
     const pcBtn = $("#btn-subreg-pc");
     if (pcBtn) pcBtn.addEventListener("click", function () { doSubreg(pcBtn); });
+    // The accounts-page admin button (#btn-register) is the same subordinate
+    // flow (superior 09-02: accounts-page registration is subordinate-only);
+    // it reaches this modal via the S2 event dispatched by app.js.
+    document.addEventListener("subs:register", function () {
+      doSubreg($("#btn-register") || pcBtn);
+    });
     $("#btn-subreg-close").addEventListener("click", function () {
       closeSubregModal();
       // Refresh edges + badges + Mail selector after dismissing.
@@ -1103,6 +1112,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     $("#btn-subreg-copy").addEventListener("click", function () {
       const text = $("#subreg-address").textContent + "\n" + $("#subreg-password").textContent;
       copyText(text).then(function (ok) {
+        const st = $("#subreg-copy-status");
+        st.textContent = ok ? t("common.copied") : t("common.copyManual");
+        setTimeout(function () { st.textContent = ""; }, 2000);
+      });
+    });
+    // Copy-prompt twin (superior 09-02): the prompt text is filled by
+    // app.js on subreg:success — this only ships it to the clipboard.
+    $("#btn-subreg-copy-prompt").addEventListener("click", function () {
+      copyText($("#subreg-prompt").textContent).then(function (ok) {
         const st = $("#subreg-copy-status");
         st.textContent = ok ? t("common.copied") : t("common.copyManual");
         setTimeout(function () { st.textContent = ""; }, 2000);
@@ -1469,6 +1487,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         (m.cc && m.cc.length ? '<div class="detail-row"><b>Cc:</b> ' + esc(m.cc.join(", ")) + "</div>" : "") +
         '<div class="detail-row"><b>Subject:</b> ' + esc(m.subject || "") + "</div>" +
         '<div class="detail-row"><b>Date:</b> ' + fmtTime(m.received_at) + "</div>" +
+        '<div class="detail-row"><b>ID:</b> <code>' + esc(m.id || m.message_id) + "</code></div>" +
         '<div class="row" style="margin:8px 0;">' +
         (String(m.from || "").toLowerCase() === String(getSession().address || "").toLowerCase()
           ? // Superior 01M1AWXF: own sent mail gets Follow-up (recipients kept,
@@ -1603,6 +1622,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
 
   // ---- audit ----
 
+  // S2 surface (audit small-ticket): the tab lives in app.js, the loader
+  // lives here — cross-domain goes through a DOM event, never a direct call
+  // (a direct call from app.js threw ReferenceError and the audit list
+  // silently never loaded).
+  document.addEventListener("audit:entered", function () { loadAudit(); });
   async function loadAudit() {
     const tbody = $("#audit-table tbody");
     tbody.textContent = "";
@@ -1724,9 +1748,11 @@ window.addEventListener("resize", fitInboxOneScreen);
 function fitMgmtOneScreen() {
   var th = document.getElementById("mgmt-threads");
   var ov = document.getElementById("mgmt-overview");
+  var br = document.getElementById("mgmt-browse");
   if (window.innerWidth > 800) {
     if (th) th.style.removeProperty("--th-1s");
     if (ov) ov.style.removeProperty("--ovw-m-1s");
+    if (br) br.style.removeProperty("--mgmt-b-1s");
     return;
   }
   function fitBox(el, prop, min) {
@@ -1737,6 +1763,9 @@ function fitMgmtOneScreen() {
     var over = document.documentElement.scrollHeight - window.innerHeight;
     if (over > 0) el.style.setProperty(prop, Math.max(h - over, min) + "px");
   }
+  // Browse (superior 09-01): 查信 sub-page joins the one-screen family —
+  // the mail grid scrolls inside the measured column.
+  if (br && !br.classList.contains("hidden")) fitBox(br, "--mgmt-b-1s", 280);
   if (th && !th.classList.contains("hidden")) fitBox(th, "--th-1s", 280);
   if (ov && !ov.classList.contains("hidden")) fitBox(ov, "--ovw-m-1s", 280);
 }
@@ -1749,8 +1778,10 @@ document.addEventListener("threads:entered", function () { setTimeout(fitMgmtOne
   var mo = new MutationObserver(function () { setTimeout(fitMgmtOneScreen, 80); });
   var th = document.getElementById("th-list");
   var ov = document.getElementById("mgmt-overview");
+  var ml = document.getElementById("mail-list");
   if (th) mo.observe(th, { childList: true, subtree: true });
   if (ov) mo.observe(ov, { childList: true, subtree: true });
+  if (ml) mo.observe(ml, { childList: true, subtree: true });
 })();
 
 document.addEventListener("manage:entered", function () {
@@ -1832,7 +1863,7 @@ document.addEventListener("manage:entered", function () {
         '<div class="mail-subject">' + esc(m.subject || "") + "</div>" +
         '<div class="mail-preview">' + esc(m.preview || "") + "</div>" +
         '<span class="mail-time">' + fmtTime(m.received_at) + "</span>";
-      item.addEventListener("click", function () { showInboxDetail(m); });
+      item.addEventListener("click", function () { showInboxDetail(m.id, item, false); });
       return item;
     }
 

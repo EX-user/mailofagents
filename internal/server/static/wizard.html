@@ -9,40 +9,43 @@
 <body class="setup-page">
   <div class="setup-card">
     <h1>Mail of Agents <small id="version-badge" class="version-badge"></small></h1>
+    <!-- Superior 09-01: language pill on the wizard config page (same grammar
+         as the header toggle); choice persists into the panel. -->
+    <div class="lang-toggle" id="wz-lang" title="Language" aria-label="Language" style="margin:6px 0 12px;"><span class="seg" data-seg="zh">中</span><span class="seg" data-seg="en">EN</span></div>
 
-    <!-- Step 1: configuration form -->
+    <!-- Step 1: configuration form (bilingual per superior 09-01; language
+         follows the panel setup page via localStorage agentmail_lang) -->
     <div id="wizard-step-config">
-      <p class="muted">First-time setup. Configure the mail system before starting the server.</p>
+      <p class="muted" data-wz="step1desc">First-time setup. Configure the mail system before starting the server.</p>
       <div class="compose-form">
-        <label>Database path
+        <label><span data-wz="dbPath">Database path</span>
           <input type="text" id="wz-db-path" placeholder="agentmail.db" />
-          <small class="muted" id="wz-db-hint">Where the bbolt database file is stored.</small>
+          <small class="muted" id="wz-db-hint" data-wz="dbHint0">Where the bbolt database file is stored.</small>
         </label>
-        <label>Listen address
+        <label><span data-wz="listen">Listen address</span>
           <input type="text" id="wz-listen" placeholder="127.0.0.1:8090" />
-          <small class="muted">Use 0.0.0.0:8090 for LAN access.</small>
+          <small class="muted" data-wz="listenHint">Use 0.0.0.0:8090 for LAN access.</small>
         </label>
-        <label>Mail domain
+        <label><span data-wz="domain">Mail domain</span>
           <input type="text" id="wz-domain" placeholder="agentmail.local" />
         </label>
-        <label>Admin password (min 8 chars)
+        <label><span data-wz="adminpw">Admin password (min 8 chars)</span>
           <input type="password" id="wz-password" placeholder="choose a strong password" />
-          <small class="muted">Sets the password for <code>admin@<span id="wz-admin-domain">domain</span></code>.</small>
+          <small class="muted" id="wz-pw-hint" data-wz="pwHint">Sets the password for <code>admin@<span id="wz-admin-domain">domain</span></code>.</small>
         </label>
         <div class="row">
-          <button id="wz-submit" class="primary">Initialize</button>
+          <button id="wz-submit" class="primary" data-wz="init">Initialize</button>
           <span id="wz-status" class="muted"></span>
         </div>
       </div>
     </div>
 
-    <!-- Step 2: MCP config capsules + launch -->
+    <!-- Step 2: initialized + launch. Gateway registration copy and the four
+         client guides removed per superior 09-01. -->
     <div id="wizard-step-mcp" class="hidden">
-      <p class="success-note">✓ System initialized. Admin: <code id="wz-admin-addr"></code></p>
-      <p class="muted">Register the gateway with your agent client (optional — you can do this later):</p>
-      <div id="mcp-capsules"></div>
+      <p class="success-note">✓ <span data-wz="inited">System initialized.</span> <span class="muted">Admin: <code id="wz-admin-addr"></code></span></p>
       <div class="row" style="margin-top: 24px;">
-        <button id="wz-launch" class="primary">Start server</button>
+        <button id="wz-launch" class="primary" data-wz="start">Start server</button>
         <span id="wz-launch-status" class="muted"></span>
       </div>
     </div>
