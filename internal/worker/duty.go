@@ -146,7 +146,7 @@ func (d *Duty) Run(ctx context.Context) {
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
 	for {
-		d.checkOnce(ctx)
+		d.safeCheckOnce(ctx)
 		select {
 		case <-ctx.Done():
 			d.logf("duty stop: %v", ctx.Err())
@@ -155,6 +155,19 @@ func (d *Duty) Run(ctx context.Context) {
 		case <-d.urgentCh: // urgent interrupt landed: re-check at once
 		}
 	}
+}
+
+// safeCheckOnce contains a panicking round to this account: multi-account
+// workers share one process, and an unrecovered panic in one duty goroutine
+// would take every account down with it.
+func (d *Duty) safeCheckOnce(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			d.logf("panic recovered in checkOnce: %v", r)
+			d.noteFailure(fmt.Sprintf("panic: %v", r))
+		}
+	}()
+	d.checkOnce(ctx)
 }
 
 func (d *Duty) urgentNow() {
@@ -327,8 +340,12 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// same-poll wake). Cross-process collisions are out of scope — run one
 	// worker per host, or give each account its own XDG data dir.
 	muAny, _ := cliWakeLocks.LoadOrStore(d.cfg.CLI, &sync.Mutex{})
-	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
-	muAny.(*sync.Mutex).Unlock()
+	wakeMu := muAny.(*sync.Mutex)
+	wakeMu.Lock()
+	newID, wakeTokens, err := func() (string, int64, error) {
+		defer wakeMu.Unlock()
+		return d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
+	}()
 	if urgentDone != nil {
 		cancel() // wake over: the watcher exits via its wakeCtx select
 		<-urgentDone
