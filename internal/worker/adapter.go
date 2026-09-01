@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,9 +107,90 @@ func ensureWorkdir(path string) error {
 	return os.Mkdir(path, 0o755)
 }
 
+// lineTee tees the CLI's stdout into the worker log as one restrained
+// summary line per event, while the full stream keeps flowing into the
+// buffer for session-id extraction and error diagnostics.
+type lineTee struct {
+	tag  string
+	name string
+	buf  bytes.Buffer
+}
+
+func (w *lineTee) Write(p []byte) (int, error) {
+	w.buf.Write(p)
+	for {
+		b := w.buf.Bytes()
+		i := bytes.IndexByte(b, '\n')
+		if i < 0 {
+			break
+		}
+		line := append([]byte(nil), b[:i]...)
+		w.buf.Next(i + 1)
+		if s := eventSummary(line); s != "" {
+			log.Printf("[%s][%s] %s", w.tag, w.name, s)
+		}
+	}
+	return len(p), nil
+}
+
+// eventSummary reduces one stdout line to a restrained summary: for JSON
+// events the type plus the first embedded text; plain lines are truncated.
+func eventSummary(line []byte) string {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 {
+		return ""
+	}
+	if line[0] == '{' {
+		var ev map[string]any
+		if json.Unmarshal(line, &ev) == nil {
+			t, _ := ev["type"].(string)
+			if t == "" {
+				if id, ok := ev["session_id"].(string); ok {
+					return "session_id=" + truncate(id, 20) + " result=" + truncate(stringOf(ev["result"]), 80)
+				}
+				return "json(" + truncate(string(line), 60) + ")"
+			}
+			if s := findText(ev); s != "" {
+				return t + " | " + truncate(s, 100)
+			}
+			return t
+		}
+	}
+	return "out | " + truncate(string(line), 100)
+}
+
+func stringOf(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+// findText digs out the first non-empty "text" field (events nest it under
+// part/item/message differently per CLI).
+func findText(o any) string {
+	switch v := o.(type) {
+	case map[string]any:
+		if s, ok := v["text"].(string); ok && s != "" {
+			return s
+		}
+		for _, vv := range v {
+			if s := findText(vv); s != "" {
+				return s
+			}
+		}
+	case []any:
+		for _, x := range v {
+			if s := findText(x); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 // runWake executes one CLI wake with the common hardening (workdir cwd,
-// vendor env, tree-kill on timeout, WaitDelay) and returns stdout.
-func runWake(ctx context.Context, cfg *Config, name string, args []string, stdinPayload string) ([]byte, error) {
+// vendor env, tree-kill on timeout, WaitDelay) and returns stdout. tag is
+// the account label for live event lines.
+func runWake(ctx context.Context, cfg *Config, name string, args []string, stdinPayload, tag string) ([]byte, error) {
 	if err := ensureWorkdir(cfg.Workdir); err != nil {
 		return nil, fmt.Errorf("workdir: %v", err)
 	}
@@ -118,7 +201,8 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	tee := &lineTee{tag: tag, name: name}
+	cmd.Stdout = io.MultiWriter(&stdout, tee)
 	cmd.Stderr = &stderr
 	if stdinPayload != "" {
 		cmd.Stdin = strings.NewReader(stdinPayload)
@@ -161,7 +245,7 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "pi", args, digest)
+	out, err := runWake(ctx, cfg, "pi", args, digest, localPart(cfg.Address))
 	if err != nil {
 		return "", err
 	}
@@ -192,7 +276,7 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "opencode", args, "")
+	out, err := runWake(ctx, cfg, "opencode", args, "", localPart(cfg.Address))
 	if err != nil {
 		return "", err
 	}
@@ -220,7 +304,7 @@ func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest st
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "claude", args, "")
+	out, err := runWake(ctx, cfg, "claude", args, "", localPart(cfg.Address))
 	if err != nil {
 		return "", err
 	}
@@ -254,7 +338,7 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "codex", args, "")
+	out, err := runWake(ctx, cfg, "codex", args, "", localPart(cfg.Address))
 	if err != nil {
 		return "", err
 	}

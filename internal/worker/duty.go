@@ -25,6 +25,7 @@ type Duty struct {
 	failStreak int
 	lastAlert  time.Time
 	lastBeat   time.Time // duty-window anchor: process start or last time-beat wake
+	startedAt  time.Time // process start, for the uptime stamp in heartbeats
 }
 
 func NewDuty(cfg *Config, fresh bool) *Duty {
@@ -98,6 +99,7 @@ func (d *Duty) Run(ctx context.Context) {
 	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v duty_window=%dm session=%q",
 		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.cfg.DutyWindowMin, d.sessionID)
 	d.lastBeat = time.Now()
+	d.startedAt = time.Now()
 
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
@@ -150,7 +152,8 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	if dutyDue {
 		dueMark = " [duty window due]"
 	}
-	d.logf("poll: %d unread (%dms)%s", len(unread), time.Since(start).Milliseconds(), dueMark)
+	d.logf("poll: %d unread (%dms) up %s%s", len(unread), time.Since(start).Milliseconds(),
+		time.Since(d.startedAt).Round(time.Second), dueMark)
 	if len(unread) == 0 && !dutyDue {
 		d.failStreak = 0
 		return
