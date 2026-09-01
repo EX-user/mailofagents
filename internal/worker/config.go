@@ -6,28 +6,14 @@ import (
 	"os"
 )
 
-// Vendor is the credential/model block handed to the CLI at wake time, so
-// worker.json alone decides which vendor serves the duty — no hand-editing
-// of CLI-internal config files (except codex, see below).
-//
-// Per-CLI transport:
-//   claude   -> env ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_MODEL
-//   pi       -> flags --provider / --api-key / --model
-//   opencode -> provider block MERGED into ~/.config/opencode/opencode.json
-//               (name+baseURL+apiKey+model skeleton), then -m <name>/<model>
-//   codex    -> NOT automated: configure ~/.codex/config.toml (official
-//               setup script) and pin via "model"
-type Vendor struct {
-	Name    string `json:"name"`    // provider id (e.g. "bailian-coding-plan")
-	BaseURL string `json:"baseURL"` // API endpoint (opencode/claude)
-	APIKey  string `json:"apiKey"`  // credential
-	Model   string `json:"model"`   // model select; overrides top-level "model"
-	NPM     string `json:"npm"`     // opencode only: provider SDK package (default @ai-sdk/anthropic; use @ai-sdk/openai for openai-compatible endpoints)
-}
-
 // Config is the MVP single-account worker configuration (v4 phase-MVP:
 // multi-account, folder multi-binding, custom escape hatch and resident
 // sessions are all deferred).
+//
+// Vendor credentials are NOT managed here — each CLI keeps its own native
+// config (opencode: auth.json + opencode.json; pi: ~/.pi/agent; claude:
+// login or ANTHROPIC_* env via "env"; codex: ~/.codex/config.toml). The
+// worker only pins WHICH model serves the duty via "model" when set.
 type Config struct {
 	Server         string `json:"server"`          // e.g. https://mailofagents.online
 	Address        string `json:"address"`         // watched account address
@@ -38,9 +24,8 @@ type Config struct {
 	PollIntervalSec int               `json:"poll_interval_sec"`
 	TimeoutSec     int               `json:"timeout_sec"` // per-wake process timeout (hard kill)
 	SessionMaxMin  int               `json:"session_max_runtime_min"` // soft cap before interruption+resume
-	Model          string            `json:"model"`   // explicit provider/model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a vendor with valid quota instead of the CLI's default
-	Env            map[string]string `json:"env"`     // extra env for the CLI process (e.g. DEEPSEEK_API_KEY)
-	Vendor         *Vendor           `json:"vendor"`  // vendor block handed to the CLI (see Vendor doc)
+	Model          string            `json:"model"`   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
+	Env            map[string]string `json:"env"`     // extra env for the CLI process (e.g. DEEPSEEK_API_KEY / ANTHROPIC_*)
 	Alert          Alert             `json:"alert"`
 }
 
