@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -125,9 +128,8 @@ func ensureWorkdir(path string) error {
 // stream still accumulates in the buffer for session-id extraction and
 // error diagnostics.
 type lineTee struct {
-	tag    string
-	ctxMax int64 // best context-size estimate from this wake's usage reports
-	buf    bytes.Buffer
+	tag string
+	buf bytes.Buffer
 }
 
 func (w *lineTee) Write(p []byte) (int, error) {
@@ -140,19 +142,7 @@ func (w *lineTee) Write(p []byte) (int, error) {
 		}
 		line := append([]byte(nil), b[:i]...)
 		w.buf.Next(i + 1)
-		trimmed := bytes.TrimSpace(line)
-		if len(trimmed) == 0 {
-			continue
-		}
-		if trimmed[0] == '{' {
-			var ev map[string]any
-			if json.Unmarshal(trimmed, &ev) == nil {
-				if n := contextTokens(ev); n > w.ctxMax {
-					w.ctxMax = n
-				}
-			}
-		}
-		if s := eventSummary(trimmed); s != "" {
+		if s := eventSummary(line); s != "" {
 			board.Set(w.tag, "", SprintDetail(s))
 		}
 	}
@@ -264,6 +254,15 @@ func findText(o any) string {
 	return ""
 }
 
+// Compacter is the optional compression capability: a CLI that exposes a
+// headless summarize entry point can compact a session IN PLACE (full
+// history serialized and summarized into summary messages, same session
+// continues). Adapters without one don't implement it — the duty loop
+// falls back to session rotation for those.
+type Compacter interface {
+	CompactSession(ctx context.Context, cfg *Config, sessionID string) error
+}
+
 // runWake executes one CLI wake with the common hardening (workdir cwd,
 // vendor env, tree-kill on timeout, WaitDelay) and returns stdout. tag is
 // the account label for live event lines.
@@ -296,10 +295,115 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 	if err := cmd.Run(); err != nil {
 		// opencode >=1.18 writes its errors to the json stdout stream, not
 		// stderr — both tails must ride along or the failure is blind.
-		return nil, tee.ctxMax, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
+		return nil, 0, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
 			name, err, truncate(stderr.String(), 400), truncate(stdout.String(), 600))
 	}
-	return stdout.Bytes(), tee.ctxMax, nil
+	return stdout.Bytes(), 0, nil
+}
+
+// ---- opencode: in-place session compaction ----
+// POST /session/:id/summarize starts an async summarize turn (verified in
+// 1.18.25 source: session/compaction.ts serializes the full history and
+// writes summary messages back into the SAME session; overflow triggers it
+// automatically too). The worker spins up a temporary `opencode serve` on a
+// free local port, fires the request, and polls until the summary message
+// lands. providerID/modelID come from cfg.Model ("provider/model").
+
+func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionID string) error {
+	prov, model := "", ""
+	if cfg.Model != "" {
+		if i := strings.Index(cfg.Model, "/"); i > 0 {
+			prov, model = cfg.Model[:i], cfg.Model[i+1:]
+		}
+	}
+	if prov == "" || model == "" {
+		return fmt.Errorf("opencode compact needs cfg.Model as provider/model (got %q)", cfg.Model)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+
+	env := os.Environ()
+	for k, v := range cfg.Env {
+		env = append(env, k+"="+v)
+	}
+	serve := exec.CommandContext(ctx, "opencode", "serve", "--port", strconv.Itoa(port), "--hostname", "127.0.0.1")
+	serve.Dir = cfg.Workdir
+	serve.Env = env
+	configureProcessGroup(serve)
+	if err := serve.Start(); err != nil {
+		return fmt.Errorf("start opencode serve: %w", err)
+	}
+	defer func() {
+		_ = killTree(serve.Process.Pid)
+		_ = serve.Wait()
+	}()
+
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	client := &http.Client{Timeout: 15 * time.Second}
+	post := func(path string, body map[string]any) error {
+		b, _ := json.Marshal(body)
+		resp, err := client.Post(base+path, "application/json", bytes.NewReader(b))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("%s -> %s", path, resp.Status)
+		}
+		return nil
+	}
+
+	// wait for the server to come up
+	up := false
+	for i := 0; i < 20; i++ {
+		if err := post("/global/event", nil); err == nil {
+			up = true
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	_ = up
+	if err := post("/session/"+sessionID+"/summarize", map[string]any{"providerID": prov, "modelID": model}); err != nil {
+		return fmt.Errorf("summarize: %w", err)
+	}
+
+	// poll until the compaction lands (summary assistant message appears)
+	deadline := time.Now().Add(180 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+		resp, err := client.Get(base + "/session/" + sessionID + "/message")
+		if err != nil {
+			continue
+		}
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		var msgs []struct {
+			Info struct {
+				Role    string `json:"role"`
+				Summary bool   `json:"summary"`
+			} `json:"info"`
+		}
+		if json.Unmarshal(b, &msgs) == nil {
+			for _, msg := range msgs {
+				if msg.Info.Role == "assistant" && msg.Info.Summary {
+					return nil // compaction landed
+				}
+			}
+		}
+	}
+	return fmt.Errorf("compaction did not complete within 180s")
 }
 
 // ---- pi ----

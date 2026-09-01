@@ -326,8 +326,33 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	}
 	d.mu.Lock()
 	if d.compactPending {
-		// the notice round completed: rotate to a brand-new session
-		d.logf("compact: session rotated (context tokens peaked above compact_notice_tokens)")
+		// notice round done (agent persisted memory). Prefer in-place
+		// compaction when the adapter supports it (opencode summarize):
+		// same session continues with its official full-context summary.
+		// Otherwise rotate to a brand-new session (memory-file handover).
+		if c, ok := d.adapter.(Compacter); ok && d.sessionID != "" {
+			d.mu.Unlock()
+			board.Set(tag, "working", "compacting session in place…")
+			d.logf("compact: summarizing session %s in place", d.sessionID)
+			cctx, ccancel := context.WithTimeout(ctx, 3*time.Minute)
+			err := c.CompactSession(cctx, d.cfg, d.sessionID)
+			ccancel()
+			if err == nil {
+				d.mu.Lock()
+				d.compactPending = false
+				d.saveState()
+				d.mu.Unlock()
+				d.failStreak = 0
+				board.Set(tag, "waiting", "compacted, continuing session")
+				d.logf("compact ok: session %s continues with its summary", d.sessionID)
+				return
+			}
+			d.logf("compact in-place failed (%v) — rotating to a new session instead", err)
+			board.Set(tag, "working", "rotating session…")
+			d.mu.Lock()
+		}
+		// rotation path: fresh session next wake; context estimate resets
+		d.logf("compact: rotating to a new session")
 		d.sessionID = ""
 		d.compactPending = false
 	} else {
