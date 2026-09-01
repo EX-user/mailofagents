@@ -19,22 +19,22 @@ import (
 // power is the optional "model" pin. The "env" block exists for
 // non-credential auxiliary variables only.
 type Config struct {
-	Server         string `json:"server"`          // e.g. https://mailofagents.online
-	Address        string `json:"address"`         // watched account address
-	Password       string `json:"password"`        // watched account password
-	CLI            string `json:"cli"`             // adapter id: "pi" (first), "opencode" (second batch)
-	Prompt         string `json:"prompt"`          // short instruction prepended to the digest
-	Workdir        string `json:"workdir"`         // binding workdir: worker cd's here before waking the CLI
-	PollIntervalSec int               `json:"poll_interval_sec"`
-	TimeoutSec     int               `json:"timeout_sec"` // per-wake process timeout (hard kill)
-	SessionMaxMin  int               `json:"session_max_runtime_min"` // soft cap before interruption+resume
-	DutyWindowMin  int               `json:"duty_window_min"` // max continuous duty stretch; 0/absent = unlimited (no time-beat wakes)
-	CompactNoticeTokens int64        `json:"compact_notice_tokens"` // context-size notice threshold; 0/absent = rely on the CLI's built-in compaction only
-	Model          string            `json:"model"`   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
-	Env            map[string]string `json:"env"`     // non-credential auxiliary env for the CLI process
-	FullPerm       *bool             `json:"full_perm"` // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
-	StateFile      string            `json:"state_file"` // session binding store; default = config sibling (<config>.state.json). Kept OUT of the workdir: the workdir is the agent's turf
-	Emergency      Emergency         `json:"emergency"`
+	Server              string            `json:"server"`   // e.g. https://mailofagents.online
+	Address             string            `json:"address"`  // watched account address
+	Password            string            `json:"password"` // watched account password
+	CLI                 string            `json:"cli"`      // adapter id: "pi" (first), "opencode" (second batch)
+	Prompt              string            `json:"prompt"`   // short instruction prepended to the digest
+	Workdir             string            `json:"workdir"`  // binding workdir: worker cd's here before waking the CLI
+	PollIntervalSec     int               `json:"poll_interval_sec"`
+	TimeoutSec          int               `json:"timeout_sec"`             // per-wake process timeout (hard kill)
+	SessionMaxMin       int               `json:"session_max_runtime_min"` // soft cap before interruption+resume
+	DutyWindowMin       int               `json:"duty_window_min"`         // max continuous duty stretch; 0/absent = unlimited (no time-beat wakes)
+	CompactNoticeTokens int64             `json:"compact_notice_tokens"`   // context-size notice threshold: one persist-memory round, then in-place compaction (adapter entry) or the CLI's built-in auto-compact; the session is never rotated. 0/absent = built-in compaction only
+	Model               string            `json:"model"`                   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
+	Env                 map[string]string `json:"env"`                     // non-credential auxiliary env for the CLI process
+	FullPerm            *bool             `json:"full_perm"`               // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
+	StateFile           string            `json:"state_file"`              // session binding store; default = config sibling (<config>.state.json). Kept OUT of the workdir: the workdir is the agent's turf
+	Emergency           Emergency         `json:"emergency"`
 }
 
 // Emergency is the escalation channel for one watched account: alert mails
@@ -276,17 +276,17 @@ func mergeEmergency(global, override Emergency) Emergency {
 // single-account fields, and the agents list.
 type fileConfig struct {
 	// global (inherited by every agent unless overridden)
-	Server          string `json:"server"`
-	PollIntervalSec int    `json:"poll_interval_sec"`
-	TimeoutSec      int    `json:"timeout_sec"`
-	SessionMaxMin   int    `json:"session_max_runtime_min"`
-	DutyWindowMin   int    `json:"duty_window_min"`
-	CompactNoticeTokens int64 `json:"compact_notice_tokens"`
-	Model           string `json:"model"`
-	Env             map[string]string `json:"env"`
-	FullPerm        *bool  `json:"full_perm"`
-	StateFile       string `json:"state_file"`
-	Emergency       Emergency `json:"emergency"`
+	Server              string            `json:"server"`
+	PollIntervalSec     int               `json:"poll_interval_sec"`
+	TimeoutSec          int               `json:"timeout_sec"`
+	SessionMaxMin       int               `json:"session_max_runtime_min"`
+	DutyWindowMin       int               `json:"duty_window_min"`
+	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
+	Model               string            `json:"model"`
+	Env                 map[string]string `json:"env"`
+	FullPerm            *bool             `json:"full_perm"`
+	StateFile           string            `json:"state_file"`
+	Emergency           Emergency         `json:"emergency"`
 
 	// legacy flat single-account shape
 	Address  string `json:"address"`
@@ -299,37 +299,37 @@ type fileConfig struct {
 }
 
 type agentConfig struct {
-	Address        string            `json:"address"`
-	Password       string            `json:"password"`
-	CLI            string            `json:"cli"`
-	Workdir        string            `json:"workdir"`
-	Model          string            `json:"model"`
-	Env            map[string]string `json:"env"`
-	StateFile      string            `json:"state_file"`
-	Server         string            `json:"server"`
-	PollIntervalSec int              `json:"poll_interval_sec"`
-	TimeoutSec     int               `json:"timeout_sec"`
-	SessionMaxMin  int               `json:"session_max_runtime_min"`
-	DutyWindowMin  int               `json:"duty_window_min"`
-	CompactNoticeTokens int64        `json:"compact_notice_tokens"`
-	FullPerm       *bool             `json:"full_perm"`
-	Emergency      Emergency         `json:"emergency"`
+	Address             string            `json:"address"`
+	Password            string            `json:"password"`
+	CLI                 string            `json:"cli"`
+	Workdir             string            `json:"workdir"`
+	Model               string            `json:"model"`
+	Env                 map[string]string `json:"env"`
+	StateFile           string            `json:"state_file"`
+	Server              string            `json:"server"`
+	PollIntervalSec     int               `json:"poll_interval_sec"`
+	TimeoutSec          int               `json:"timeout_sec"`
+	SessionMaxMin       int               `json:"session_max_runtime_min"`
+	DutyWindowMin       int               `json:"duty_window_min"`
+	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
+	FullPerm            *bool             `json:"full_perm"`
+	Emergency           Emergency         `json:"emergency"`
 }
 
 // globalRuntime builds a runtime Config prefilled with the global fields.
 func (f *fileConfig) globalRuntime(path string) *Config {
 	c := &Config{
-		Server:          f.Server,
-		PollIntervalSec: f.PollIntervalSec,
-		TimeoutSec:      f.TimeoutSec,
-		SessionMaxMin:   f.SessionMaxMin,
-		DutyWindowMin:   f.DutyWindowMin,
+		Server:              f.Server,
+		PollIntervalSec:     f.PollIntervalSec,
+		TimeoutSec:          f.TimeoutSec,
+		SessionMaxMin:       f.SessionMaxMin,
+		DutyWindowMin:       f.DutyWindowMin,
 		CompactNoticeTokens: f.CompactNoticeTokens,
-		Model:           f.Model,
-		Env:             mergeEnv(f.Env, nil),
-		FullPerm:        f.FullPerm,
-		Emergency:       f.Emergency,
-		StateFile:       f.StateFile,
+		Model:               f.Model,
+		Env:                 mergeEnv(f.Env, nil),
+		FullPerm:            f.FullPerm,
+		Emergency:           f.Emergency,
+		StateFile:           f.StateFile,
 	}
 	// legacy flat fields double as global defaults for the single-account
 	// shape; for the list shape cli/workdir still make sense as defaults.

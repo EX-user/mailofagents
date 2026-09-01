@@ -21,25 +21,25 @@ type Duty struct {
 	adapter Adapter
 	fresh   bool // -fresh: ignore the stored session binding and clean worker artifacts
 
-	mu        sync.Mutex
-	sessionID string // current bound session ("" = start a new one next wake)
-	failStreak int
-	lastAlert  time.Time
-	lastBeat   time.Time // duty-window anchor: process start or last time-beat wake
-	startedAt  time.Time // process start, for the uptime stamp in heartbeats
-	urgentHit  atomic.Bool // set when an urgent mail interrupted the current wake
-	urgentCh   chan struct{} // capacity-1: fires an immediate re-check after an urgent interrupt
-	superiors  []string    // fallback escalation addresses: declared superiors via /api/subs (refreshed every 10 min)
-	compactPending bool    // compact notice delivered; rotate the session after this wake
+	mu             sync.Mutex
+	sessionID      string // current bound session ("" = start a new one next wake)
+	failStreak     int
+	lastAlert      time.Time
+	lastBeat       time.Time     // duty-window anchor: process start or last time-beat wake
+	startedAt      time.Time     // process start, for the uptime stamp in heartbeats
+	urgentHit      atomic.Bool   // set when an urgent mail interrupted the current wake
+	urgentCh       chan struct{} // capacity-1: fires an immediate re-check after an urgent interrupt
+	superiors      []string      // fallback escalation addresses: declared superiors via /api/subs (refreshed every 10 min)
+	compactPending bool          // notice due: next wake carries the persist-memory notice; compact in place after it
 }
 
 func NewDuty(cfg *Config, fresh bool) *Duty {
 	return &Duty{
-		cfg:       cfg,
-		mail:      NewMailClient(cfg.Server, cfg.Address, cfg.Password),
-		adapter:   pickAdapter(cfg.CLI),
-		fresh:     fresh,
-		urgentCh:  make(chan struct{}, 1),
+		cfg:      cfg,
+		mail:     NewMailClient(cfg.Server, cfg.Address, cfg.Password),
+		adapter:  pickAdapter(cfg.CLI),
+		fresh:    fresh,
+		urgentCh: make(chan struct{}, 1),
 	}
 }
 
@@ -265,7 +265,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	}
 	board.Set(tag, "waiting", fmt.Sprintf("%d unread%s", len(unread), dueMark))
 	// compact_pending forces a wake even with an empty inbox: the agent
-	// needs one round to persist its memory before the session rotates.
+	// needs one round to persist its memory before compaction happens.
 	if len(unread) == 0 && !dutyDue && !d.compactPending {
 		d.failStreak = 0
 		return
@@ -285,11 +285,11 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	}
 
 	// compact notice (bilingual, per superior ruling on memory hygiene):
-	// delivered on the round AFTER the token threshold was crossed; the
-	// session rotates when this round completes.
+	// delivered on the round AFTER the token threshold was crossed;
+	// compaction (in place or built-in) happens when this round completes.
 	var compactNotice string
 	if d.compactPending {
-		compactNotice = ("[压缩预告 / Session compaction notice] 本次唤醒结束后，会话将被压缩重开。" +
+		compactNotice = ("[压缩预告 / Session compaction notice] 本次唤醒结束后，会话将被压缩。" +
 			"The session will be compacted right after this wake. 请先把需要延续的信息" +
 			"写入并更新你的记忆文件（memory file in the workdir），再正常结束本轮。\n" +
 			"Please persist or update your memory file BEFORE finishing this wake.")
@@ -324,12 +324,15 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.noteFailure("wake: " + err.Error())
 		return
 	}
+	noticeDone := false
 	d.mu.Lock()
 	if d.compactPending {
-		// notice round done (agent persisted memory). Prefer in-place
-		// compaction when the adapter supports it (opencode summarize):
-		// same session continues with its official full-context summary.
-		// Otherwise rotate to a brand-new session (memory-file handover).
+		noticeDone = true
+		// notice round done (agent persisted memory). Compact in place when
+		// the adapter exposes an entry point (opencode summarize); otherwise
+		// just keep the session — every CLI's built-in auto-compact also
+		// summarizes in place (session id unchanged). Bare rotation is gone:
+		// discarding the whole context loses more than it buys.
 		if c, ok := d.adapter.(Compacter); ok && d.sessionID != "" {
 			d.mu.Unlock()
 			board.Set(tag, "working", "compacting session in place…")
@@ -338,26 +341,17 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			err := c.CompactSession(cctx, d.cfg, d.sessionID)
 			ccancel()
 			if err == nil {
-				d.mu.Lock()
-				d.compactPending = false
-				d.saveState()
-				d.mu.Unlock()
-				d.failStreak = 0
-				board.Set(tag, "waiting", "compacted, continuing session")
 				d.logf("compact ok: session %s continues with its summary", d.sessionID)
-				return
+			} else {
+				d.logf("compact in-place failed (%v) — built-in compaction will cover it", err)
 			}
-			d.logf("compact in-place failed (%v) — rotating to a new session instead", err)
-			board.Set(tag, "working", "rotating session…")
 			d.mu.Lock()
+		} else {
+			d.logf("compact: session kept — built-in compaction reduces it in place")
 		}
-		// rotation path: fresh session next wake; context estimate resets
-		d.logf("compact: rotating to a new session")
-		d.sessionID = ""
 		d.compactPending = false
-	} else {
-		d.sessionID = newID // resume chain: id is stable per phase 0, capture anyway
 	}
+	d.sessionID = newID // resume chain: id is stable per phase 0, capture anyway
 	d.saveState()
 	d.mu.Unlock()
 	d.failStreak = 0
@@ -365,9 +359,11 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	d.logf("wake ok: session=%s", newID)
 
 	// compact_notice_tokens: if this wake's context-size report crossed the
-	// threshold, the NEXT wake carries the compaction notice (and the one
-	// after it starts fresh). 0 = rely on the CLI's built-in compaction only.
-	if d.cfg.CompactNoticeTokens > 0 && wakeTokens >= d.cfg.CompactNoticeTokens && !d.compactPending {
+	// threshold, the NEXT wake carries the compaction notice; after that
+	// round the session is compacted in place (adapter entry point) or left
+	// to the CLI's built-in compaction — never rotated. 0 = rely on the
+	// CLI's built-in compaction only.
+	if !noticeDone && d.cfg.CompactNoticeTokens > 0 && wakeTokens >= d.cfg.CompactNoticeTokens {
 		d.compactPending = true
 		d.logf("compact: context tokens %d >= notice threshold %d — notice round next", wakeTokens, d.cfg.CompactNoticeTokens)
 	}

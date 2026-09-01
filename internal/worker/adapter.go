@@ -61,13 +61,9 @@ func pickAdapter(id string) Adapter {
 // panel's buildAgentPrompt) so the session is self-sufficient via the same
 // onboarding every registered agent receives. A resumed session gets the
 // unread snapshot ONLY — role, credentials and API knowledge are already in
-// its history. timeBeat (duty_window_min due) rides at the top so the agent
-// can run due scheduled tasks even when the inbox is empty.
-// onboarding every registered agent receives. A resumed session gets the
-// unread snapshot ONLY — role, credentials and API knowledge are already in
 // its history. timeBeat (duty_window_min due) and compactNotice
 // (compact_notice_tokens due) ride at the top so the agent can run due
-// scheduled tasks / persist memory before the session rotates.
+// scheduled tasks / persist memory before compaction happens.
 func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNotice string, stats MailStats, statsOK bool) string {
 	var b strings.Builder
 	if !resumed {
@@ -257,8 +253,9 @@ func findText(o any) string {
 // Compacter is the optional compression capability: a CLI that exposes a
 // headless summarize entry point can compact a session IN PLACE (full
 // history serialized and summarized into summary messages, same session
-// continues). Adapters without one don't implement it — the duty loop
-// falls back to session rotation for those.
+// continues). Adapters without one don't implement it — the duty loop then
+// keeps the session and leaves the reduction to the CLI's built-in
+// in-place auto-compact (all four ship one).
 type Compacter interface {
 	CompactSession(ctx context.Context, cfg *Config, sessionID string) error
 }
@@ -417,6 +414,11 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
 		return "", 0, err
 	}
+	// pi's built-in compaction trigger is window-relative (settings.json
+	// compaction.reserveTokens; contextWindow comes from model metadata) —
+	// no absolute-limit knob to pin from here, so keep compact_notice_tokens
+	// well below the model window: the notice round must land before the
+	// built-in compaction fires.
 	args := []string{"-p", "--mode", "json", "--session-dir", sessionsDir}
 	if cfg.Model != "" {
 		args = append(args, "--model", cfg.Model)
@@ -447,9 +449,11 @@ type opencodeAdapter struct{}
 func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
 	// full_perm (default on): --auto auto-approves every permission not
 	// explicitly denied (official flag; 1.18 help). No workdir files written
-	// — the workdir stays the agent's turf. No headless compact entry point
-	// exists (session subcommands are list/delete only, verified 1.18.25),
-	// so max_tokens compaction = session rotation, as implemented.
+	// — the workdir stays the agent's turf. The CLI surface has no compact
+	// subcommand (session = list/delete only, verified 1.18.25); compaction
+	// goes through the server API instead (CompactSession below: temporary
+	// serve → POST /session/:id/summarize), with the built-in overflow
+	// auto-compact as the safety net.
 	args := []string{"run", "--format", "json"}
 	if permOn(cfg) {
 		args = append(args, "--auto")
@@ -485,6 +489,24 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 type claudeAdapter struct{}
 
 func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+	// Ordering guarantee for compact_notice_tokens (no worker-invocable
+	// compaction entry here): cap the effective window above the notice
+	// value so auto-compact fires only AFTER the notice round. Undocumented
+	// but effective knob; a user-set value in cfg.Env wins — and if the user
+	// drives the percentage knob instead, don't stack a window under it.
+	if cfg.CompactNoticeTokens > 0 {
+		_, hasWindow := cfg.Env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"]
+		_, hasPct := cfg.Env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"]
+		if !hasWindow && !hasPct {
+			c2 := *cfg
+			c2.Env = make(map[string]string, len(cfg.Env)+1)
+			for k, v := range cfg.Env {
+				c2.Env[k] = v
+			}
+			c2.Env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = strconv.FormatInt(noticeHeadroom(cfg), 10)
+			cfg = &c2
+		}
+	}
 	args := []string{"-p", "--output-format", "json"}
 	// full_perm (default on): nobody is clicking approve in duty mode.
 	// --dangerously-skip-permissions is blocked when running as root —
@@ -529,6 +551,13 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	if cfg.Model != "" {
 		args = append(args, "-c", fmt.Sprintf("model=%q", cfg.Model))
 	}
+	// Ordering guarantee for compact_notice_tokens (no worker-invocable
+	// compaction entry here): pin the built-in auto-compact threshold above
+	// the notice value so the notice round always lands first. -c wins over
+	// ~/.codex/config.toml, so this stays per-invocation (no global edits).
+	if cfg.CompactNoticeTokens > 0 {
+		args = append(args, "-c", fmt.Sprintf("model_auto_compact_token_limit=%d", noticeHeadroom(cfg)))
+	}
 	// full_perm (default on): the read-only default sandbox would cripple
 	// duty work (nobody approves in exec mode either).
 	if permOn(cfg) {
@@ -554,6 +583,19 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 // nobody is clicking approve in duty mode). "full_perm": false opts out.
 func permOn(cfg *Config) bool {
 	return cfg.FullPerm != nil && *cfg.FullPerm
+}
+
+// noticeHeadroom is where CLIs without a worker-invocable compaction entry
+// should fire their built-in auto-compact: compact_notice_tokens plus 25%
+// (minimum +1), so the agent always sees the persist-memory notice round
+// before the built-in compaction reduces the context.
+func noticeHeadroom(cfg *Config) int64 {
+	n := cfg.CompactNoticeTokens
+	limit := n + n/4
+	if limit <= n {
+		limit = n + 1
+	}
+	return limit
 }
 
 // ensureWorkdirPermissions merges an "allow everything" permission block
