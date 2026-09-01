@@ -12,10 +12,12 @@ import (
 // loop and adapters see exactly this). It is produced by merging a global
 // fileConfig with one agent entry (agent wins per-field).
 //
-// Vendor credentials are NOT managed here — each CLI keeps its own native
-// config (opencode: auth.json + opencode.json; pi: ~/.pi/agent; claude:
-// login or ANTHROPIC_* env via "env"; codex: ~/.codex/config.toml). The
-// worker only pins WHICH model serves the duty via "model" when set.
+// Credentials are NOT worker's business: every CLI reads its own native
+// config (opencode: auth.json + opencode.json; pi: ~/.pi/agent/auth.json;
+// claude: login state or ANTHROPIC_* in the worker's own environment;
+// codex: ~/.codex/config.toml + auth). The worker's only model-related
+// power is the optional "model" pin. The "env" block exists for
+// non-credential auxiliary variables only.
 type Config struct {
 	Server         string `json:"server"`          // e.g. https://mailofagents.online
 	Address        string `json:"address"`         // watched account address
