@@ -51,6 +51,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // after a newer one would resurrect the dot until the next tick (the
   // reported "badge clears with a lag"). Only the latest call may write.
   let badgeSeq = 0;
+  var prevInboxUnread = 0;
   async function refreshInboxBadge() {
     if (!getSession()) { setInboxBadge(0); return; }
     // Background tabs skip the tick — the badge refreshes on visibility
@@ -60,7 +61,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     try {
       const d = await api("/api/inbox?limit=1");
       if (seq !== badgeSeq) return; // a newer refresh superseded this one
-      setInboxBadge(d.unread_count || 0);
+      var cur = d.unread_count || 0;
+      if (cur > prevInboxUnread) {
+        // New mail detected — notify manage.js incremental merger (v0.2.1).
+        document.dispatchEvent(new CustomEvent("inbox:newmail"));
+      }
+      prevInboxUnread = cur;
+      setInboxBadge(cur);
     } catch (_) { /* badge is best-effort */ }
   }
   setInterval(refreshInboxBadge, 5000);

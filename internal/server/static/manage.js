@@ -1111,6 +1111,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   // via /api/inbox (admins satisfy account auth too), which supports offset.
   const INBOX_PAGE_SIZE = 20;
   let inboxPage = 0;
+  // v0.2.1 incremental pull: anchor tracks the newest inbox item loaded into the
+  // list; only advanced after a successful merge (no-miss iron rule).
+  var inboxAnchorId = "";
+  var lastSilentFull = 0;
+  var INBOX_SILENT_FALLBACK_MS = 20 * 60 * 1000;
   // Superior 01M18D521: inbox card becomes the mail hub — mode pill
   // (receive / sent / both) + client-side search over the loaded page.
   let inboxMode = "in"; // in | sent | both
@@ -1143,6 +1148,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       // merge the two pages newest-first.
       const data = await api("/api/inbox?limit=" + INBOX_PAGE_SIZE + "&offset=" + offset);
       let msgs = data.messages || [];
+      // v0.2.1: update the incremental anchor to the newest inbox item id
+      if (msgs.length && msgs[0].id) inboxAnchorId = msgs[0].id;
       let sentTotal = 0;
       if (inboxMode !== "in") {
         try {
@@ -1741,4 +1748,60 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     var d = ev.detail || {};
     removeSub(d.address, d.role);
   });
+
+  // ---- v0.2.1 incremental pull: since_id pre-pend + no-miss iron rule ----
+  (function inboxIncremental() {
+    // Rebuild the inbox list HTML from an array of MessageSummary objects.
+    function renderItem(m) {
+      const item = document.createElement("div");
+      item.className = "mail-item" + (m.unread ? " unread" : "");
+      item.innerHTML =
+        '<div class="mail-sender">' + esc(m.from || "") + "</div>" +
+        '<div class="mail-subject">' + esc(m.subject || "") + "</div>" +
+        '<div class="mail-preview">' + esc(m.preview || "") + "</div>" +
+        '<span class="mail-time">' + fmtTime(m.received_at) + "</span>";
+      item.addEventListener("click", function () { showInboxDetail(m); });
+      return item;
+    }
+
+    document.addEventListener("inbox:newmail", async function () {
+      if (!inboxAnchorId) return; // no anchor yet — manual load is the source
+      if (inboxMode !== "in" && inboxMode !== "both") return; // only inbox modes
+      try {
+        const d = await api("/api/inbox?since_id=" + encodeURIComponent(inboxAnchorId) + "&limit=20", { keepSession: true });
+        const fresh = (d.messages || []).filter(function (m) { return m.id > inboxAnchorId; });
+        if (!fresh.length) return;
+        // No-miss iron rule: if the first returned id <= anchor, the server sent
+        // out-of-order data — discard auto-merge and fall back to a full load.
+        if (fresh[0].id <= inboxAnchorId) {
+          console.error("inbox:incremental out-of-order, falling back", fresh[0].id, "<=", inboxAnchorId);
+          silentFullLoad();
+          return;
+        }
+        const list = $("#inbox-list");
+        if (!list) return;
+        // Pre-pend newest-first (fresh is already newest-first from server).
+        var frag = document.createDocumentFragment();
+        fresh.forEach(function (m) { frag.appendChild(renderItem(m)); });
+        list.insertBefore(frag, list.firstChild);
+        // Advance anchor after successful merge.
+        inboxAnchorId = fresh[0].id;
+        // Update the inbox-status line with the new total.
+        var st = $("#inbox-status");
+        if (st) st.textContent = "+" + fresh.length + " new";
+      } catch (e) {
+        console.error("inbox:incremental error:", e.message);
+        silentFullLoad();
+      }
+    });
+
+    function silentFullLoad() {
+      var now = Date.now();
+      if (now - lastSilentFull < INBOX_SILENT_FALLBACK_MS) return; // throttled
+      lastSilentFull = now;
+      console.warn("inbox:silent full-load fallback (merge anomaly)");
+      loadInbox(0);
+    }
+  })();
+
 })();
