@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -38,9 +37,10 @@ func NewDuty(cfg *Config, fresh bool) *Duty {
 }
 
 // logf prefixes every duty log line with the account local-part so
-// parallel account loops stay distinguishable in one stream.
+// parallel account loops stay distinguishable in one stream; it routes
+// through the status board (erase → line → redraw when on a TTY).
 func (d *Duty) logf(format string, args ...any) {
-	log.Printf("["+localPart(d.cfg.Address)+"] "+format, args...)
+	board.Logf(localPart(d.cfg.Address), format, args...)
 }
 
 // statePath returns the session binding store — next to the config by
@@ -85,6 +85,8 @@ func (d *Duty) saveState() {
 
 // Run polls until ctx is cancelled (SIGTERM → graceful stop).
 func (d *Duty) Run(ctx context.Context) {
+	tag := localPart(d.cfg.Address)
+	board.AddRow(tag, time.Now())
 	// Binding workdir: create the last level on startup when missing
 	// (parent must exist — no silent mkdir -p); log-only on failure so the
 	// loop keeps polling (each wake will surface the error too).
@@ -139,6 +141,7 @@ func (d *Duty) dutyDue() bool {
 }
 
 func (d *Duty) checkOnce(ctx context.Context) {
+	tag := localPart(d.cfg.Address)
 	start := time.Now()
 	unread, err := d.mail.UnreadInbox(50)
 	if err != nil {
@@ -147,13 +150,13 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		return
 	}
 	dutyDue := d.dutyDue()
-	// Heartbeat line every round: the loop is alive, here's the queue size.
+	// Heartbeat: instead of a log line, the account's board row shows the
+	// live queue size and uptime (plain log line when the board is off).
 	dueMark := ""
 	if dutyDue {
 		dueMark = " [duty window due]"
 	}
-	d.logf("poll: %d unread (%dms) up %s%s", len(unread), time.Since(start).Milliseconds(),
-		time.Since(d.startedAt).Round(time.Second), dueMark)
+	board.Set(tag, "waiting", fmt.Sprintf("%d unread%s", len(unread), dueMark))
 	if len(unread) == 0 && !dutyDue {
 		d.failStreak = 0
 		return
@@ -163,6 +166,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	} else {
 		d.logf("wake: time beat (session %q)", d.sessionID)
 	}
+	board.Set(tag, "working", "digest sent, model is on it…")
 
 	var timeBeat string
 	if dutyDue {
@@ -179,6 +183,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		return // shutting down; do not count as failure
 	}
 	if err != nil {
+		board.Set(tag, "waiting", "last wake errored (see log)")
 		d.logf("wake error: %v", err)
 		d.noteFailure("wake: " + err.Error())
 		return
@@ -188,6 +193,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	d.saveState()
 	d.mu.Unlock()
 	d.failStreak = 0
+	board.Set(tag, "waiting", "last ok: "+truncate(newID, 24))
 	d.logf("wake ok: session=%s", newID)
 }
 

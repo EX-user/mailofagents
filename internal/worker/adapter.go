@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,13 +106,14 @@ func ensureWorkdir(path string) error {
 	return os.Mkdir(path, 0o755)
 }
 
-// lineTee tees the CLI's stdout into the worker log as one restrained
-// summary line per event, while the full stream keeps flowing into the
-// buffer for session-id extraction and error diagnostics.
+// lineTee feeds each stdout event's restrained summary into the account's
+// status-board row (one line per account, redrawn in place). When the board
+// is off (not a TTY), summaries fall back to plain log lines. The full
+// stream still accumulates in the buffer for session-id extraction and
+// error diagnostics.
 type lineTee struct {
-	tag  string
-	name string
-	buf  bytes.Buffer
+	tag string
+	buf bytes.Buffer
 }
 
 func (w *lineTee) Write(p []byte) (int, error) {
@@ -127,7 +127,7 @@ func (w *lineTee) Write(p []byte) (int, error) {
 		line := append([]byte(nil), b[:i]...)
 		w.buf.Next(i + 1)
 		if s := eventSummary(line); s != "" {
-			log.Printf("[%s][%s] %s", w.tag, w.name, s)
+			board.Set(w.tag, "", SprintDetail(s))
 		}
 	}
 	return len(p), nil
@@ -201,7 +201,7 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	var stdout, stderr bytes.Buffer
-	tee := &lineTee{tag: tag, name: name}
+	tee := &lineTee{tag: tag}
 	cmd.Stdout = io.MultiWriter(&stdout, tee)
 	cmd.Stderr = &stderr
 	if stdinPayload != "" {
@@ -268,6 +268,10 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 	// field-verified 2026-09-01) — a human using the TUI silently changes
 	// the worker's next wake. Pin cfg.Model for deterministic duty.
 	args := []string{"run", "--format", "json"}
+	// 1.18 can resolve its project from global state instead of the
+	// inherited cwd on resume paths — pass --dir explicitly on top of
+	// cmd.Dir (field report: agent saw the binary's dir as its workplace).
+	args = append(args, "--dir", cfg.Workdir)
 	if cfg.Model != "" {
 		args = append(args, "-m", cfg.Model)
 	}

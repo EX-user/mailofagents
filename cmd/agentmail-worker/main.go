@@ -37,7 +37,8 @@ func main() {
 	// One independent duty loop per account — wakes are per-account state
 	// machines (own session binding, own workdir) so they run in parallel
 	// with no shared mutable state. SIGTERM cancels the shared context and
-	// stops all of them.
+	// stops all of them. The status board redraws itself on a fast tick.
+	go worker.RenderLoop(ctx)
 	var wg sync.WaitGroup
 	for _, cfg := range cfgs {
 		wg.Add(1)
