@@ -84,7 +84,9 @@ func (b *Board) row(tag string) *statusRow {
 }
 
 // Logf prints a normal log line above the board (erase board → line →
-// redraw), then refreshes.
+// redraw), then refreshes. The explicit erase() first moves the cursor
+// above the board so the log line lands where the board stood; draw()'s
+// internal erase is then a no-op (drawn==0) and just repaints.
 func (b *Board) Logf(tag, format string, args ...any) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -114,14 +116,16 @@ func (b *Board) erase() {
 	b.drawn = 0
 }
 
-// draw paints the bottom status board, one line per account.
+// draw repaints the board in place: lift the cursor above the rows drawn
+// last time, clear down, then print one line per account. Erase+repaint is
+// one atomic op here — every caller (Logf, Set, RenderLoop) goes through
+// draw, so the board never grows a new line per tick.
 func (b *Board) draw() {
+	b.erase()
 	for _, r := range b.rows {
 		up := time.Since(r.started).Round(time.Second)
 		line := fmt.Sprintf("[%s] %-7s up %s", r.tag, r.state, up)
-		if r.state == "working" {
-			line += " | " + r.detail
-		} else {
+		if r.detail != "" {
 			line += " | " + r.detail
 		}
 		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", line)
