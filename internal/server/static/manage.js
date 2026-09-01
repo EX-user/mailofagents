@@ -739,12 +739,6 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     detail.innerHTML = inboxDetailFrame('<div class="inbox-loading">' + t("common.loading") + "</div>");
     wireMailNav(detail, item);
     revealDetailOnMobile("mail-grid", detail);
-    // Locally mark the item as read (UI feedback) immediately.
-    if (item) {
-      item.classList.remove("unread");
-      const dot = $(".unread-dot", item);
-      if (dot) dot.remove();
-    }
     try {
       // Regular accounts read their own mail via /api/message (the admin
       // endpoint would 401 and reset the session — live bug in the regular
@@ -754,6 +748,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         ? "/api/message?id=" + encodeURIComponent(id)
         : "/admin/message?id=" + encodeURIComponent(id);
       const m = await api(detailPath);
+      // Drop the unread mark only when this fetch actually cleared it on the
+      // server: /api/message marks read for the viewer, /admin/message is
+      // read-only — viewing a letter you are not a recipient of must keep
+      // its unread mark (superior 01M1DNS3W).
+      if (item && viewer && !viewer.is_admin) {
+        item.classList.remove("unread");
+        const dot = $(".unread-dot", item);
+        if (dot) dot.remove();
+      }
       detail.innerHTML = inboxDetailFrame(
         '<div class="detail-row"><b>From:</b> ' + esc(m.from) + "</div>" +
         '<div class="detail-row"><b>To:</b> ' + esc((m.to || []).join(", ")) + "</div>" +
@@ -893,11 +896,6 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     detail.innerHTML = inboxDetailFrame('<div class="inbox-loading">' + t("common.loading") + "</div>");
     wireMailNav(detail, item);
     revealDetailOnMobile("mail-grid", detail);
-    if (item) {
-      item.classList.remove("unread");
-      const dot = $(".unread-dot", item);
-      if (dot) dot.remove();
-    }
     let full = null;
     try {
       const d = await api("/api/subs/" + encodeURIComponent(subAddr) +
@@ -911,6 +909,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     const canReply = msg.from && msg.from !== subAddr;
     const viewer = getSession();
     const myAddr = ((viewer && viewer.address) || "").toLowerCase();
+    // Drop the unread mark only on a self-read: the uniform path clears the
+    // caller's own unread server-side (me==A routes to GetMessage), while a
+    // read of someone else's letter deliberately never touches their read
+    // state — keep their mark then (superior 01M1DNS3W).
+    if (item && myAddr && myAddr === String(subAddr).toLowerCase()) {
+      item.classList.remove("unread");
+      const dot = $(".unread-dot", item);
+      if (dot) dot.remove();
+    }
     const sentToMe = myAddr && String(msg.from || "").toLowerCase() === String(subAddr).toLowerCase() &&
       (msg.to || []).some(function (a) { return String(a).toLowerCase() === myAddr; });
     const atts = (msg.attachments || []);
