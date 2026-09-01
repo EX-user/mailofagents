@@ -1004,6 +1004,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     async function doSubreg(btn) {
       var ask = $("#subreg-ask-modal");
       var status = $("#subs-status");
+      // Hotfix v0.1.12.1 (Devi obs): pre-login the register call can only
+      // 401 — never walk the user into the ask modal (fake-success path).
+      if (!getSession()) { status.textContent = t("common.error", { msg: "401 Unauthorized" }); return; }
       if (!ask) {
         // Fallback (ask modal missing): legacy confirm + random.
         if (!confirm(t("subs.regConfirm"))) return;
