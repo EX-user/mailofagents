@@ -1624,13 +1624,65 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   }
 
   // ---- cross-domain event wiring (protocol surface of this module) ----
+  // ---- View re-homing (v0.2.1 item one, superior order via alice
+  // 01M1DCN7Y): away from Inbox/Mail longer than HOME_REHOME_MS re-lands
+  // the page on its home sub-view (Inbox -> 收件+List, Mail -> Browse+List)
+  // instead of restoring the last sub-view; quick in-out within the
+  // threshold restores as before. Leave stamps are written on page hide
+  // and on switching away to another tab. PC/mobile alike (it is state,
+  // not layout). ----
+  var HOME_REHOME_MS = 60 * 60 * 1000; // configurable constant, default 1h
+  function stampPageLeave(key) {
+    try { localStorage.setItem("view-leave-" + key, String(Date.now())); } catch (_) {}
+  }
+  function leftLongAgo(key) {
+    try {
+      var v = parseInt(localStorage.getItem("view-leave-" + key), 10);
+      return !!v && (Date.now() - v) > HOME_REHOME_MS;
+    } catch (_) { return false; }
+  }
+  (function wireReHomeStamps() {
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) return;
+      var ib = document.getElementById("tab-inbox");
+      var ml = document.getElementById("tab-mail");
+      if (ib && !ib.classList.contains("hidden")) stampPageLeave("inbox");
+      if (ml && !ml.classList.contains("hidden")) stampPageLeave("mail");
+    });
+    document.addEventListener("click", function (ev) {
+      var t = ev.target;
+      var b = t && t.closest ? t.closest("button.tab[data-tab]") : null;
+      if (!b) return;
+      ["inbox", "mail"].forEach(function (k) {
+        if (b.dataset.tab === k) return;
+        var el = document.getElementById("tab-" + k);
+        if (el && !el.classList.contains("hidden")) stampPageLeave(k);
+      });
+    }, true);
+  })();
   document.addEventListener("inbox:entered", function () {
   $("#inbox-search").value = "";
   inboxSearchQ = "";
+  // Re-home (v0.2.1 item one): away too long -> 收件+List.
+  if (leftLongAgo("inbox")) {
+    $$("#inbox-mode-pill [data-imode]").forEach(function (x) {
+      x.classList.toggle("on", x.dataset.imode === "in");
+    });
+    inboxMode = "in";
+    mailShowPane("inbox-grid", "list");
+  }
   loadInbox(0);
 });
 
   document.addEventListener("manage:entered", function () {
+    // Re-home (v0.2.1 item one): away too long -> Browse+List. The segment
+    // button click routes through the same path as a manual switch, so the
+    // view storage and threads flags stay consistent.
+    if (leftLongAgo("mail")) {
+      var homeBtn = document.querySelector('#mgmt-seg button[data-mview="browse"]');
+      if (homeBtn) homeBtn.click();
+      mailShowPane("mail-grid", "list");
+    }
     ensureMgmtPrefs();
     // Auto-load on tab entry (superior request): default filters = all
     // visible accounts / inbox / 100. The options fetch is async — load

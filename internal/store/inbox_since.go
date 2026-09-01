@@ -3,6 +3,8 @@ package store
 import (
 	"encoding/json"
 	"strings"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 // ReadInboxSince returns inbox messages with ID strictly greater than sinceID,
