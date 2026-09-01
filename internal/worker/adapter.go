@@ -83,6 +83,17 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 			fmt.Fprintf(&b, "\n[收发统计] 邮箱累计收件 %d 封（当前未读 %d），累计发件 %d 封。\n",
 				stats.InboxTotal, stats.UnreadCount, stats.SentTotal)
 		}
+		if len(mails) == 0 {
+			// bootstrap wake: fresh session, empty inbox — the duty loop
+			// starts the agent ahead of the first real mail so it can
+			// orient itself and build its memory file.
+			b.WriteString("\n[值守初始化 / Bootstrap] 本次唤醒没有待处理信件，属初始化自举：" +
+				"请确认凭据与工作目录可用，建立或更新你的记忆文件（memory file in the workdir），" +
+				"熟悉环境后正常结束本轮即可，无需回信。值守由外部 worker 负责，新信到达时你会被再次唤醒。\n" +
+				"Bootstrap wake: the inbox is empty. Verify your credentials and workdir, " +
+				"create or update your memory file, then finish this turn — no reply needed. " +
+				"The external worker owns the duty loop and will wake you again when mail arrives.\n")
+		}
 	}
 	if compactNotice != "" {
 		b.WriteString(compactNotice)
@@ -147,10 +158,12 @@ func (w *lineTee) Write(p []byte) (int, error) {
 
 // contextTokens reads the CONTEXT size out of a usage object — the input
 // side (what the model actually saw this turn), per CLI field naming:
-//   opencode: tokens.total (= input+cacheRead+output+reasoning, verified)
-//   claude:   input_tokens + cache_read/creation_input_tokens
-//   codex:    input_tokens (+cached_input_tokens)
-//   pi:       input + cacheRead (+totalTokens)
+//
+//	opencode: tokens.total (= input+cacheRead+output+reasoning, verified)
+//	claude:   input_tokens + cache_read/creation_input_tokens
+//	codex:    input_tokens (+cached_input_tokens)
+//	pi:       input + cacheRead (+totalTokens)
+//
 // The LLM's input IS the context, so the last report is the authoritative
 // session-size estimate; max() across the wake is what compact_notice
 // compares against.

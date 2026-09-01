@@ -264,14 +264,19 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		dueMark = " [duty window due]"
 	}
 	board.Set(tag, "waiting", fmt.Sprintf("%d unread%s", len(unread), dueMark))
-	// compact_pending forces a wake even with an empty inbox: the agent
-	// needs one round to persist its memory before compaction happens.
-	if len(unread) == 0 && !dutyDue && !d.compactPending {
+	// Empty-inbox wake suppressors, with two exceptions: compact_pending
+	// forces a round (persist memory before compaction), and an empty
+	// session id forces the bootstrap round — onboarding with no mail yet,
+	// so the agent orients itself and builds its memory file ahead of the
+	// first real mail.
+	if len(unread) == 0 && !dutyDue && !d.compactPending && d.sessionID != "" {
 		d.failStreak = 0
 		return
 	}
 	if len(unread) > 0 {
 		d.logf("wake: %d unread (session %q)", len(unread), d.sessionID)
+	} else if d.sessionID == "" {
+		d.logf("wake: bootstrap (empty inbox, fresh session)")
 	} else {
 		d.logf("wake: time beat (session %q)", d.sessionID)
 	}
