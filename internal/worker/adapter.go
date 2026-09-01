@@ -50,6 +50,15 @@ func pickAdapter(id string) Adapter {
 	}
 }
 
+// modelSelect resolves the effective model pin: vendor.model wins over the
+// top-level "model". Returns "" when neither is set (CLI default).
+func modelSelect(cfg *Config) string {
+	if cfg.Vendor != nil && cfg.Vendor.Model != "" {
+		return cfg.Vendor.Model
+	}
+	return cfg.Model
+}
+
 // Digest renders the wake payload. Superior feedback: keep the unread
 // injection light — short mechanical text, no full JSON. The fresh-session
 // wake carries the project's approved v4 post-registration prompt template
@@ -146,8 +155,18 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 		return "", err
 	}
 	args := []string{"-p", "--mode", "json", "--session-dir", sessionsDir}
-	if cfg.Model != "" {
-		args = append(args, "--model", cfg.Model)
+	if cfg.Vendor != nil {
+		if cfg.Vendor.Name != "" {
+			args = append(args, "--provider", cfg.Vendor.Name)
+		}
+		if cfg.Vendor.APIKey != "" {
+			args = append(args, "--api-key", cfg.Vendor.APIKey)
+		}
+		if cfg.Vendor.Model != "" {
+			args = append(args, "--model", cfg.Vendor.Model)
+		}
+	} else if m := modelSelect(cfg); m != "" {
+		args = append(args, "--model", m)
 	}
 	if sessionID != "" {
 		args = append(args, "--session", sessionID)
@@ -173,9 +192,16 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 type opencodeAdapter struct{}
 
 func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
+	// Vendor block (baseURL/apiKey) can only enter opencode through its
+	// provider config file — merge it once before waking.
+	if cfg.Vendor != nil && cfg.Vendor.BaseURL != "" {
+		if err := mergeOpencodeProvider(cfg); err != nil {
+			return "", fmt.Errorf("opencode vendor merge: %w", err)
+		}
+	}
 	args := []string{"run", "--format", "json"}
-	if cfg.Model != "" {
-		args = append(args, "-m", cfg.Model)
+	if m := modelSelect(cfg); m != "" {
+		args = append(args, "-m", m)
 	}
 	if sessionID != "" {
 		args = append(args, "-s", sessionID)
@@ -202,13 +228,24 @@ type claudeAdapter struct{}
 
 func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
 	args := []string{"-p", "--output-format", "json"}
-	if cfg.Model != "" {
-		args = append(args, "--model", cfg.Model)
-	}
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}
 	args = append(args, digest)
+
+	// Vendor block rides entirely in env (phase-0 verified: DeepSeek official
+	// anthropic-compatible endpoint needs exactly these three).
+	if cfg.Vendor != nil {
+		if cfg.Vendor.BaseURL != "" {
+			cfg.Env = setEnv(cfg.Env, "ANTHROPIC_BASE_URL", cfg.Vendor.BaseURL)
+		}
+		if cfg.Vendor.APIKey != "" {
+			cfg.Env = setEnv(cfg.Env, "ANTHROPIC_AUTH_TOKEN", cfg.Vendor.APIKey)
+		}
+		if cfg.Vendor.Model != "" {
+			cfg.Env = setEnv(cfg.Env, "ANTHROPIC_MODEL", cfg.Vendor.Model)
+		}
+	}
 
 	out, err := runWake(ctx, cfg, "claude", args, "")
 	if err != nil {
@@ -233,6 +270,12 @@ type codexAdapter struct{}
 
 func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
 	args := []string{"exec", "--json", "--skip-git-repo-check"}
+	// Provider plumbing (base_url/env_key/wire_api) lives in
+	// ~/.codex/config.toml — file-level, not automated; the model select is
+	// overridable per wake via -c (value parsed as TOML, hence the quotes).
+	if m := modelSelect(cfg); m != "" {
+		args = append(args, "-c", fmt.Sprintf("model=%q", m))
+	}
 	if sessionID != "" {
 		args = append(args, "resume", sessionID)
 	}
