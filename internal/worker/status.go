@@ -119,18 +119,56 @@ func (b *Board) erase() {
 // draw repaints the board in place: lift the cursor above the rows drawn
 // last time, clear down, then print one line per account. Erase+repaint is
 // one atomic op here — every caller (Logf, Set, RenderLoop) goes through
-// draw, so the board never grows a new line per tick.
+// draw, so the board never grows a new line per tick. Each row is clamped
+// to the terminal width: a row that wraps onto a second physical line
+// breaks the erase cursor arithmetic and resurrects stale rows.
 func (b *Board) draw() {
 	b.erase()
+	w := consoleWidth()
+	if w < 20 {
+		w = 80
+	}
 	for _, r := range b.rows {
 		up := time.Since(r.started).Round(time.Second)
 		line := fmt.Sprintf("[%s] %-7s up %s", r.tag, r.state, up)
 		if r.detail != "" {
 			line += " | " + r.detail
 		}
-		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", line)
+		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", clampCols(line, w))
 		b.drawn++
 	}
+}
+
+// clampCols cuts s to occupy at most w terminal columns, counting East
+// Asian wide runes as two columns.
+func clampCols(s string, w int) string {
+	used := 0
+	for i, r := range s {
+		cw := runeWidth(r)
+		if used+cw > w {
+			return s[:i]
+		}
+		used += cw
+	}
+	return s
+}
+
+// runeWidth approximates a rune's terminal column count (2 for the common
+// East Asian wide/fullwidth ranges, else 1).
+func runeWidth(r rune) int {
+	switch {
+	case r == 0x2329 || r == 0x232A,
+		r >= 0x1100 && r <= 0x115F,
+		r >= 0x2E80 && r <= 0xA4CF && r != 0x303F,
+		r >= 0xAC00 && r <= 0xD7A3,
+		r >= 0xF900 && r <= 0xFAFF,
+		r >= 0xFE30 && r <= 0xFE6F,
+		r >= 0xFF00 && r <= 0xFF60,
+		r >= 0xFFE0 && r <= 0xFFE6,
+		r >= 0x20000 && r <= 0x3FFFD:
+		return 2
+	}
+	return 1
 }
 
 // SprintDetail clamps a live summary to the restrained width.
