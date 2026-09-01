@@ -306,12 +306,22 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// volume snapshot for the fresh-session digest (two light calls; a
 	// failure just omits the stats block)
 	stats, statsErr := d.mail.Stats()
+	// The urgent watcher lives only as long as the CLI PROCESS runs and is
+	// joined right after Wake returns. Deferring the join to the function
+	// end deadlocked the duty loop until the wake timeout: the watcher
+	// exits only when wakeCtx is done, and the deferred cancel ran AFTER
+	// the join — with long timeouts the loop froze for the whole budget
+	// after every successful wake.
+	var urgentDone chan struct{}
 	if d.cfg.Emergency.UrgentPhrase != "" {
-		done := make(chan struct{})
-		go d.watchUrgent(wakeCtx, cancel, func() { close(done) })
-		defer func() { <-done }()
+		urgentDone = make(chan struct{})
+		go d.watchUrgent(wakeCtx, cancel, func() { close(urgentDone) })
 	}
 	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
+	if urgentDone != nil {
+		cancel() // wake over: the watcher exits via its wakeCtx select
+		<-urgentDone
+	}
 	if ctx.Err() != nil {
 		return // shutting down; do not count as failure
 	}

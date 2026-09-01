@@ -81,7 +81,7 @@ jobs:
           cp agentmail-server${{ matrix.ext }} agentmail-gateway${{ matrix.ext }} README.md LICENSE deploy/agentmail.toml.example dist/
           if [ "${{ matrix.goos }}" = "windows" ]; then
             cd dist && zip -r "../${name}.zip" . && cd ..
-            zip -j "../${wname}.zip" "agentmail-worker${{ matrix.ext }}"
+            zip -j "${wname}.zip" "agentmail-worker${{ matrix.ext }}"
           else
             tar czf "${name}.tar.gz" -C dist .
             tar czf "${wname}.tar.gz" "agentmail-worker${{ matrix.ext }}"
