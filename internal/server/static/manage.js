@@ -1691,19 +1691,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   loadInbox(0);
 });
 
-  document.addEventListener("manage:entered", function () {
-    // Re-home (v0.2.1 item one): away too long -> Browse+List. The segment
-    // button click routes through the same path as a manual switch, so the
-    // view storage and threads flags stay consistent.
-    if (leftLongAgo("mail")) {
-      var homeBtn = document.querySelector('#mgmt-seg button[data-mview="browse"]');
-      if (homeBtn) homeBtn.click();
-      mailShowPane("mail-grid", "list");
-    }
 // Superior 08-31: one-screen inbox on phones. The tab height = viewport
 // minus whatever sits above it (header + nav wrap per language), so it
 // is measured, not hardcoded; recomputed on resize/rotation. Desktop is
 // untouched (>800px clears the inline height).
+// (Gate fix 01M1DWBJ1-train: hoisted to module top level — the definition
+// previously sat inside the manage:entered callback, so the inbox:entered
+// call threw ReferenceError, loadInbox(0) after it never ran (empty inbox
+// on entry, since_id anchor never initialized), and the resize listeners
+// re-registered on every manage entry.)
 function fitInboxOneScreen() {
   var tab = document.getElementById("tab-inbox");
   if (!tab) return;
@@ -1757,6 +1753,15 @@ document.addEventListener("threads:entered", function () { setTimeout(fitMgmtOne
   if (ov) mo.observe(ov, { childList: true, subtree: true });
 })();
 
+document.addEventListener("manage:entered", function () {
+    // Re-home (v0.2.1 item one): away too long -> Browse+List. The segment
+    // button click routes through the same path as a manual switch, so the
+    // view storage and threads flags stay consistent.
+    if (leftLongAgo("mail")) {
+      var homeBtn = document.querySelector('#mgmt-seg button[data-mview="browse"]');
+      if (homeBtn) homeBtn.click();
+      mailShowPane("mail-grid", "list");
+    }
       ensureMgmtPrefs();
     // Auto-load on tab entry (superior request): default filters = all
     // visible accounts / inbox / 100. The options fetch is async — load
