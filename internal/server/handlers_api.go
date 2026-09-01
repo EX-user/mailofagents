@@ -309,7 +309,14 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 	who := accountFrom(r.Context())
 	limit := queryInt(r, "limit", 20)
 	offset := queryInt(r, "offset", 0)
-	msgs, err := s.store.ReadInboxPaged(who, limit, offset)
+	sinceID := strings.TrimSpace(r.URL.Query().Get("since_id"))
+	var msgs []store.MessageSummary
+	var err error
+	if sinceID != "" {
+		msgs, err = s.store.ReadInboxSince(who, sinceID, limit)
+	} else {
+		msgs, err = s.store.ReadInboxPaged(who, limit, offset)
+	}
 	if err != nil {
 		internalError(w, "read inbox: "+err.Error())
 		return
