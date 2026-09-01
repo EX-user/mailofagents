@@ -24,6 +24,7 @@ type Duty struct {
 	sessionID string // current bound session ("" = start a new one next wake)
 	failStreak int
 	lastAlert  time.Time
+	lastBeat   time.Time // duty-window anchor: process start or last time-beat wake
 }
 
 func NewDuty(cfg *Config, fresh bool) *Duty {
@@ -94,8 +95,9 @@ func (d *Duty) Run(ctx context.Context) {
 	} else {
 		d.loadState()
 	}
-	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v session=%q",
-		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.sessionID)
+	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v duty_window=%dm session=%q",
+		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.cfg.DutyWindowMin, d.sessionID)
+	d.lastBeat = time.Now()
 
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
@@ -125,6 +127,15 @@ func (d *Duty) cleanWorkdir() {
 	d.sessionID = ""
 }
 
+// dutyDue reports whether the configured max continuous duty stretch has
+// elapsed since the last time-beat (or process start). 0/absent = unlimited.
+func (d *Duty) dutyDue() bool {
+	if d.cfg.DutyWindowMin <= 0 {
+		return false
+	}
+	return time.Since(d.lastBeat) >= time.Duration(d.cfg.DutyWindowMin)*time.Minute
+}
+
 func (d *Duty) checkOnce(ctx context.Context) {
 	start := time.Now()
 	unread, err := d.mail.UnreadInbox(50)
@@ -133,18 +144,34 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.noteFailure("poll: " + err.Error())
 		return
 	}
+	dutyDue := d.dutyDue()
 	// Heartbeat line every round: the loop is alive, here's the queue size.
-	d.logf("poll: %d unread (%dms)", len(unread), time.Since(start).Milliseconds())
-	if len(unread) == 0 {
+	dueMark := ""
+	if dutyDue {
+		dueMark = " [duty window due]"
+	}
+	d.logf("poll: %d unread (%dms)%s", len(unread), time.Since(start).Milliseconds(), dueMark)
+	if len(unread) == 0 && !dutyDue {
 		d.failStreak = 0
 		return
 	}
-	d.logf("wake: %d unread (session %q)", len(unread), d.sessionID)
+	if len(unread) > 0 {
+		d.logf("wake: %d unread (session %q)", len(unread), d.sessionID)
+	} else {
+		d.logf("wake: time beat (session %q)", d.sessionID)
+	}
+
+	var timeBeat string
+	if dutyDue {
+		timeBeat = fmt.Sprintf("[报时] 值守已连续运行 %s，当前时间 %s。若你有到点的定时任务请执行；没有则本条无需回信，知悉即可。",
+			time.Since(d.lastBeat).Round(time.Second), time.Now().Format("2006-01-02 15:04:05 -0700"))
+		d.lastBeat = time.Now()
+	}
 
 	wakeCtx, cancel := context.WithTimeout(ctx, time.Duration(d.cfg.TimeoutSec)*time.Second)
 	defer cancel()
 	resumed := d.sessionID != ""
-	newID, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed))
+	newID, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat))
 	if ctx.Err() != nil {
 		return // shutting down; do not count as failure
 	}

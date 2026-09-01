@@ -57,8 +57,9 @@ func pickAdapter(id string) Adapter {
 // panel's buildAgentPrompt) so the session is self-sufficient via the same
 // onboarding every registered agent receives. A resumed session gets the
 // unread snapshot ONLY — role, credentials and API knowledge are already in
-// its history.
-func Digest(cfg *Config, mails []MailSummary, resumed bool) string {
+// its history. timeBeat (duty_window_min due) rides at the top so the agent
+// can run due scheduled tasks even when the inbox is empty.
+func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat string) string {
 	var b strings.Builder
 	if !resumed {
 		tpl := strings.NewReplacer(
@@ -71,9 +72,15 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool) string {
 			b.WriteString("\n")
 		}
 	}
-	fmt.Fprintf(&b, "收件箱当前状态：%d 未读\n", len(mails))
-	for _, m := range mails {
-		fmt.Fprintf(&b, "%s from %s: %s\n", m.Subject, m.From, m.Preview)
+	if timeBeat != "" {
+		b.WriteString(timeBeat)
+		b.WriteString("\n")
+	}
+	if len(mails) > 0 {
+		fmt.Fprintf(&b, "收件箱当前状态：%d 未读\n", len(mails))
+		for _, m := range mails {
+			fmt.Fprintf(&b, "%s from %s: %s\n", m.Subject, m.From, m.Preview)
+		}
 	}
 	if !resumed {
 		fmt.Fprintf(&b, "\n[凭据] server=%s address=%s password=%s\n", cfg.Server, cfg.Address, cfg.Password)
@@ -173,6 +180,9 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 type opencodeAdapter struct{}
 
 func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
+	// No -m: opencode falls back to the MOST RECENTLY USED model (sticky,
+	// field-verified 2026-09-01) — a human using the TUI silently changes
+	// the worker's next wake. Pin cfg.Model for deterministic duty.
 	args := []string{"run", "--format", "json"}
 	if cfg.Model != "" {
 		args = append(args, "-m", cfg.Model)

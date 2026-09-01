@@ -28,8 +28,9 @@ type Config struct {
 	PollIntervalSec int               `json:"poll_interval_sec"`
 	TimeoutSec     int               `json:"timeout_sec"` // per-wake process timeout (hard kill)
 	SessionMaxMin  int               `json:"session_max_runtime_min"` // soft cap before interruption+resume
+	DutyWindowMin  int               `json:"duty_window_min"` // max continuous duty stretch; 0/absent = unlimited (no time-beat wakes)
 	Model          string            `json:"model"`   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
-	Env            map[string]string `json:"env"`     // extra env for the CLI process (e.g. DEEPSEEK_API_KEY / ANTHROPIC_*)
+	Env            map[string]string `json:"env"`     // non-credential auxiliary env for the CLI process
 	StateFile      string            `json:"state_file"` // session binding store; default = config sibling (<config>.state.json). Kept OUT of the workdir: the workdir is the agent's turf
 	Alert          Alert             `json:"alert"`
 }
@@ -156,6 +157,9 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 			if ag.SessionMaxMin > 0 {
 				c.SessionMaxMin = ag.SessionMaxMin
 			}
+			if ag.DutyWindowMin > 0 {
+				c.DutyWindowMin = ag.DutyWindowMin
+			}
 			out = append(out, c)
 		}
 	case f.Address != "":
@@ -241,6 +245,7 @@ type fileConfig struct {
 	PollIntervalSec int    `json:"poll_interval_sec"`
 	TimeoutSec      int    `json:"timeout_sec"`
 	SessionMaxMin   int    `json:"session_max_runtime_min"`
+	DutyWindowMin   int    `json:"duty_window_min"`
 	Model           string `json:"model"`
 	Env             map[string]string `json:"env"`
 	StateFile       string `json:"state_file"`
@@ -268,6 +273,7 @@ type agentConfig struct {
 	PollIntervalSec int              `json:"poll_interval_sec"`
 	TimeoutSec     int               `json:"timeout_sec"`
 	SessionMaxMin  int               `json:"session_max_runtime_min"`
+	DutyWindowMin  int               `json:"duty_window_min"`
 	Alert          Alert             `json:"alert"`
 }
 
@@ -278,6 +284,7 @@ func (f *fileConfig) globalRuntime(path string) *Config {
 		PollIntervalSec: f.PollIntervalSec,
 		TimeoutSec:      f.TimeoutSec,
 		SessionMaxMin:   f.SessionMaxMin,
+		DutyWindowMin:   f.DutyWindowMin,
 		Model:           f.Model,
 		Env:             mergeEnv(f.Env, nil),
 		StateFile:       f.StateFile,
