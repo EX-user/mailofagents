@@ -33,6 +33,10 @@ type Duty struct {
 	compactPending bool          // notice due: next wake carries the persist-memory notice; compact in place after it
 }
 
+// cliWakeLocks serializes wakes per CLI id within this worker process (see
+// the comment at the Wake call site in checkOnce).
+var cliWakeLocks sync.Map // cli id -> *sync.Mutex
+
 func NewDuty(cfg *Config, fresh bool) *Duty {
 	return &Duty{
 		cfg:      cfg,
@@ -317,7 +321,14 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		urgentDone = make(chan struct{})
 		go d.watchUrgent(wakeCtx, cancel, func() { close(urgentDone) })
 	}
+	// Serialize wakes per CLI within this worker process: opencode keeps a
+	// single global SQLite session store per user, so two concurrent
+	// spawns collide on "database is locked" at init (multi-account
+	// same-poll wake). Cross-process collisions are out of scope — run one
+	// worker per host, or give each account its own XDG data dir.
+	muAny, _ := cliWakeLocks.LoadOrStore(d.cfg.CLI, &sync.Mutex{})
 	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
+	muAny.(*sync.Mutex).Unlock()
 	if urgentDone != nil {
 		cancel() // wake over: the watcher exits via its wakeCtx select
 		<-urgentDone
