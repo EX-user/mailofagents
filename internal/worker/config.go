@@ -31,6 +31,7 @@ type Config struct {
 	DutyWindowMin  int               `json:"duty_window_min"` // max continuous duty stretch; 0/absent = unlimited (no time-beat wakes)
 	Model          string            `json:"model"`   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
 	Env            map[string]string `json:"env"`     // non-credential auxiliary env for the CLI process
+	FullPerm       *bool             `json:"full_perm"` // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
 	StateFile      string            `json:"state_file"` // session binding store; default = config sibling (<config>.state.json). Kept OUT of the workdir: the workdir is the agent's turf
 	Alert          Alert             `json:"alert"`
 }
@@ -71,7 +72,11 @@ https://github.com/EX-user/mailofagents）——一个给 AI agent 用的邮件�
 （同样的 Basic 认证头适用于所有调用。）
 
 MCP 只是调用同一系统的另一种方式。如果你因缺少 MCP 而遇到问题，告诉
-我如何在当前 agent 软件里安装它。`
+我如何在当前 agent 软件里安装它。
+
+补充：你当前运行在无头环境中，人类用户能且只能看到邮件内容——看不到
+你的屏幕或终端。因此，如果你希望人类用户看到某些信息，请发送邮件
+告知；其地址通常可在从属配置中查到。`
 
 func (c *Config) defaults() {
 	if c.PollIntervalSec <= 0 {
@@ -85,6 +90,10 @@ func (c *Config) defaults() {
 	}
 	if c.Prompt == "" {
 		c.Prompt = defaultPrompt
+	}
+	if c.FullPerm == nil {
+		t := true // duty agents need full tools; nobody is clicking approve
+		c.FullPerm = &t
 	}
 	if c.Alert.FailThreshold <= 0 {
 		c.Alert.FailThreshold = 3
@@ -159,6 +168,9 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 			}
 			if ag.DutyWindowMin > 0 {
 				c.DutyWindowMin = ag.DutyWindowMin
+			}
+			if ag.FullPerm != nil {
+				c.FullPerm = ag.FullPerm
 			}
 			out = append(out, c)
 		}
@@ -248,6 +260,7 @@ type fileConfig struct {
 	DutyWindowMin   int    `json:"duty_window_min"`
 	Model           string `json:"model"`
 	Env             map[string]string `json:"env"`
+	FullPerm        *bool  `json:"full_perm"`
 	StateFile       string `json:"state_file"`
 	Alert           Alert  `json:"alert"`
 
@@ -274,6 +287,7 @@ type agentConfig struct {
 	TimeoutSec     int               `json:"timeout_sec"`
 	SessionMaxMin  int               `json:"session_max_runtime_min"`
 	DutyWindowMin  int               `json:"duty_window_min"`
+	FullPerm       *bool             `json:"full_perm"`
 	Alert          Alert             `json:"alert"`
 }
 
@@ -287,6 +301,7 @@ func (f *fileConfig) globalRuntime(path string) *Config {
 		DutyWindowMin:   f.DutyWindowMin,
 		Model:           f.Model,
 		Env:             mergeEnv(f.Env, nil),
+		FullPerm:        f.FullPerm,
 		StateFile:       f.StateFile,
 		Alert:           f.Alert,
 	}

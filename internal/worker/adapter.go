@@ -264,9 +264,16 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 type opencodeAdapter struct{}
 
 func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
-	// No -m: opencode falls back to the MOST RECENTLY USED model (sticky,
-	// field-verified 2026-09-01) — a human using the TUI silently changes
-	// the worker's next wake. Pin cfg.Model for deterministic duty.
+	// full_perm: write the permission block into the PROJECT-level
+	// opencode.json inside the workdir. Scope is exactly this session's
+	// project (--dir pins the project to the workdir), so the user's global
+	// opencode experience elsewhere is untouched. The agent can read this
+	// file — that is fine, it is its own project config.
+	if permOn(cfg) {
+		if err := ensureWorkdirPermissions(cfg); err != nil {
+			return "", fmt.Errorf("opencode permissions: %w", err)
+		}
+	}
 	args := []string{"run", "--format", "json"}
 	// 1.18 can resolve its project from global state instead of the
 	// inherited cwd on resume paths — pass --dir explicitly on top of
@@ -300,6 +307,12 @@ type claudeAdapter struct{}
 
 func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
 	args := []string{"-p", "--output-format", "json"}
+	// full_perm (default on): nobody is clicking approve in duty mode.
+	// --dangerously-skip-permissions is blocked when running as root —
+	// never run the worker as root anyway.
+	if permOn(cfg) {
+		args = append(args, "--dangerously-skip-permissions")
+	}
 	if cfg.Model != "" {
 		args = append(args, "--model", cfg.Model)
 	}
@@ -337,6 +350,11 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	if cfg.Model != "" {
 		args = append(args, "-c", fmt.Sprintf("model=%q", cfg.Model))
 	}
+	// full_perm (default on): the read-only default sandbox would cripple
+	// duty work (nobody approves in exec mode either).
+	if permOn(cfg) {
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	}
 	if sessionID != "" {
 		args = append(args, "resume", sessionID)
 	}
@@ -351,6 +369,42 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 		return "", fmt.Errorf("codex wake: %w", err)
 	}
 	return id, nil
+}
+
+// permOn reports whether full tool permissions are requested (default on:
+// nobody is clicking approve in duty mode). "full_perm": false opts out.
+func permOn(cfg *Config) bool {
+	return cfg.FullPerm != nil && *cfg.FullPerm
+}
+
+// ensureWorkdirPermissions merges an "allow everything" permission block
+// into the PROJECT-level opencode.json inside the workdir. Scope note
+// (field decision 2026-09-01): --dir pins the session's project to the
+// workdir, so this file is exactly what the session reads — the user's
+// global opencode experience elsewhere is untouched. Existing content is
+// preserved (generic-map merge, hand-tuned fields survive).
+func ensureWorkdirPermissions(cfg *Config) error {
+	path := filepath.Join(cfg.Workdir, "opencode.json")
+	root := map[string]any{}
+	if b, err := os.ReadFile(path); err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &root); err != nil {
+			return fmt.Errorf("parse existing %s: %w", path, err)
+		}
+	}
+	root["permission"] = map[string]any{
+		"edit":     "allow",
+		"bash":     "allow",
+		"webfetch": "allow",
+	}
+	out, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".worker-tmp"
+	if err := os.WriteFile(tmp, out, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // firstJSONField scans newline-delimited JSON events for the first object
