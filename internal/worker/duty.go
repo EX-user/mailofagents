@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,14 +27,19 @@ type Duty struct {
 	lastAlert  time.Time
 	lastBeat   time.Time // duty-window anchor: process start or last time-beat wake
 	startedAt  time.Time // process start, for the uptime stamp in heartbeats
+	urgentHit  atomic.Bool // set when an urgent mail interrupted the current wake
+	urgentCh   chan struct{} // capacity-1: fires an immediate re-check after an urgent interrupt
+	superiors  []string    // fallback escalation addresses: declared superiors via /api/subs (refreshed every 10 min)
+	compactPending bool    // compact notice delivered; rotate the session after this wake
 }
 
 func NewDuty(cfg *Config, fresh bool) *Duty {
 	return &Duty{
-		cfg:     cfg,
-		mail:    NewMailClient(cfg.Server, cfg.Address, cfg.Password),
-		adapter: pickAdapter(cfg.CLI),
-		fresh:   fresh,
+		cfg:       cfg,
+		mail:      NewMailClient(cfg.Server, cfg.Address, cfg.Password),
+		adapter:   pickAdapter(cfg.CLI),
+		fresh:     fresh,
+		urgentCh:  make(chan struct{}, 1),
 	}
 }
 
@@ -41,6 +48,34 @@ func NewDuty(cfg *Config, fresh bool) *Duty {
 // through the status board (erase → line → redraw when on a TTY).
 func (d *Duty) logf(format string, args ...any) {
 	board.Logf(localPart(d.cfg.Address), format, args...)
+}
+
+// contactAddrs resolves the escalation address set: explicit config wins;
+// otherwise the account's declared superiors (refreshed every 10 min).
+func (d *Duty) contactAddrs() []string {
+	if len(d.cfg.Emergency.Addresses) > 0 {
+		return d.cfg.Emergency.Addresses
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.superiors
+}
+
+// refreshContacts pulls the account's declared superiors once at startup
+// and then every 10 minutes — subs edges can change while on duty.
+func (d *Duty) refreshContacts(ctx context.Context) {
+	for {
+		if sups, err := d.mail.Subs(); err == nil {
+			d.mu.Lock()
+			d.superiors = sups
+			d.mu.Unlock()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(10 * time.Minute):
+		}
+	}
 }
 
 // statePath returns the session binding store — next to the config by
@@ -102,6 +137,7 @@ func (d *Duty) Run(ctx context.Context) {
 		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.cfg.DutyWindowMin, d.sessionID)
 	d.lastBeat = time.Now()
 	d.startedAt = time.Now()
+	go d.refreshContacts(ctx)
 
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
@@ -112,21 +148,42 @@ func (d *Duty) Run(ctx context.Context) {
 			d.logf("duty stop: %v", ctx.Err())
 			return
 		case <-t.C:
+		case <-d.urgentCh: // urgent interrupt landed: re-check at once
 		}
 	}
 }
 
-// cleanWorkdir implements -fresh: drop the stored session binding and the
-// worker-created artifacts (state file next to the config; pi session store
-// plus the legacy state file in the workdir) so the next wake starts a
-// brand-new session. Files the agent (or the user) created for other
-// purposes are deliberately left alone.
+func (d *Duty) urgentNow() {
+	select {
+	case d.urgentCh <- struct{}{}:
+	default:
+	}
+}
+
+// cleanWorkdir implements -fresh: drop the stored session binding AND
+// clear the workdir contents (the workdir is the agent's working area —
+// -fresh means a brand-new start, so leftover work files go too; the
+// directory itself is kept). With -switch_address only the selected
+// account's workdir is cleared; full runs clear each account's own
+// workdir. CLI-internal session stores (e.g. opencode's global
+// ~/.local/share/opencode) are not touched — clearing the binding already
+// guarantees a fresh session.
 func (d *Duty) cleanWorkdir() {
-	d.logf("fresh start: ignoring stored session, cleaning worker artifacts")
+	d.logf("fresh: dropping session binding and clearing workdir contents")
 	_ = os.Remove(d.statePath())
 	_ = os.Remove(filepath.Join(d.cfg.Workdir, ".worker-state.json")) // legacy location
-	if err := os.RemoveAll(filepath.Join(d.cfg.Workdir, ".pi-sessions")); err == nil {
-		d.logf("fresh: removed .pi-sessions")
+	entries, err := os.ReadDir(d.cfg.Workdir)
+	if err != nil {
+		d.logf("fresh: read workdir: %v", err)
+		d.sessionID = ""
+		return
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(d.cfg.Workdir, e.Name())); err != nil {
+			d.logf("fresh: remove %s: %v", e.Name(), err)
+		} else {
+			d.logf("fresh: removed %s", e.Name())
+		}
 	}
 	d.sessionID = ""
 }
@@ -138,6 +195,56 @@ func (d *Duty) dutyDue() bool {
 		return false
 	}
 	return time.Since(d.lastBeat) >= time.Duration(d.cfg.DutyWindowMin)*time.Minute
+}
+
+// urgentArrived reports whether a mail FROM alert.to whose subject/preview
+// contains the urgent phrase is sitting unread — the interrupt signal.
+func (d *Duty) urgentArrived() bool {
+	if d.cfg.Emergency.UrgentPhrase == "" {
+		return false
+	}
+	unread, err := d.mail.UnreadInbox(50)
+	if err != nil {
+		return false
+	}
+	addrs := d.contactAddrs()
+	for _, m := range unread {
+		fromMatch := false
+		for _, a := range addrs {
+			if m.From == a {
+				fromMatch = true
+				break
+			}
+		}
+		if !fromMatch {
+			continue
+		}
+		if strings.Contains(m.Subject, d.cfg.Emergency.UrgentPhrase) || strings.Contains(m.Preview, d.cfg.Emergency.UrgentPhrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// watchUrgent polls for the urgent phrase while a wake is in flight; on a
+// hit it flips the flag and cancels the wake (tree kill), so the loop can
+// immediately re-wake with the urgent mail first in the digest.
+func (d *Duty) watchUrgent(wakeCtx context.Context, cancel context.CancelFunc, done func()) {
+	defer done()
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-wakeCtx.Done():
+			return
+		case <-t.C:
+			if d.urgentArrived() {
+				d.urgentHit.Store(true)
+				cancel()
+				return
+			}
+		}
+	}
 }
 
 func (d *Duty) checkOnce(ctx context.Context) {
@@ -157,7 +264,9 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		dueMark = " [duty window due]"
 	}
 	board.Set(tag, "waiting", fmt.Sprintf("%d unread%s", len(unread), dueMark))
-	if len(unread) == 0 && !dutyDue {
+	// compact_pending forces a wake even with an empty inbox: the agent
+	// needs one round to persist its memory before the session rotates.
+	if len(unread) == 0 && !dutyDue && !d.compactPending {
 		d.failStreak = 0
 		return
 	}
@@ -175,36 +284,79 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.lastBeat = time.Now()
 	}
 
+	// compact notice (bilingual, per superior ruling on memory hygiene):
+	// delivered on the round AFTER the token threshold was crossed; the
+	// session rotates when this round completes.
+	var compactNotice string
+	if d.compactPending {
+		compactNotice = ("[压缩预告 / Session compaction notice] 本次唤醒结束后，会话将被压缩重开。" +
+			"The session will be compacted right after this wake. 请先把需要延续的信息" +
+			"写入并更新你的记忆文件（memory file in the workdir），再正常结束本轮。\n" +
+			"Please persist or update your memory file BEFORE finishing this wake.")
+	}
+
 	wakeCtx, cancel := context.WithTimeout(ctx, time.Duration(d.cfg.TimeoutSec)*time.Second)
 	defer cancel()
 	resumed := d.sessionID != ""
-	newID, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat))
+	// volume snapshot for the fresh-session digest (two light calls; a
+	// failure just omits the stats block)
+	stats, statsErr := d.mail.Stats()
+	if d.cfg.Emergency.UrgentPhrase != "" {
+		done := make(chan struct{})
+		go d.watchUrgent(wakeCtx, cancel, func() { close(done) })
+		defer func() { <-done }()
+	}
+	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
 	if ctx.Err() != nil {
 		return // shutting down; do not count as failure
 	}
 	if err != nil {
+		if d.urgentHit.Load() {
+			// urgent interrupt: kill landed; re-wake at once with the
+			// urgent mail first in the digest (newest unread)
+			d.urgentHit.Store(false)
+			d.logf("urgent interrupt: wake cancelled, re-waking with urgent mail")
+			d.urgentNow()
+			return
+		}
 		board.Set(tag, "waiting", "last wake errored (see log)")
 		d.logf("wake error: %v", err)
 		d.noteFailure("wake: " + err.Error())
 		return
 	}
 	d.mu.Lock()
-	d.sessionID = newID // resume chain: id is stable per phase 0, capture anyway
+	if d.compactPending {
+		// the notice round completed: rotate to a brand-new session
+		d.logf("compact: session rotated (context tokens peaked above compact_notice_tokens)")
+		d.sessionID = ""
+		d.compactPending = false
+	} else {
+		d.sessionID = newID // resume chain: id is stable per phase 0, capture anyway
+	}
 	d.saveState()
 	d.mu.Unlock()
 	d.failStreak = 0
 	board.Set(tag, "waiting", "last ok: "+truncate(newID, 24))
 	d.logf("wake ok: session=%s", newID)
+
+	// compact_notice_tokens: if this wake's context-size report crossed the
+	// threshold, the NEXT wake carries the compaction notice (and the one
+	// after it starts fresh). 0 = rely on the CLI's built-in compaction only.
+	if d.cfg.CompactNoticeTokens > 0 && wakeTokens >= d.cfg.CompactNoticeTokens && !d.compactPending {
+		d.compactPending = true
+		d.logf("compact: context tokens %d >= notice threshold %d — notice round next", wakeTokens, d.cfg.CompactNoticeTokens)
+	}
 }
 
 // noteFailure tracks consecutive failures and sends a throttled alert mail.
 func (d *Duty) noteFailure(what string) {
+	addrs := d.contactAddrs()
 	d.mu.Lock()
 	d.failStreak++
 	streak := d.failStreak
-	canAlert := d.cfg.Alert.To != "" &&
-		streak >= d.cfg.Alert.FailThreshold &&
-		time.Since(d.lastAlert) >= time.Duration(d.cfg.Alert.ThrottleMin)*time.Minute
+	canAlert := len(addrs) > 0 &&
+		streak >= d.cfg.Emergency.FailThreshold &&
+		time.Since(d.lastAlert) >= time.Duration(d.cfg.Emergency.ThrottleMin)*time.Minute
 	if canAlert {
 		d.lastAlert = time.Now()
 	}
@@ -213,10 +365,16 @@ func (d *Duty) noteFailure(what string) {
 	if canAlert {
 		body := fmt.Sprintf("worker 值守异常告警\n\n账户: %s\n连败: %d 次\n最近错误: %s\n时间: %s\n\n请检查 worker/CLI 环境；未读队列将在恢复后自动追平。",
 			d.cfg.Address, streak, what, time.Now().Format(time.RFC3339))
-		if err := d.mail.SendMail(d.cfg.Alert.To, "[worker] 值守连败告警", body); err != nil {
-			d.logf("alert send error: %v", err)
-		} else {
-			d.logf("alert sent to %s (streak=%d)", d.cfg.Alert.To, streak)
+		ok, fail := 0, 0
+		for _, to := range addrs {
+			if err := d.mail.SendMail(to, "[worker] 值守连败告警", body); err != nil {
+				d.logf("alert send error (%s): %v", to, err)
+				fail++
+			} else {
+				ok++
+			}
 		}
+		d.logf("alert sent to %d/%d contacts (streak=%d)", ok, len(addrs), streak)
+		_ = fail
 	}
 }

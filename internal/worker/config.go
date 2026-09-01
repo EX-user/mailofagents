@@ -29,20 +29,24 @@ type Config struct {
 	TimeoutSec     int               `json:"timeout_sec"` // per-wake process timeout (hard kill)
 	SessionMaxMin  int               `json:"session_max_runtime_min"` // soft cap before interruption+resume
 	DutyWindowMin  int               `json:"duty_window_min"` // max continuous duty stretch; 0/absent = unlimited (no time-beat wakes)
+	CompactNoticeTokens int64        `json:"compact_notice_tokens"` // context-size notice threshold; 0/absent = rely on the CLI's built-in compaction only
 	Model          string            `json:"model"`   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
 	Env            map[string]string `json:"env"`     // non-credential auxiliary env for the CLI process
 	FullPerm       *bool             `json:"full_perm"` // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
 	StateFile      string            `json:"state_file"` // session binding store; default = config sibling (<config>.state.json). Kept OUT of the workdir: the workdir is the agent's turf
-	Alert          Alert             `json:"alert"`
+	Emergency      Emergency         `json:"emergency"`
 }
 
-// Alert is the minimal alerting config: after FailThreshold consecutive
-// failed wakes, worker sends one mail to To (throttled by ThrottleMin).
-// Empty To disables alerting.
-type Alert struct {
-	To           string `json:"to"`
-	FailThreshold int   `json:"fail_threshold"`
-	ThrottleMin  int    `json:"throttle_min"`
+// Emergency is the escalation channel for one watched account: alert mails
+// go to every address, and (when the phrase is set) only mail from these
+// addresses containing the phrase can interrupt a wake. Default addresses
+// = the account's declared superiors (fetched from /api/subs at startup,
+// refreshed every 10 minutes); explicit "addresses" win.
+type Emergency struct {
+	Addresses     []string `json:"addresses"`
+	UrgentPhrase  string   `json:"urgent_phrase"`
+	FailThreshold int      `json:"fail_threshold"`
+	ThrottleMin   int      `json:"throttle_min"`
 }
 
 // defaultPrompt is the project's approved v4 post-registration prompt
@@ -74,9 +78,16 @@ https://github.com/EX-user/mailofagents）——一个给 AI agent 用的邮件�
 MCP 只是调用同一系统的另一种方式。如果你因缺少 MCP 而遇到问题，告诉
 我如何在当前 agent 软件里安装它。
 
-补充：你当前运行在无头环境中，人类用户能且只能看到邮件内容——看不到
-你的屏幕或终端。因此，如果你希望人类用户看到某些信息，请发送邮件
-告知；其地址通常可在从属配置中查到。`
+补充：你当前运行在无头环境中，后续我能且只能看到邮件内容——看不到
+你的屏幕或终端。因此，如果你希望人类用户或其他agent看到某些信息，
+都请发送邮件告知；我的地址通常可在从属配置中查到。
+
+- 在你的工作目录中及时更新记忆文件。它通常越多越好；超过5万字后可以
+  考虑开始提炼和精简。
+- 为你和其他人的联络情况单独储存记忆文件。每个人负责什么、和你的关系
+  是什么都值得记录。
+- 如果你的邮箱中已有收发邮件，请读入内容，这可能来自上一个职责相同的
+  会话。`
 
 func (c *Config) defaults() {
 	if c.PollIntervalSec <= 0 {
@@ -95,11 +106,11 @@ func (c *Config) defaults() {
 		t := true // duty agents need full tools; nobody is clicking approve
 		c.FullPerm = &t
 	}
-	if c.Alert.FailThreshold <= 0 {
-		c.Alert.FailThreshold = 3
+	if c.Emergency.FailThreshold <= 0 {
+		c.Emergency.FailThreshold = 3
 	}
-	if c.Alert.ThrottleMin <= 0 {
-		c.Alert.ThrottleMin = 30
+	if c.Emergency.ThrottleMin <= 0 {
+		c.Emergency.ThrottleMin = 30
 	}
 }
 
@@ -153,7 +164,7 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 			} else {
 				c.StateFile = filepath.Join(dir, base+"."+localPart(ag.Address)+".state.json")
 			}
-			c.Alert = mergeAlert(f.Alert, ag.Alert)
+			c.Emergency = mergeEmergency(f.Emergency, ag.Emergency)
 			if ag.Server != "" {
 				c.Server = ag.Server
 			}
@@ -168,6 +179,9 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 			}
 			if ag.DutyWindowMin > 0 {
 				c.DutyWindowMin = ag.DutyWindowMin
+			}
+			if ag.CompactNoticeTokens > 0 {
+				c.CompactNoticeTokens = ag.CompactNoticeTokens
 			}
 			if ag.FullPerm != nil {
 				c.FullPerm = ag.FullPerm
@@ -203,6 +217,12 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 		out = picked
 	}
 	for _, c := range out {
+		// urgent_phrase must be a real passphrase: >8 chars, else the
+		// interrupt feature stays disabled (typo-grade strings would fire
+		// on every mail mentioning a word).
+		if c.Emergency.UrgentPhrase != "" && len([]rune(c.Emergency.UrgentPhrase)) <= 8 {
+			return nil, fmt.Errorf("emergency.urgent_phrase must be longer than 8 characters (got %d runes)", len([]rune(c.Emergency.UrgentPhrase)))
+		}
 		c.defaults()
 	}
 	return out, nil
@@ -235,10 +255,13 @@ func mergeEnv(global, override map[string]string) map[string]string {
 	return m
 }
 
-func mergeAlert(global, override Alert) Alert {
+func mergeEmergency(global, override Emergency) Emergency {
 	out := global
-	if override.To != "" {
-		out.To = override.To
+	if len(override.Addresses) > 0 {
+		out.Addresses = override.Addresses
+	}
+	if override.UrgentPhrase != "" {
+		out.UrgentPhrase = override.UrgentPhrase
 	}
 	if override.FailThreshold > 0 {
 		out.FailThreshold = override.FailThreshold
@@ -258,11 +281,12 @@ type fileConfig struct {
 	TimeoutSec      int    `json:"timeout_sec"`
 	SessionMaxMin   int    `json:"session_max_runtime_min"`
 	DutyWindowMin   int    `json:"duty_window_min"`
+	CompactNoticeTokens int64 `json:"compact_notice_tokens"`
 	Model           string `json:"model"`
 	Env             map[string]string `json:"env"`
 	FullPerm        *bool  `json:"full_perm"`
 	StateFile       string `json:"state_file"`
-	Alert           Alert  `json:"alert"`
+	Emergency       Emergency `json:"emergency"`
 
 	// legacy flat single-account shape
 	Address  string `json:"address"`
@@ -287,8 +311,9 @@ type agentConfig struct {
 	TimeoutSec     int               `json:"timeout_sec"`
 	SessionMaxMin  int               `json:"session_max_runtime_min"`
 	DutyWindowMin  int               `json:"duty_window_min"`
+	CompactNoticeTokens int64        `json:"compact_notice_tokens"`
 	FullPerm       *bool             `json:"full_perm"`
-	Alert          Alert             `json:"alert"`
+	Emergency      Emergency         `json:"emergency"`
 }
 
 // globalRuntime builds a runtime Config prefilled with the global fields.
@@ -299,11 +324,12 @@ func (f *fileConfig) globalRuntime(path string) *Config {
 		TimeoutSec:      f.TimeoutSec,
 		SessionMaxMin:   f.SessionMaxMin,
 		DutyWindowMin:   f.DutyWindowMin,
+		CompactNoticeTokens: f.CompactNoticeTokens,
 		Model:           f.Model,
 		Env:             mergeEnv(f.Env, nil),
 		FullPerm:        f.FullPerm,
+		Emergency:       f.Emergency,
 		StateFile:       f.StateFile,
-		Alert:           f.Alert,
 	}
 	// legacy flat fields double as global defaults for the single-account
 	// shape; for the list shape cli/workdir still make sense as defaults.

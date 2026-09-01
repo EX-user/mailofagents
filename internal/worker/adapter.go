@@ -33,7 +33,7 @@ import (
 type Adapter interface {
 	// Wake runs one non-interactive session turn. sessionID=="" means new
 	// session. It returns the (possibly new) session id.
-	Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error)
+	Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error)
 }
 
 func pickAdapter(id string) Adapter {
@@ -60,18 +60,34 @@ func pickAdapter(id string) Adapter {
 // unread snapshot ONLY — role, credentials and API knowledge are already in
 // its history. timeBeat (duty_window_min due) rides at the top so the agent
 // can run due scheduled tasks even when the inbox is empty.
-func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat string) string {
+// onboarding every registered agent receives. A resumed session gets the
+// unread snapshot ONLY — role, credentials and API knowledge are already in
+// its history. timeBeat (duty_window_min due) and compactNotice
+// (compact_notice_tokens due) ride at the top so the agent can run due
+// scheduled tasks / persist memory before the session rotates.
+func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNotice string, stats MailStats, statsOK bool) string {
 	var b strings.Builder
 	if !resumed {
 		tpl := strings.NewReplacer(
 			"<address>", cfg.Address,
 			"<password>", cfg.Password,
 			"<serverURL>", cfg.Server,
+			"<workdir>", cfg.Workdir,
 		).Replace(cfg.Prompt)
 		b.WriteString(tpl)
 		if !strings.HasSuffix(tpl, "\n") {
 			b.WriteString("\n")
 		}
+		fmt.Fprintf(&b, "\n[工作目录] %s（你的项目/工区就在这里）\n", cfg.Workdir)
+		fmt.Fprintf(&b, "\n[凭据] server=%s address=%s password=%s\n", cfg.Server, cfg.Address, cfg.Password)
+		if statsOK {
+			fmt.Fprintf(&b, "\n[收发统计] 邮箱累计收件 %d 封（当前未读 %d），累计发件 %d 封。\n",
+				stats.InboxTotal, stats.UnreadCount, stats.SentTotal)
+		}
+	}
+	if compactNotice != "" {
+		b.WriteString(compactNotice)
+		b.WriteString("\n")
 	}
 	if timeBeat != "" {
 		b.WriteString(timeBeat)
@@ -82,9 +98,6 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat string) str
 		for _, m := range mails {
 			fmt.Fprintf(&b, "%s from %s: %s\n", m.Subject, m.From, m.Preview)
 		}
-	}
-	if !resumed {
-		fmt.Fprintf(&b, "\n[凭据] server=%s address=%s password=%s\n", cfg.Server, cfg.Address, cfg.Password)
 	}
 	return b.String()
 }
@@ -112,8 +125,9 @@ func ensureWorkdir(path string) error {
 // stream still accumulates in the buffer for session-id extraction and
 // error diagnostics.
 type lineTee struct {
-	tag string
-	buf bytes.Buffer
+	tag    string
+	ctxMax int64 // best context-size estimate from this wake's usage reports
+	buf    bytes.Buffer
 }
 
 func (w *lineTee) Write(p []byte) (int, error) {
@@ -126,11 +140,74 @@ func (w *lineTee) Write(p []byte) (int, error) {
 		}
 		line := append([]byte(nil), b[:i]...)
 		w.buf.Next(i + 1)
-		if s := eventSummary(line); s != "" {
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+		if trimmed[0] == '{' {
+			var ev map[string]any
+			if json.Unmarshal(trimmed, &ev) == nil {
+				if n := contextTokens(ev); n > w.ctxMax {
+					w.ctxMax = n
+				}
+			}
+		}
+		if s := eventSummary(trimmed); s != "" {
 			board.Set(w.tag, "", SprintDetail(s))
 		}
 	}
 	return len(p), nil
+}
+
+// contextTokens reads the CONTEXT size out of a usage object — the input
+// side (what the model actually saw this turn), per CLI field naming:
+//   opencode: tokens.total (= input+cacheRead+output+reasoning, verified)
+//   claude:   input_tokens + cache_read/creation_input_tokens
+//   codex:    input_tokens (+cached_input_tokens)
+//   pi:       input + cacheRead (+totalTokens)
+// The LLM's input IS the context, so the last report is the authoritative
+// session-size estimate; max() across the wake is what compact_notice
+// compares against.
+func contextTokens(o any) int64 {
+	switch v := o.(type) {
+	case map[string]any:
+		if u, ok := v["usage"].(map[string]any); ok {
+			if n := usageContext(u); n > 0 {
+				return n
+			}
+		}
+		if u, ok := v["tokens"].(map[string]any); ok {
+			if n := usageContext(u); n > 0 {
+				return n
+			}
+		}
+		for _, vv := range v {
+			if n := contextTokens(vv); n > 0 {
+				return n
+			}
+		}
+	case []any:
+		for _, x := range v {
+			if n := contextTokens(x); n > 0 {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
+func usageContext(u map[string]any) int64 {
+	num := func(k string) int64 {
+		if f, ok := u[k].(float64); ok {
+			return int64(f)
+		}
+		return 0
+	}
+	// context = input (uncached) + cache read + cache write; output and
+	// reasoning excluded (they ride into next turn's input anyway).
+	return num("input") + num("input_tokens") + num("cacheRead") +
+		num("cache_read_input_tokens") + num("cached_input_tokens") +
+		num("cacheWrite") + num("cache_creation_input_tokens")
 }
 
 // eventSummary reduces one stdout line to a restrained summary: for JSON
@@ -190,9 +267,9 @@ func findText(o any) string {
 // runWake executes one CLI wake with the common hardening (workdir cwd,
 // vendor env, tree-kill on timeout, WaitDelay) and returns stdout. tag is
 // the account label for live event lines.
-func runWake(ctx context.Context, cfg *Config, name string, args []string, stdinPayload, tag string) ([]byte, error) {
+func runWake(ctx context.Context, cfg *Config, name string, args []string, stdinPayload, tag string) ([]byte, int64, error) {
 	if err := ensureWorkdir(cfg.Workdir); err != nil {
-		return nil, fmt.Errorf("workdir: %v", err)
+		return nil, 0, fmt.Errorf("workdir: %v", err)
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = cfg.Workdir
@@ -219,10 +296,10 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 	if err := cmd.Run(); err != nil {
 		// opencode >=1.18 writes its errors to the json stdout stream, not
 		// stderr — both tails must ride along or the failure is blind.
-		return nil, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
+		return nil, tee.ctxMax, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
 			name, err, truncate(stderr.String(), 400), truncate(stdout.String(), 600))
 	}
-	return stdout.Bytes(), nil
+	return stdout.Bytes(), tee.ctxMax, nil
 }
 
 // ---- pi ----
@@ -231,10 +308,10 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 
 type piAdapter struct{}
 
-func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
+func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
 	sessionsDir := filepath.Join(cfg.Workdir, ".pi-sessions")
 	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
-		return "", err
+		return "", 0, err
 	}
 	args := []string{"-p", "--mode", "json", "--session-dir", sessionsDir}
 	if cfg.Model != "" {
@@ -245,15 +322,15 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "pi", args, digest, localPart(cfg.Address))
+	out, wakeTokens, err := runWake(ctx, cfg, "pi", args, digest, localPart(cfg.Address))
 	if err != nil {
-		return "", err
+		return "", wakeTokens, err
 	}
 	id, err := firstJSONField(out, "type", "session", "id")
 	if err != nil {
-		return "", fmt.Errorf("pi wake: %w", err)
+		return "", wakeTokens, fmt.Errorf("pi wake: %w", err)
 	}
-	return id, nil
+	return id, wakeTokens, nil
 }
 
 // ---- opencode ----
@@ -263,18 +340,16 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 
 type opencodeAdapter struct{}
 
-func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
-	// full_perm: write the permission block into the PROJECT-level
-	// opencode.json inside the workdir. Scope is exactly this session's
-	// project (--dir pins the project to the workdir), so the user's global
-	// opencode experience elsewhere is untouched. The agent can read this
-	// file — that is fine, it is its own project config.
-	if permOn(cfg) {
-		if err := ensureWorkdirPermissions(cfg); err != nil {
-			return "", fmt.Errorf("opencode permissions: %w", err)
-		}
-	}
+func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+	// full_perm (default on): --auto auto-approves every permission not
+	// explicitly denied (official flag; 1.18 help). No workdir files written
+	// — the workdir stays the agent's turf. No headless compact entry point
+	// exists (session subcommands are list/delete only, verified 1.18.25),
+	// so max_tokens compaction = session rotation, as implemented.
 	args := []string{"run", "--format", "json"}
+	if permOn(cfg) {
+		args = append(args, "--auto")
+	}
 	// 1.18 can resolve its project from global state instead of the
 	// inherited cwd on resume paths — pass --dir explicitly on top of
 	// cmd.Dir (field report: agent saw the binary's dir as its workplace).
@@ -287,15 +362,15 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "opencode", args, "", localPart(cfg.Address))
+	out, wakeTokens, err := runWake(ctx, cfg, "opencode", args, "", localPart(cfg.Address))
 	if err != nil {
-		return "", err
+		return "", wakeTokens, err
 	}
 	id, err := firstJSONField(out, "type", "", "sessionID")
 	if err != nil {
-		return "", fmt.Errorf("opencode wake: %w", err)
+		return "", wakeTokens, fmt.Errorf("opencode wake: %w", err)
 	}
-	return id, nil
+	return id, wakeTokens, nil
 }
 
 // ---- claude code ----
@@ -305,7 +380,7 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 
 type claudeAdapter struct{}
 
-func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
+func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
 	args := []string{"-p", "--output-format", "json"}
 	// full_perm (default on): nobody is clicking approve in duty mode.
 	// --dangerously-skip-permissions is blocked when running as root —
@@ -321,17 +396,17 @@ func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest st
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "claude", args, "", localPart(cfg.Address))
+	out, wakeTokens, err := runWake(ctx, cfg, "claude", args, "", localPart(cfg.Address))
 	if err != nil {
-		return "", err
+		return "", wakeTokens, err
 	}
 	var v struct {
 		SessionID string `json:"session_id"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(out), &v); err != nil || v.SessionID == "" {
-		return "", fmt.Errorf("claude wake: no session_id in output (%d bytes)", len(out))
+		return "", wakeTokens, fmt.Errorf("claude wake: no session_id in output (%d bytes)", len(out))
 	}
-	return v.SessionID, nil
+	return v.SessionID, wakeTokens, nil
 }
 
 // ---- codex-cli ----
@@ -342,7 +417,7 @@ func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest st
 
 type codexAdapter struct{}
 
-func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, error) {
+func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
 	args := []string{"exec", "--json", "--skip-git-repo-check"}
 	// Provider plumbing (base_url/env_key/wire_api) lives in
 	// ~/.codex/config.toml — file-level, not automated; the model select is
@@ -360,15 +435,15 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	}
 	args = append(args, digest)
 
-	out, err := runWake(ctx, cfg, "codex", args, "", localPart(cfg.Address))
+	out, wakeTokens, err := runWake(ctx, cfg, "codex", args, "", localPart(cfg.Address))
 	if err != nil {
-		return "", err
+		return "", wakeTokens, err
 	}
 	id, err := firstJSONField(out, "type", "thread.started", "thread_id")
 	if err != nil {
-		return "", fmt.Errorf("codex wake: %w", err)
+		return "", wakeTokens, fmt.Errorf("codex wake: %w", err)
 	}
-	return id, nil
+	return id, wakeTokens, nil
 }
 
 // permOn reports whether full tool permissions are requested (default on:

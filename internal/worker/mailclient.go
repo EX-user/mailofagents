@@ -38,6 +38,48 @@ type MailSummary struct {
 	Unread  bool   `json:"unread"`
 }
 
+// MailStats is the volume snapshot injected into the fresh-session digest:
+// totals give a freshly-bound session a sense of its own history.
+type MailStats struct {
+	InboxTotal  int64
+	UnreadCount int64
+	SentTotal   int64
+}
+
+// Stats pulls the inbox/sent volume in two light calls.
+func (m *MailClient) Stats() (MailStats, error) {
+	var s MailStats
+	var ib struct {
+		TotalCount  int64 `json:"total_count"`
+		UnreadCount int64 `json:"unread_count"`
+	}
+	if err := m.get("/api/inbox?limit=1", &ib); err != nil {
+		return s, err
+	}
+	s.InboxTotal = ib.TotalCount
+	s.UnreadCount = ib.UnreadCount
+	var st struct {
+		TotalCount int64 `json:"total_count"`
+	}
+	if err := m.get("/api/sent?limit=1", &st); err != nil {
+		return s, err
+	}
+	s.SentTotal = st.TotalCount
+	return s, nil
+}
+
+// Subs returns the account's declared superior addresses (GET /api/subs) —
+// the default escalation contacts when config does not pin them.
+func (m *MailClient) Subs() ([]string, error) {
+	var d struct {
+		Superiors []string `json:"superiors"`
+	}
+	if err := m.get("/api/subs", &d); err != nil {
+		return nil, err
+	}
+	return d.Superiors, nil
+}
+
 func (m *MailClient) get(path string, out any) error {
 	req, err := http.NewRequest(http.MethodGet, m.base+path, nil)
 	if err != nil {

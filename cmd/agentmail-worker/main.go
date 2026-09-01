@@ -6,20 +6,29 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/agentmail/agentmail/internal/worker"
 )
 
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
 func main() {
 	cfgPath := flag.String("config", "worker.json", "path to worker config JSON")
-	fresh := flag.Bool("fresh", false, "start a brand-new session: drop the stored session id and clean worker-created artifacts (.worker-state.json, .pi-sessions) in the workdir")
+	fresh := flag.Bool("fresh", false, "start a brand-new session: drop the stored session id and CLEAR the workdir contents (asks per account; see -yes)")
+	yes := flag.Bool("yes", false, "assume yes for -fresh confirmations (for scripts; required when stdin is not a terminal)")
 	agentSel := flag.String("switch_address", "", "only run the matching account (address prefix, local-part, or 1-based index); default runs all")
 	flag.Parse()
 
@@ -31,6 +40,31 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
+	// -fresh clears workdirs — destructive, so confirm per account unless
+	// -yes. Non-interactive stdin without -yes refuses to run at all.
+	freshList := make([]bool, len(cfgs))
+	for i := range cfgs {
+		freshList[i] = *fresh
+	}
+	if *fresh {
+		if !*yes && !isTerminal(os.Stdin) {
+			log.Fatalf("-fresh clears workdirs; refusing without -yes when stdin is not a terminal")
+		}
+		in := bufio.NewReader(os.Stdin)
+		for i, c := range cfgs {
+			if *yes {
+				continue
+			}
+			fmt.Printf("Clear workdir %s for %s? [y/N] ", c.Workdir, c.Address)
+			line, _ := in.ReadString('\n')
+			line = strings.TrimSpace(strings.ToLower(line))
+			if line != "y" && line != "yes" {
+				freshList[i] = false
+				fmt.Println("  kept (will resume existing session)")
+			}
+		}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -40,12 +74,12 @@ func main() {
 	// stops all of them. The status board redraws itself on a fast tick.
 	go worker.RenderLoop(ctx)
 	var wg sync.WaitGroup
-	for _, cfg := range cfgs {
+	for i, cfg := range cfgs {
 		wg.Add(1)
-		go func(c *worker.Config) {
+		go func(c *worker.Config, f bool) {
 			defer wg.Done()
-			worker.NewDuty(c, *fresh).Run(ctx)
-		}(cfg)
+			worker.NewDuty(c, f).Run(ctx)
+		}(cfg, freshList[i])
 	}
 	wg.Wait()
 }
