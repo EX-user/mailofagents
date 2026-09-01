@@ -1405,6 +1405,7 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
   padding: 0; text-align: center;
 }
 .gg-btn:hover { border-color: var(--accent, #3b82f6); }
+.gg-btn { white-space: nowrap; overflow: hidden; flex: 0 0 auto; }
 .gg-btn.off { opacity: .45; }         /* numbers hidden state */
 .gg-btn-days { font-size: 11px; font-weight: 600; }
 .mgmt-graph {
@@ -1591,7 +1592,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
    the PC breakout inline margins must never land here (they re-measure to
    shifted geometry when the view re-renders, canvas drifts off-center). */
 @media (max-width: 800px) {
-  #tf-scroll { margin-left: 0 !important; margin-right: auto; width: auto !important; max-width: none; }
+  #tf-scroll { margin-left: 0 !important; width: auto !important; max-width: none; }
 }
 #tf-bar .f-fbtn.on { border-color: var(--accent, #3b82f6); color: var(--accent); font-weight: 600; }
 #tf-bar .f-fbtn.off { opacity: .45; }
@@ -1646,11 +1647,13 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   }
 }
 
-/* Inbox mode pill (superior 01M18D521): segmented receive/sent/all control,
-   same family as the language toggle. */
-.seg-pill { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
-.seg-pill button { border: 0; background: transparent; padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text); }
-.seg-pill button.on { background: var(--accent, #3b82f6); color: #fff; }
+/* Inbox mode pill (superior 01M18D521): segmented receive/sent/all control.
+   Restyled onto the .mgmt-seg capsule grammar (superior 01M1C2C3K): padded
+   track + rounded thumb, matching Overview/Manage switches; no own margin
+   because the pill sits inline beside the search box. */
+.seg-pill { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); }
+.seg-pill button { font-size: 12px; padding: 4px 16px; border-radius: 999px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-family: inherit; line-height: 1.4; }
+.seg-pill button.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
 
 /* Expanded card (superior 0.1.7 v2, Iris d771548): selected card + click = full text with a scrollable region; click again collapses. Multiple cards may stay expanded; card keeps its 224px width. */
 .f-card.expanded { z-index: 3; }
@@ -1660,3 +1663,120 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
    select text; an expanded card opts back in so its body stays copyable. */
 .f-card.expanded { user-select: text; -webkit-user-select: text; }
 
+
+/* Superior 08-31: one-screen inbox on phones — the page itself does not
+   scroll; the active pane is the scroll container and the pager stays
+   visible at the bottom (List view). Height comes from JS (--inbox-1s)
+   because the header/nav wrap differently per language and rotation. */
+/* Superior 09-01 (01M1D393PY): one-screen Overview on phones — compact
+   groups, capped growth chart; Recent activity section removed (regular
+   accounts see no real content there). */
+@media (max-width: 800px) {
+  #tab-overview h3 { margin: 12px 0 6px; }
+  #tab-overview .stats { margin-bottom: 8px; }
+  #ovw-growth-card { margin-top: 10px !important; padding: 12px 14px; }
+  #ovw-growth-bars { height: 96px; }
+  #ovw-growth-card .bar .tip { font-size: 10px; }
+  #personal-card { margin-top: 0; }
+}
+
+/* Superior 09-01 (01M1D7QBV): Mail-manage page, mobile only — PC unchanged.
+   Title rows out (manage/overview/directory); Folder+Limit share a line and
+   Load+search the next (display:contents dissolves the two rows into one
+   column without touching the PC flat row); threads list gets a measured
+   one-screen scroll column and the forest viewport aligns to it; manage
+   overview stacks the subs table (scrolling) above the connections graph,
+   one screen total. */
+@media (max-width: 800px) {
+  /* Superior 01M1DGKQ: forest viewport full-width by CSS on phones — the PC
+     breakout inline margins must never land here (canvas drifts off-center). */
+  #tf-scroll { margin-left: 0 !important; width: auto !important; max-width: none; }
+
+  #tab-mail > h2 { display: none; }
+  #tab-overview > h2 { display: none; }
+  #ovw-directory > h2 { display: none; }
+
+  #mgmt-browse { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: center; }
+  #mgmt-browse > .row { display: contents; }
+  #mgmt-browse > .row > label:first-child { grid-column: 1 / -1; order: 1; margin-bottom: 8px; }
+  #tab-mail .m-pair-fl { order: 2; display: flex !important; gap: 8px; margin-bottom: 8px; grid-column: 1 / -1; }
+  #tab-mail .m-pair-fl > label { flex: 1 1 0; min-width: 0; }
+  /* Superior follow-up: the control itself must fill its label — the pair
+     otherwise leaves dead width on the right (reviewed on 01M1DGB5/01M1DGBM). */
+  #tab-mail .m-pair-fl > label > select,
+  #tab-mail .m-pair-fl > label > input { width: 100%; box-sizing: border-box; display: block; }
+  /* Superior 09-01 feedback: Load button = inbox-page-style round refresh
+     icon (same glyph as #btn-load-inbox), small and quiet. */
+  /* Same header-pill look for the manage Load button; grid col1 hugs the
+     36px pill so the search box takes all freed width (superior feedback). */
+  #btn-load-mail {
+    order: 3; grid-column: 1; margin-bottom: 8px;
+    width: 36px; height: 26px; min-height: 0; padding: 0; font-size: 0;
+    border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border);
+    background-repeat: no-repeat; background-position: center; background-size: 16px 16px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'/%3E%3C/svg%3E");
+  }
+  #mail-search { order: 4; grid-column: 2; width: 100%; flex: none !important; max-width: none !important; margin-bottom: 8px; }
+  #mail-search-status { order: 5; grid-column: 1 / -1; }
+  #mgmt-browse > .mail-tabs { order: 6; grid-column: 1 / -1; margin-top: 2px; }
+  #mgmt-browse > .mail-grid { order: 7; grid-column: 1 / -1; }
+
+  #mgmt-threads:not(.hidden) {
+    display: flex; flex-direction: column;
+    height: var(--th-1s, calc(100dvh - 320px));
+    min-height: 280px;
+  }
+  #mgmt-threads > .th-viewseg { flex: 0 0 auto; }
+  #mgmt-threads > #th-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  #mgmt-threads > #tf-scroll { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; }
+
+  #mgmt-overview:not(.hidden) {
+    display: flex; flex-direction: column;
+    height: var(--ovw-m-1s, calc(100dvh - 320px));
+    min-height: 280px;
+  }
+  #mgmt-overview > * { flex: 0 0 auto; }
+  #mgmt-overview > .mgmt-ovw { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: block; }
+  #mgmt-overview > .mgmt-graph-wrap { flex: 0 0 auto; height: 40%; min-height: 170px; }
+  #mgmt-overview > .mgmt-graph-wrap > .mgmt-graph { height: 100%; }
+}
+
+@media (max-width: 800px) {
+  #tab-inbox:not(.hidden) {
+    display: flex; flex-direction: column;
+    height: var(--inbox-1s, calc(100dvh - 330px));
+    min-height: 300px;
+  }
+  #tab-inbox > h2, #tab-inbox > .row { flex: 0 0 auto; }
+  #inbox-grid {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column;
+  }
+  #inbox-grid > .pane {
+    flex: 1 1 auto; min-height: 0; max-height: none;
+    overflow-y: auto;
+  }
+  #tab-inbox .inbox-pager { flex: 0 0 auto; margin-top: 10px; margin-bottom: 0; }
+}
+
+/* Superior 08-31 (inbox one-screen follow-up): compact controls on phones —
+   page title out; Load/Mark-all become icon-only buttons (Material refresh /
+   done_all double-check) sharing one row with the search box; the mode pill
+   row sits above. Desktop keeps the classic text buttons. */
+@media (max-width: 800px) {
+  #tab-inbox > h2 { display: none; }
+  /* Superior 09-01 feedback: icon buttons adopt the header prefs-pill look
+     (26px capsule, panel-2 track, muted icon) instead of solid primary. */
+  #btn-load-inbox, #btn-mark-all {
+    flex: 0 0 auto; width: 36px; height: 26px; min-height: 0; padding: 0; font-size: 0;
+    border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border);
+    background-repeat: no-repeat; background-position: center; background-size: 16px 16px;
+  }
+  #btn-load-inbox {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'/%3E%3C/svg%3E");
+  }
+  #btn-mark-all {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41 6 19l1.41-1.41L1.83 12 .41 13.41z'/%3E%3C/svg%3E");
+  }
+  #inbox-row-ctl #inbox-search { flex: 1 1 auto; min-width: 0; max-width: none; }
+}

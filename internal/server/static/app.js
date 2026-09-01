@@ -75,15 +75,16 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (document.visibilityState === "visible") refreshInboxBadge();
   });
 
-  // ---- Overview | Directory segment (v0.6.9 layout, superior-approved) ----
-  // Directory is the second in-page view of Overview; same pill pattern as
-  // the Manage tab's Messages|Overview. The prefs pill in the header opens
-  // the (now nav-less) profile panel.
+  // ---- System | Mine | Directory segment (superior order 01M1C8MAY) ----
+  // Overview page has three in-page views: System (stats/growth/recent),
+  // Mine (personal activity card), Directory (address book). Same pill
+  // pattern. The prefs pill in the header opens the profile panel.
   function setOvwView(v) {
-    var main = $("#ovw-main"), dir = $("#ovw-directory");
-    if (!main || !dir) return;
-    if (v !== "directory") v = "main";
+    var main = $("#ovw-main"), dir = $("#ovw-directory"), mine = $("#ovw-mine");
+    if (!main || !dir || !mine) return;
+    if (v !== "directory" && v !== "mine") v = "main";
     main.classList.toggle("hidden", v !== "main");
+    mine.classList.toggle("hidden", v !== "mine");
     dir.classList.toggle("hidden", v !== "directory");
     $$("#ovw-seg button").forEach(function (b) {
       b.classList.toggle("on", b.dataset.oview === v);
@@ -290,7 +291,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const recent = $("#recent-activity");
     $("#stats-system").textContent = t("common.loading");
     $("#stats-activity").textContent = "";
-    recent.textContent = t("common.loading");
+    if (recent) recent.textContent = t("common.loading");
     const s = getSession();
     // Growth enrichment runs for both roles (public endpoint).
     const growthP = api("/api/info?query=growth").catch(function () { return null; });
@@ -309,10 +310,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           '<div class="stat"><span class="num">' + esc(d.message_count) + "</span><span>" + t("lbl.messages") + "</span></div>" +
           storageCard(d.db_size_bytes);
         renderOverviewGrowth(await growthP);
-        recent.innerHTML = '<p class="muted">Sign in to an admin account to see system activity.</p>';
+        if (recent) recent.innerHTML = '<p class="muted">Sign in to an admin account to see system activity.</p>';
       } catch (e) {
         $("#stats-system").textContent = t("common.error", { msg: e.message });
-        recent.textContent = "";
+        if (recent) recent.textContent = "";
       }
       return;
     }
@@ -326,10 +327,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       renderOverviewGrowth(await growthP);
       const a = await api("/admin/audit?limit=20");
       if (!a.entries || !a.entries.length) {
-        recent.textContent = t("ovw.noActivity");
+        if (recent) recent.textContent = t("ovw.noActivity");
         return;
       }
-      recent.innerHTML = "<ul>" + a.entries.map(function (e) {
+      if (recent) recent.innerHTML = "<ul>" + a.entries.map(function (e) {
         return "<li><b>" + esc(e.action) + "</b> · " + esc(e.account || "—") +
           " · <small>" + fmtTime(e.timestamp) + "</small>" +
           (e.detail ? " — " + esc(e.detail) : "") + "</li>";

@@ -264,6 +264,8 @@
       "reg.namePh": "yourname",
       // ---- overview (phase 2) ----
       "ovw.system": "System",
+      "ovw.tabSystem": "System",
+      "ovw.tabMine": "Mine",
       "ovw.activity": "Activity",
       "ovw.my": "My activity",
       "ovw.mySub": "your personal mail stats",
@@ -744,6 +746,8 @@
       "reg.namePh": "你的用户名",
       // ---- overview (phase 2) ----
       "ovw.system": "系统",
+      "ovw.tabSystem": "系统",
+      "ovw.tabMine": "我的",
       "ovw.activity": "活跃",
       "ovw.my": "我的动态",
       "ovw.mySub": "你的个人邮件统计",

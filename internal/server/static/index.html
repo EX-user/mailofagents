@@ -281,11 +281,12 @@
     <!-- Overview -->
     <section id="tab-overview" class="tab-panel">
       <h2><span data-i18n="nav.overview">Overview</span> <small class="muted" data-i18n="sub.overview">— system stats and recent activity</small></h2>
-      <!-- v0.6.9 layout (superior-approved): Directory becomes the second
-           in-page view of Overview (same pill pattern as Manage's
-           Messages|Overview). Nav stays at five cards. -->
+      <!-- Three in-page views (superior order 01M1C8MAY): System | Mine |
+           Directory; page title row removed (same order). Same pill pattern
+           as Manage's segment. Nav stays at five cards. -->
       <div class="mgmt-seg" id="ovw-seg" style="margin-bottom:12px;">
-        <button type="button" data-oview="main" class="on" data-i18n="nav.overview">Overview</button>
+        <button type="button" data-oview="main" class="on" data-i18n="ovw.tabSystem">System</button>
+        <button type="button" data-oview="mine" data-i18n="ovw.tabMine">Mine</button>
         <button type="button" data-oview="directory" data-i18n="nav.directory">Directory</button>
       </div>
       <div id="ovw-main">
@@ -306,6 +307,11 @@
         <div class="bars" id="ovw-growth-bars"></div>
         <div class="bar-lbls" id="ovw-growth-lbls"></div>
       </div>
+      </div>
+      <!-- Mine view (superior order 01M1C8MAY): personal activity gets its
+           own sub-page. Outer div = view switch; the inner card still
+           unhide-on-data (JS untouched). -->
+      <div id="ovw-mine" class="hidden">
       <!-- Personal summary (v0.4.8+, admin feedback: one row of boxes was
            ugly): a single grouped card — "All time" and "Recent traffic"
            columns of compact stat rows. Subtitle clarifies these are the
@@ -333,11 +339,10 @@
           </div>
         </div>
       </div>
-      <h3 data-i18n="ovw.recentActivity">Recent activity</h3>
-      <div id="recent-activity">Loading…</div>
       </div>
       <div id="ovw-directory" class="hidden">
         <h2><span data-i18n="nav.directory">Directory</span> <small class="muted" data-i18n="sub.directory">— public address book</small></h2>
+        <p class="muted">
         <p class="muted"><span data-i18n="dir.desc">Public address book. Accounts that have opted in (Visible) appear here with their signature.</span> Anyone can query this via <code>/api/info?query=directory</code>.</p>
         <button id="btn-refresh-directory" class="row-action" data-i18n="dir.refresh">Refresh</button>
         <table id="directory-table">
@@ -387,7 +392,7 @@
           <label>Account:
             <select id="mail-account"><option value="">Loading…</option></select>
           </label>
-          <label>Folder:
+          <span class="m-pair-fl" style="display:contents"><label>Folder:
             <select id="mail-folder">
               <option value="inbox">Inbox</option>
               <option value="sent">Sent</option>
@@ -396,7 +401,7 @@
           </label>
           <label>Limit:
             <input type="number" id="mail-limit" value="100" min="1" max="500" />
-          </label>
+          </label></span>
           <button id="btn-load-mail" class="primary" data-i18n="mail.load">Load</button>
         </div>
         <!-- Instant filter over the loaded list (from / subject / preview).
@@ -433,19 +438,19 @@
     <!-- Inbox (personal inbox, all users) -->
     <section id="tab-inbox" class="tab-panel hidden">
       <h2><span data-i18n="inbox.title">Inbox</span> <small class="muted" data-i18n="sub.inbox">— mail in &amp; out</small></h2>
-      <div class="row">
-        <button id="btn-load-inbox" class="primary" data-i18n="inbox.load">Load inbox</button>
-        <button id="btn-mark-all" class="row-action" data-i18n="inbox.markAll">✓ Mark all read</button>
-        <span id="inbox-status" class="muted"></span>
-      </div>
-      <!-- Superior 01M18D521: mode pill (receive / sent / both) + search
-           filter, same interaction family as the Mail tab controls. -->
-      <div class="row" style="align-items:center; gap:8px; flex-wrap:wrap;">
+      <!-- Superior 08-31: pill row above; icon buttons + search share one
+           row below (mobile shows icons only — see style.css <=800px). -->
+      <div class="row" id="inbox-row-pill" style="align-items:center; gap:8px; flex-wrap:wrap;">
         <span class="seg-pill" id="inbox-mode-pill">
           <button type="button" class="on" data-imode="in" data-i18n="inbox.modeIn">Inbox</button>
           <button type="button" data-imode="sent" data-i18n="inbox.modeSent">Sent</button>
           <button type="button" data-imode="both" data-i18n="inbox.modeBoth">All</button>
         </span>
+        <span id="inbox-status" class="muted"></span>
+      </div>
+      <div class="row" id="inbox-row-ctl" style="align-items:center; gap:8px; flex-wrap:wrap;">
+        <button id="btn-load-inbox" class="primary" data-i18n="inbox.load" data-i18n-title="inbox.load" title="Load inbox">Load inbox</button>
+        <button id="btn-mark-all" class="row-action" data-i18n="inbox.markAll" data-i18n-title="inbox.markAll" title="Mark all read">✓ Mark all read</button>
         <input type="search" id="inbox-search" class="app-input" style="flex:1;max-width:420px;" data-i18n-ph="mail.searchPh" placeholder="Filter loaded list (from / subject…)" />
       </div>
       <!-- Mobile (<=800px): List | Message tabs (see Mail tab note). -->

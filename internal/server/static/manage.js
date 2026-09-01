@@ -1207,6 +1207,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         list.appendChild(item);
       });
       updateInboxPager(totalPages, inboxPage + 1);
+      fitInboxOneScreen();
       status.textContent = t("inbox.pageStat", { n: msgs.length, m: total }) +
         (unreadCount ? " · " + t("inbox.unreadCnt", { u: unreadCount }) : "");
       // Direct write with sequencing: supersede any in-flight poll so a
@@ -1336,6 +1337,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         list.appendChild(item);
       });
       updateInboxPager(totalPages, inboxPage + 1);
+      fitInboxOneScreen();
       status.textContent = t("mail.ftHits", { n: total });
     } catch (e) {
       // Endpoint missing or failing (legacy backends answer 404 with a
@@ -1685,6 +1687,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     inboxMode = "in";
     mailShowPane("inbox-grid", "list");
   }
+  fitInboxOneScreen();
   loadInbox(0);
 });
 
@@ -1697,7 +1700,64 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       if (homeBtn) homeBtn.click();
       mailShowPane("mail-grid", "list");
     }
-    ensureMgmtPrefs();
+// Superior 08-31: one-screen inbox on phones. The tab height = viewport
+// minus whatever sits above it (header + nav wrap per language), so it
+// is measured, not hardcoded; recomputed on resize/rotation. Desktop is
+// untouched (>800px clears the inline height).
+function fitInboxOneScreen() {
+  var tab = document.getElementById("tab-inbox");
+  if (!tab) return;
+  if (window.innerWidth > 800 || tab.classList.contains("hidden")) { tab.style.height = ""; return; }
+  var top = tab.getBoundingClientRect().top;
+  var h = window.innerHeight - Math.max(top, 0) - 10;
+  if (h < 300) h = 300;
+  tab.style.setProperty("--inbox-1s", h + "px");
+  // 精调：容器尾部内边距等造成的页面溢出量直接扣除（一屏=零页面滚动）
+  var over = document.documentElement.scrollHeight - window.innerHeight;
+  if (over > 0) {
+    h = Math.max(h - over, 300);
+    tab.style.setProperty("--inbox-1s", h + "px");
+  }
+}
+window.addEventListener("resize", fitInboxOneScreen);
+
+// Superior 09-01 (01M1D7QBV): one-screen Mail-manage on phones — threads
+// list scrolls inside a measured column, forest viewport aligns to it,
+// overview stacks subs rows (scrolling) above the connections graph.
+// Measured like fitInboxOneScreen; PC (>800px) untouched.
+function fitMgmtOneScreen() {
+  var th = document.getElementById("mgmt-threads");
+  var ov = document.getElementById("mgmt-overview");
+  if (window.innerWidth > 800) {
+    if (th) th.style.removeProperty("--th-1s");
+    if (ov) ov.style.removeProperty("--ovw-m-1s");
+    return;
+  }
+  function fitBox(el, prop, min) {
+    var top = el.getBoundingClientRect().top;
+    var h = window.innerHeight - Math.max(top, 0) - 10;
+    if (h < min) h = min;
+    el.style.setProperty(prop, h + "px");
+    var over = document.documentElement.scrollHeight - window.innerHeight;
+    if (over > 0) el.style.setProperty(prop, Math.max(h - over, min) + "px");
+  }
+  if (th && !th.classList.contains("hidden")) fitBox(th, "--th-1s", 280);
+  if (ov && !ov.classList.contains("hidden")) fitBox(ov, "--ovw-m-1s", 280);
+}
+window.addEventListener("resize", fitMgmtOneScreen);
+document.addEventListener("threads:entered", function () { setTimeout(fitMgmtOneScreen, 250); });
+(function () {
+  var seg = document.getElementById("mgmt-seg");
+  if (seg) seg.addEventListener("click", function () { setTimeout(fitMgmtOneScreen, 250); });
+  if (!window.MutationObserver) return;
+  var mo = new MutationObserver(function () { setTimeout(fitMgmtOneScreen, 80); });
+  var th = document.getElementById("th-list");
+  var ov = document.getElementById("mgmt-overview");
+  if (th) mo.observe(th, { childList: true, subtree: true });
+  if (ov) mo.observe(ov, { childList: true, subtree: true });
+})();
+
+      ensureMgmtPrefs();
     // Auto-load on tab entry (superior request): default filters = all
     // visible accounts / inbox / 100. The options fetch is async — load
     // AFTER it resolves, otherwise the select is still empty and the list
