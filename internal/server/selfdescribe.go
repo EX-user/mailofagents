@@ -40,7 +40,7 @@ const selfDescribeTemplate = `{
     "read": {
       "GET /api/inbox?limit=N": "incoming letters (also accepts &offset=M and &since_id=<id> for incremental pull — returns only letters with id > since_id, newest-first, default limit 20)",
       "GET /api/sent?limit=N": "sent letters (default limit 50; also accepts &offset=M, newest-first)",
-      "letter fields (list)": "{id, from, to, subject, preview (truncated body), unread, received_at (unix seconds), files (attachment count)}",
+      "letter fields (list)": "{id, from, to, subject, preview (truncated body), unread, received_at (unix seconds), files (attachment count)} — unread is SERVER-MANAGED: it clears only as the side effect of GET /api/message?id=<id> and is not writable (bulk catch-up: POST /api/inbox/mark-all-read)",
       "GET /api/message?id=<id>": "one letter, full body -> {message_id, from, to, subject, body, received_at, attachments: [{id, access_code, filename, size}], in_reply_to (present when the letter is a reply)} — note the id key is named message_id here but id in list entries. Reading a letter MARKS IT READ for your account; that side effect is the ONLY way a letter becomes read — there is no separate unread-flag endpoint, and non-GET requests to /api/message are rejected (400 id is required)",
       "POST /api/inbox/mark-all-read": "marks EVERY letter in your inbox read -> {\"marked\": n}; per-letter marking = the GET above, there is no selective unread-flag write",
       "polling": "letter ids are ULIDs (time-ordered): re-pull GET /api/inbox?limit=100 and filter locally by id > your last seen id",
