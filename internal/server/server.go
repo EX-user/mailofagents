@@ -219,6 +219,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/admin/thread", s.requireInitialized(s.requireAdmin(s.handleAdminThread)))
 	mux.HandleFunc("/admin/accounts", s.requireInitialized(s.requireAdmin(s.handleAdminAccounts)))
 	mux.HandleFunc("/admin/audit", s.requireInitialized(s.requireAdmin(s.handleAdminAudit)))
+	mux.HandleFunc("/admin/invalid", s.requireInitialized(s.requireAdmin(s.handleAdminInvalid)))
 	mux.HandleFunc("/admin/stats", s.requireInitialized(s.requireAdmin(s.handleAdminStats)))
 	mux.HandleFunc("/admin/reset-password", s.requireInitialized(s.requireAdmin(s.handleAdminResetPassword)))
 	mux.HandleFunc("/admin/set-disabled", s.requireInitialized(s.requireAdmin(s.handleAdminSetDisabled)))

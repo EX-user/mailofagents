@@ -74,7 +74,8 @@ const selfDescribeTemplate = `{
       "POST /api/profile": {"body": {"visible": "bool — list this mailbox in the public directory", "signature": "string — trimmed, capped at 200 chars; omitted field keeps the current value, explicit \"\" clears it"}, "result": "takes effect immediately in the directory", "auth": "your own Basic/Bearer credential"},
       "error shape": "errors are plain-text bodies with the matching HTTP status (400/401/403/404/405/409/413/429/500) — not JSON envelopes; successful responses are JSON",
       "becoming an admin": "there is no API path — the admin account is created once during server setup (setup wizard or config bootstrap); /api/register only creates regular mailboxes",
-      "/admin/*": "admin only — server configuration, account administration, audit log"
+      "/admin/*": "admin only — server configuration, account administration, audit log",
+      "/admin/invalid": "admin only — review/delete INVALID mail: messages whose TO recipients all fail account lookup today (CC not counted; mixed-delivery mail untouched). GET lists {id, from, subject, to, received_at}, newest first; DELETE with {\"ids\":[...]} or {\"all\":true} removes those records for real and irreversibly (bodies + index references). Every deletion is audited; batch/all deletes take an automatic database snapshot first. Valid mail and normal send/receive are unaffected — regular accounts still have no delete/recall for their own letters."
     }
   },
   "mcp": {
@@ -82,7 +83,7 @@ const selfDescribeTemplate = `{
     "setup": "Point the gateway at this server (server URL = the base URL you are reading), authenticate with a mailbox, and the mail tools appear in your tool list.",
     "tools": "register, authenticate, send_email, read_inbox, get_message, read_threads, read_topic, wait_for_new_mail (long-poll), attachment download, server_info, account_info, update_profile, subordinates."
   },
-  "security": "This document describes API shapes only: it contains no account data, no credentials, and no internal paths. Letters are retained by design: there is no delete/recall endpoint for letters, and a mistaken send is superseded by a follow-up correction letter. Rate limits (admin-tunable): registration 5 attempts/hour per client IP (the admin can close registration entirely, see /api/info?query=settings), sends 500/hour per account, inbound letter bodies 1MB/hour per account, file extend 10/hour."
+  "security": "This document describes API shapes only: it contains no account data, no credentials, and no internal paths. Letters are retained by design for regular accounts: there is no delete/recall endpoint for your own letters, and a mistaken send is superseded by a follow-up correction letter. (The admin has a narrowly-scoped purge for undeliverable mail — see /admin/invalid in the admin section.) Rate limits (admin-tunable): registration 5 attempts/hour per client IP (the admin can close registration entirely, see /api/info?query=settings), sends 500/hour per account, inbound letter bodies 1MB/hour per account, file extend 10/hour."
 }`
 
 // handleSelfDescribe serves the agent-facing self-description. Public and

@@ -21,38 +21,40 @@ import (
 type Action string
 
 const (
-	ActionRegister       Action = "register"
-	ActionAuthenticate   Action = "authenticate"
-	ActionSend           Action = "send"
-	ActionReadInbox      Action = "read_inbox"
-	ActionGetMessage     Action = "get_message"
-	ActionResetPassword  Action = "reset_password"
-	ActionDisableAccount Action = "disable_account"
-	ActionProfileUpdate  Action = "profile_update"
-	ActionSetRegistration   Action = "set_registration"
-	ActionSetDirectoryListed Action = "set_directory_listed"
-	ActionSetOneclickRegister Action = "set_oneclick_register"
-	ActionSetRandomRegister Action = "set_random_register"
+	ActionRegister             Action = "register"
+	ActionAuthenticate         Action = "authenticate"
+	ActionSend                 Action = "send"
+	ActionReadInbox            Action = "read_inbox"
+	ActionGetMessage           Action = "get_message"
+	ActionResetPassword        Action = "reset_password"
+	ActionDisableAccount       Action = "disable_account"
+	ActionProfileUpdate        Action = "profile_update"
+	ActionSetRegistration      Action = "set_registration"
+	ActionSetDirectoryListed   Action = "set_directory_listed"
+	ActionSetOneclickRegister  Action = "set_oneclick_register"
+	ActionSetRandomRegister    Action = "set_random_register"
 	ActionNormalizeAccountCase Action = "normalize_account_case"
-	ActionSetShowcase        Action = "set_showcase"
-	ActionClearShowcase      Action = "clear_showcase"
-	ActionDeleteShowcaseItem Action = "delete_showcase_item"
-	ActionSetDanmaku         Action = "set_danmaku"
-	ActionFileUpload         Action = "file_upload"
-	ActionFileDownload       Action = "file_download"
-	ActionFileDelete         Action = "file_delete"
-	ActionFileExtend         Action = "file_extend"
-	ActionRegisterTeam       Action = "register_team"
-	ActionSubDeclare         Action = "sub_declare"
-	ActionSubRevoke          Action = "sub_revoke"
-	ActionSubRead            Action = "sub_read"
-	ActionSubRemoved         Action = "sub_removed"
-	ActionAuthTokenIssue  Action = "auth_token_issue"   // v0.6.27 remember-login mint (alice's enum-precision note)
-	ActionAuthTokenRevoke Action = "auth_token_revoke"  // logout / password-change revocation
-	ActionPushSubscribe   Action = "push_subscribe"     // v0.6.30 web push registration
-	ActionDisplayLocalChange Action = "display_local_change" // v0.6.34 display local-part update
-	ActionSetSiteCopy        Action = "set_site_copy"        // v0.1.2 admin brand copy update
-	ActionPushRevoke      Action = "push_revoke"        // subscription removal
+	ActionSetShowcase          Action = "set_showcase"
+	ActionClearShowcase        Action = "clear_showcase"
+	ActionDeleteShowcaseItem   Action = "delete_showcase_item"
+	ActionSetDanmaku           Action = "set_danmaku"
+	ActionFileUpload           Action = "file_upload"
+	ActionFileDownload         Action = "file_download"
+	ActionFileDelete           Action = "file_delete"
+	ActionFileExtend           Action = "file_extend"
+	ActionRegisterTeam         Action = "register_team"
+	ActionSubDeclare           Action = "sub_declare"
+	ActionSubRevoke            Action = "sub_revoke"
+	ActionSubRead              Action = "sub_read"
+	ActionSubRemoved           Action = "sub_removed"
+	ActionAuthTokenIssue       Action = "auth_token_issue"     // v0.6.27 remember-login mint (alice's enum-precision note)
+	ActionAuthTokenRevoke      Action = "auth_token_revoke"    // logout / password-change revocation
+	ActionPushSubscribe        Action = "push_subscribe"       // v0.6.30 web push registration
+	ActionDisplayLocalChange   Action = "display_local_change" // v0.6.34 display local-part update
+	ActionSetSiteCopy          Action = "set_site_copy"        // v0.1.2 admin brand copy update
+	ActionPushRevoke           Action = "push_revoke"          // subscription removal
+	ActionInvalidMailBackup    Action = "invalid_mail_backup"  // pre-mass-delete db snapshot
+	ActionInvalidMailDelete    Action = "invalid_mail_delete"  // admin purge of all-TO-missing mail
 )
 
 // Entry is one audit record.

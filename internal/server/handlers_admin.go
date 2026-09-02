@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/agentmail/agentmail/internal/audit"
@@ -831,4 +832,72 @@ func (s *Server) handleAdminSetLimits(w http.ResponseWriter, r *http.Request) {
 		"files_total_limit":   s.store.GetFilesTotalLimit(),
 		"file_quota_per_acct": s.store.GetFileQuotaPerAcct(),
 	})
+}
+
+// handleAdminInvalid lists or purges INVALID mail: messages whose TO
+// recipients ALL fail account lookup at evaluation time. CC recipients are
+// not counted, and a message with at least one live TO recipient (mixed
+// delivery) is neither listed nor deletable. Deletion is REAL — the body
+// record plus every inbox/unread/sent reference — irreversible, audited,
+// and preceded by an automatic database snapshot whenever more than one
+// record (or all) is removed.
+//
+//	GET    /admin/invalid
+//	  -> [{"id","from","subject","to","received_at"}...]  (newest first)
+//	DELETE /admin/invalid  {"ids": ["<ulid>", ...]}  |  {"all": true}
+//	  -> {"deleted": n}
+//
+// The removal only ever touches messages that re-qualify as invalid inside
+// the delete transaction; valid mail and normal send/receive flows are
+// unaffected.
+func (s *Server) handleAdminInvalid(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		list, err := s.store.ListInvalidMail()
+		if err != nil {
+			internalError(w, "invalid mail scan: "+err.Error())
+			return
+		}
+		if list == nil {
+			list = []store.InvalidMail{}
+		}
+		writeJSON(w, http.StatusOK, list)
+
+	case http.MethodDelete:
+		var body struct {
+			IDs []string `json:"ids"`
+			All bool     `json:"all"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			badRequest(w, "invalid body: "+err.Error())
+			return
+		}
+		if !body.All && len(body.IDs) == 0 {
+			badRequest(w, "ids or all is required")
+			return
+		}
+		// Strict-mode safety gate: before a mass removal, snapshot the
+		// database (consistent read-tx write, safe under live traffic) and
+		// audit the snapshot itself.
+		if body.All || len(body.IDs) > 1 {
+			snapshot, err := s.store.BackupTimestamped()
+			if err != nil {
+				internalError(w, "pre-delete backup: "+err.Error())
+				return
+			}
+			_ = s.audit.Record(r.Context(), audit.ActionInvalidMailBackup,
+				"admin", "snapshot="+filepath.Base(snapshot))
+		}
+		n, err := s.store.DeleteInvalidMail(body.IDs, body.All)
+		if err != nil {
+			internalError(w, "invalid mail delete: "+err.Error())
+			return
+		}
+		detail := fmt.Sprintf("all=%v requested=%d deleted=%d", body.All, len(body.IDs), n)
+		_ = s.audit.Record(r.Context(), audit.ActionInvalidMailDelete, "admin", detail)
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": n})
+
+	default:
+		methodNotAllowed(w)
+	}
 }
