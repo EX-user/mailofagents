@@ -31,6 +31,8 @@ type Duty struct {
 	urgentCh       chan struct{} // capacity-1: fires an immediate re-check after an urgent interrupt
 	superiors      []string      // fallback escalation addresses: declared superiors via /api/subs (refreshed every 10 min)
 	compactPending bool          // notice due: next wake carries the persist-memory notice; compact in place after it
+	lastFailShort  string        // last failure reason shown (failure-line throttle)
+	lastFailAt     time.Time     // when that reason was last logged
 }
 
 // cliWakeLocks serializes wakes per CLI id within this worker process (see
@@ -60,6 +62,26 @@ func (d *Duty) logf(format string, args ...any) {
 // terminal scrollback to roughly one line per completed wake.
 func verboseEnabled() bool {
 	return os.Getenv("WORKER_VERBOSE") == "1"
+}
+
+// failLog renders a failure as ONE throttled log line: a reason repeating
+// since the previous failure line (or within a 30-minute episode of it)
+// is archived to the error file but not re-logged, so even a flapping
+// account leaves the scrollback flat. WORKER_VERBOSE=1 echoes the full
+// detail every time.
+func (d *Duty) failLog(short string, detail error) {
+	d.mu.Lock()
+	newEpisode := short != d.lastFailShort || time.Since(d.lastFailAt) > 30*time.Minute
+	d.lastFailShort = short
+	d.lastFailAt = time.Now()
+	d.mu.Unlock()
+	if verboseEnabled() {
+		d.logf("wake failed: %s | detail: %v", short, detail)
+		return
+	}
+	if newEpisode {
+		d.logf("wake failed: %s — repeats archived to errors-%s.log", short, localPart(d.cfg.Address))
+	}
 }
 
 // shortErr compresses a wake failure into one board-friendly line: the
@@ -336,11 +358,12 @@ func (d *Duty) watchUrgent(wakeCtx context.Context, cancel context.CancelFunc, d
 
 func (d *Duty) checkOnce(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
-	start := time.Now()
 	unread, err := d.mail.UnreadInbox(50)
 	if err != nil {
-		d.logf("poll error (%dms): %v", time.Since(start).Milliseconds(), err)
-		d.noteFailure("poll: " + err.Error())
+		short := "poll: " + shortErr(err)
+		d.failLog(short, err)
+		board.Set(tag, "waiting", "poll failed: "+shortErr(err))
+		d.noteFailure(short)
 		return
 	}
 	dutyDue := d.dutyDue()
@@ -430,43 +453,45 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	}
 	if err != nil {
 		// Salvage: a partial stream may still have announced the session —
-		// bind it so the retry resumes the same thread instead of starting
-		// over with a blank context.
+		// bind it silently so the retry resumes the same thread instead of
+		// starting over with a blank context.
 		if newID != "" {
 			d.mu.Lock()
+			salvaged := d.sessionID != newID
 			d.sessionID = newID
 			d.saveState()
 			d.mu.Unlock()
-			d.logf("wake failed but session %q salvaged for retry", newID)
+			_ = salvaged
 		}
 		if d.urgentHit.Load() {
-			// urgent interrupt: kill landed; re-wake at once with the
+			// urgent interrupt: interrupt landed; re-wake at once with the
 			// urgent mail first in the digest (newest unread)
 			d.urgentHit.Store(false)
 			d.logf("urgent interrupt: wake cancelled, re-waking with urgent mail")
 			d.urgentNow()
 			return
 		}
-		if wakeCtx.Err() == context.DeadlineExceeded {
-			// Watchdog interrupt on a long-running turn: expected under
-			// long tasks and self-healing (the queued mail retries on the
-			// next poll), so it stays out of the failure streak.
-			board.Set(tag, "waiting", fmt.Sprintf("interrupted at %s timeout (mail re-queued)",
-				time.Duration(d.cfg.TimeoutSec)*time.Second))
-			d.logf("wake interrupted at timeout; session kept, mail re-queued")
-			return
-		}
-		// Failure rendering stays compact: ONE classified line on the board
-		// and in the log, the full tails archived to the per-account error
-		// file (WORKER_VERBOSE=1 also echoes the detail to the log).
+		// Failure rendering stays compact: the full detail (tails included)
+		// is archived to the per-account error file on EVERY occurrence,
+		// but the terminal line is throttled — a reason repeating since the
+		// last line (or within a 30-minute episode) changes nothing in the
+		// scrollback. WORKER_VERBOSE=1 echoes the detail every time.
 		d.errorLog(err)
 		short := shortErr(err)
-		board.Set(tag, "waiting", "wake failed: "+short)
-		d.logf("wake failed: %s — detail in errors-%s.log", short, localPart(d.cfg.Address))
-		if verboseEnabled() {
-			d.logf("wake error detail: %v", err)
+		if wakeCtx.Err() == context.DeadlineExceeded {
+			short = fmt.Sprintf("timeout interrupt after %s (session kept, mail re-queued)",
+				time.Duration(d.cfg.TimeoutSec)*time.Second)
+		} else if newID != "" {
+			short += " · session salvaged"
 		}
-		d.noteFailure("wake: " + short)
+		d.failLog(short, err)
+		board.Set(tag, "waiting", "wake failed: "+short)
+		if wakeCtx.Err() != context.DeadlineExceeded {
+			// A watchdog timeout on a long-running turn is expected and
+			// self-healing (mail re-queued) — not a worker fault, so it
+			// stays out of the failure streak.
+			d.noteFailure("wake: " + short)
+		}
 		return
 	}
 	noticeDone := false
@@ -500,8 +525,9 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	d.saveState()
 	d.mu.Unlock()
 	d.failStreak = 0
+	// No log line on success: the board row (last ok + session head) and
+	// the shutdown report carry the trace; scrollback stays flat.
 	board.Set(tag, "waiting", "last ok: "+truncate(newID, 24))
-	d.logf("wake ok: session=%s", newID)
 
 	// compact_notice_tokens: if this wake's context-size report crossed the
 	// threshold, the NEXT wake carries the compaction notice; after that
