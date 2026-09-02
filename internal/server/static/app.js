@@ -94,6 +94,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $$("#ovw-seg button").forEach(function (b) {
       b.classList.toggle("on", b.dataset.oview === v);
     });
+    // 0.2.4 fine-tune (superior): the round directory refresh rides beside
+    // the view capsule on phones — visible only while Directory is on
+    // (viewport hiding is .m-only's job).
+    var rbtnM = $("#btn-refresh-directory-m");
+    if (rbtnM) rbtnM.classList.toggle("hidden", v !== "directory");
     try { localStorage.setItem("ovw-view", v); } catch (_) {}
     if (v === "directory" && !dir.dataset.loaded) {
       dir.dataset.loaded = "1";
@@ -1118,6 +1123,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   }
 
   $("#btn-refresh-directory").addEventListener("click", loadDirectory);
+  var rbtnDirM = $("#btn-refresh-directory-m"); // capsule-side round refresh (phones)
+  if (rbtnDirM) rbtnDirM.addEventListener("click", loadDirectory);
   $("#btn-save-profile").addEventListener("click", saveProfile);
 
   // ---- settings ----

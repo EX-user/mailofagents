@@ -288,12 +288,19 @@
       <!-- Three in-page views (superior order 01M1C8MAY): System | Mine |
            Directory; page title row removed (same order). Same pill pattern
            as Manage's segment. Nav stays at five cards. -->
-      <div class="mgmt-seg" id="ovw-seg" style="margin-bottom:12px;">
-        <button type="button" data-oview="main" class="on m-ovw-system" data-i18n="ovw.tabSystem">System</button>
-        <button type="button" data-oview="main" class="on pc-ovw-data" data-i18n="ovw.tabData">Data</button>
-        <button type="button" data-oview="mine" data-i18n="ovw.tabMine">Mine</button>
-        <button type="button" data-oview="directory" data-i18n="nav.directory">Directory</button>
-      </div>
+<div class="ovw-seg-row">
+  <div class="mgmt-seg" id="ovw-seg" style="margin-bottom:12px;">
+    <button type="button" data-oview="main" class="on m-ovw-system" data-i18n="ovw.tabSystem">System</button>
+    <button type="button" data-oview="main" class="on pc-ovw-data" data-i18n="ovw.tabData">Data</button>
+    <button type="button" data-oview="mine" data-i18n="ovw.tabMine">Mine</button>
+    <button type="button" data-oview="directory" data-i18n="nav.directory">Directory</button>
+  </div>
+  <!-- Mobile 0.2.4 fine-tune (superior): the directory refresh rides
+       beside the view capsule as a round icon button; setOvwView shows it
+       only while the directory sub-view is on. PC keeps the in-place
+       text button inside #ovw-directory. -->
+  <button type="button" id="btn-refresh-directory-m" class="row-action m-only hidden" title="Refresh" aria-label="Refresh"></button>
+</div>
       <div id="ovw-main">
       <!-- Stat cards grouped (feedback): System = stock levels (accounts /
            messages / storage), Activity = flows (today / last 7 days). Group
@@ -347,7 +354,6 @@
       </div>
       <div id="ovw-directory" class="hidden">
         <h2><span data-i18n="nav.directory">Directory</span> <small class="muted" data-i18n="sub.directory">— public address book</small></h2>
-        <p class="muted">
         <p class="muted"><span data-i18n="dir.desc">Public address book. Accounts that have opted in (Visible) appear here with their signature.</span> Anyone can query this via <code>/api/info?query=directory</code>.</p>
         <button id="btn-refresh-directory" class="row-action" data-i18n="dir.refresh">Refresh</button>
         <table id="directory-table">
@@ -801,22 +807,21 @@
         <label>Subject
           <input type="text" id="compose-subject" placeholder="subject" data-i18n-ph="compose.subjectPh" />
         </label>
-        <label>Body
-          <textarea id="compose-body" rows="10" placeholder="message body" data-i18n-ph="compose.bodyPh"></textarea>
-        </label>
+<label id="compose-body-label"><span class="lbl-row"><span>Body</span><!-- Mobile 0.2.4 (superior): 往来邮件 rides on the Body label line,
+     right-aligned to the input column — reachable while typing. PC
+     never sees it (.m-only). --><button type="button" id="btn-thread-pane" class="row-action m-only" data-i18n="compose.recentConv">Recent conversation</button></span>
+<textarea id="compose-body" rows="10" placeholder="message body" data-i18n-ph="compose.bodyPh"></textarea>
+</label>
         <!-- Attachments (v0.5.1): pick files -> uploaded immediately, chips
              listed here, ids ride along with Send. 1MB per file (server cap). -->
         <div id="compose-attachments" class="attach-list"></div>
-        <div class="row">
-          <button id="btn-send" class="primary" data-i18n="compose.send">Send</button>
-          <button id="btn-attach" class="row-action" data-i18n="compose.attach">📎 Attach</button>
-          <input type="file" id="compose-file-input" multiple hidden />
-          <!-- Mobile one-screen plan: the recent-conversation thread folds
-               into a side drawer via this compact button (same size/placement
-               grammar as 刷新会话); the thread node and the refresh button
-               MOVE into the drawer while it is open. PC keeps both inline. -->
-          <button id="btn-thread-pane" class="row-action m-only" data-i18n="compose.recentConv">Recent conversation</button>
-          <button id="btn-refresh-thread" class="row-action" data-i18n="compose.refreshThread">Refresh thread</button>
+<div class="row">
+<button id="btn-send" class="primary" data-i18n="compose.send">Send</button>
+<button id="btn-attach" class="row-action" data-i18n="compose.attach">📎 Attach</button>
+<input type="file" id="compose-file-input" multiple hidden />
+<!-- 往来邮件 button moved to the Body label line (superior 0.2.4):
+     same row as the Body text, right edge — visible while typing. -->
+<button id="btn-refresh-thread" class="row-action" data-i18n="compose.refreshThread">Refresh thread</button>
           <!-- Public showcase opt-in (v0.4.4): also publish this letter on the
                guest portal. Default off; hidden when the admin disables
                showcase globally (showcase_enabled === false). Plain wording

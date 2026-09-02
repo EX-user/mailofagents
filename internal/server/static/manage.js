@@ -1626,7 +1626,22 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   // lives here — cross-domain goes through a DOM event, never a direct call
   // (a direct call from app.js threw ReferenceError and the audit list
   // silently never loaded).
-  document.addEventListener("audit:entered", function () { loadAudit(); });
+  document.addEventListener("audit:entered", function () { loadAudit(); fitAuditOneScreen(); });
+  // Audit mobile one-screen (superior 0.2.4 pool item): same measured
+  // column + correction closure as the other one-screen fits.
+  function fitAuditOneScreen() {
+    var tab = document.getElementById("tab-audit");
+    if (!tab || tab.classList.contains("hidden")) return;
+    if (window.innerWidth > 800) { tab.style.removeProperty("--audit-1s"); return; }
+    var top = tab.getBoundingClientRect().top;
+    if (top <= 0) return;
+    var h = window.innerHeight - top - 10;
+    if (h < 300) h = 300;
+    tab.style.setProperty("--audit-1s", h + "px");
+    var over = document.documentElement.scrollHeight - window.innerHeight;
+    if (over > 0) tab.style.setProperty("--audit-1s", Math.max(300, h - over) + "px");
+  }
+  window.addEventListener("resize", fitAuditOneScreen);
   async function loadAudit() {
     const tbody = $("#audit-table tbody");
     tbody.textContent = "";
@@ -1648,6 +1663,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     } catch (e) {
       tbody.innerHTML = '<tr><td colspan="4">Error: ' + esc(e.message) + "</td></tr>";
     }
+    fitAuditOneScreen(); // re-measure once rows land
   }
 
 
