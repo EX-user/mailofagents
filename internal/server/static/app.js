@@ -689,7 +689,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $("#invalid-ack").checked = false;
     $("#invalid-status").textContent = t("common.loading");
     api("/admin/invalid").then(function (d) {
-      renderInvalidList((d && d.messages) || []);
+      renderInvalidList(Array.isArray(d) ? d : (d && d.messages) || []);
       $("#invalid-status").textContent = "";
     }).catch(function (e) {
       $("#invalid-status").textContent = t("common.error", { msg: e.message });
@@ -761,7 +761,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       var doneMsg = t("inv.deleted", { n: (res && res.deleted) || 0 });
       // Refresh the list in place; the status line survives the reload.
       api("/admin/invalid").then(function (d) {
-        renderInvalidList((d && d.messages) || []);
+        renderInvalidList(Array.isArray(d) ? d : (d && d.messages) || []);
         $("#invalid-status").textContent = doneMsg;
       }).catch(function () {
         $("#invalid-status").textContent = doneMsg;
