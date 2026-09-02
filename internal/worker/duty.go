@@ -157,7 +157,13 @@ func (d *Duty) Run(ctx context.Context) {
 		d.safeCheckOnce(ctx)
 		select {
 		case <-ctx.Done():
-			d.logf("duty stop: %v", ctx.Err())
+			d.mu.Lock()
+			sess := d.sessionID
+			d.mu.Unlock()
+			// Superior request: on shutdown, hand back every address+session
+			// pair — the session id is the fastest way back into a live
+			// scene (manual resume / support triage).
+			d.logf("duty stop: %v address=%s session=%q", ctx.Err(), d.cfg.Address, sess)
 			return
 		case <-t.C:
 		case <-d.urgentCh: // urgent interrupt landed: re-check at once
