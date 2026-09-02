@@ -31,8 +31,6 @@ type Duty struct {
 	urgentCh       chan struct{} // capacity-1: fires an immediate re-check after an urgent interrupt
 	superiors      []string      // fallback escalation addresses: declared superiors via /api/subs (refreshed every 10 min)
 	compactPending bool          // notice due: next wake carries the persist-memory notice; compact in place after it
-	lastFailShort  string        // last failure reason shown (failure-line throttle)
-	lastFailAt     time.Time     // when that reason was last logged
 }
 
 // cliWakeLocks serializes wakes per CLI id within this worker process (see
@@ -62,26 +60,6 @@ func (d *Duty) logf(format string, args ...any) {
 // terminal scrollback to roughly one line per completed wake.
 func verboseEnabled() bool {
 	return os.Getenv("WORKER_VERBOSE") == "1"
-}
-
-// failLog renders a failure as ONE throttled log line: a reason repeating
-// since the previous failure line (or within a 30-minute episode of it)
-// is archived to the error file but not re-logged, so even a flapping
-// account leaves the scrollback flat. WORKER_VERBOSE=1 echoes the full
-// detail every time.
-func (d *Duty) failLog(short string, detail error) {
-	d.mu.Lock()
-	newEpisode := short != d.lastFailShort || time.Since(d.lastFailAt) > 30*time.Minute
-	d.lastFailShort = short
-	d.lastFailAt = time.Now()
-	d.mu.Unlock()
-	if verboseEnabled() {
-		d.logf("wake failed: %s | detail: %v", short, detail)
-		return
-	}
-	if newEpisode {
-		d.logf("wake failed: %s — repeats archived to errors-%s.log", short, localPart(d.cfg.Address))
-	}
 }
 
 // shortErr compresses a wake failure into one board-friendly line: the
@@ -360,10 +338,10 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
 	unread, err := d.mail.UnreadInbox(50)
 	if err != nil {
-		short := "poll: " + shortErr(err)
-		d.failLog(short, err)
-		board.Set(tag, "waiting", "poll failed: "+shortErr(err))
-		d.noteFailure(short)
+		short := shortErr(err)
+		board.Set(tag, "waiting", "poll failed: "+short)
+		d.logf("poll failed: %s", short)
+		d.noteFailure("poll: " + short)
 		return
 	}
 	dutyDue := d.dutyDue()
@@ -471,11 +449,9 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			d.urgentNow()
 			return
 		}
-		// Failure rendering stays compact: the full detail (tails included)
-		// is archived to the per-account error file on EVERY occurrence,
-		// but the terminal line is throttled — a reason repeating since the
-		// last line (or within a 30-minute episode) changes nothing in the
-		// scrollback. WORKER_VERBOSE=1 echoes the detail every time.
+		// Failure display: the compact classified reason goes on the reused
+		// board row (and one short log line); the full stderr/stdout tails
+		// archive to the per-account error file.
 		d.errorLog(err)
 		short := shortErr(err)
 		if wakeCtx.Err() == context.DeadlineExceeded {
@@ -484,8 +460,8 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		} else if newID != "" {
 			short += " · session salvaged"
 		}
-		d.failLog(short, err)
 		board.Set(tag, "waiting", "wake failed: "+short)
+		d.logf("wake failed: %s", short)
 		if wakeCtx.Err() != context.DeadlineExceeded {
 			// A watchdog timeout on a long-running turn is expected and
 			// self-healing (mail re-queued) — not a worker fault, so it
