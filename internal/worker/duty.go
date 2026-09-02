@@ -373,12 +373,31 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		return // shutting down; do not count as failure
 	}
 	if err != nil {
+		// Salvage: a partial stream may still have announced the session —
+		// bind it so the retry resumes the same thread instead of starting
+		// over with a blank context.
+		if newID != "" {
+			d.mu.Lock()
+			d.sessionID = newID
+			d.saveState()
+			d.mu.Unlock()
+			d.logf("wake failed but session %q salvaged for retry", newID)
+		}
 		if d.urgentHit.Load() {
 			// urgent interrupt: kill landed; re-wake at once with the
 			// urgent mail first in the digest (newest unread)
 			d.urgentHit.Store(false)
 			d.logf("urgent interrupt: wake cancelled, re-waking with urgent mail")
 			d.urgentNow()
+			return
+		}
+		if wakeCtx.Err() == context.DeadlineExceeded {
+			// Watchdog interrupt on a long-running turn: expected under
+			// long tasks and self-healing (the queued mail retries on the
+			// next poll), so it stays out of the failure streak.
+			board.Set(tag, "waiting", fmt.Sprintf("interrupted at %s timeout (mail re-queued)",
+				time.Duration(d.cfg.TimeoutSec)*time.Second))
+			d.logf("wake interrupted at timeout; session kept, mail re-queued")
 			return
 		}
 		board.Set(tag, "waiting", "last wake errored (see log)")

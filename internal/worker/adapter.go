@@ -419,12 +419,15 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 		cmd.Stdin = strings.NewReader(stdinPayload)
 	}
 	configureProcessGroup(cmd)
-	cmd.WaitDelay = 10 * time.Second
+	// Graceful interruption: on timeout/cancel the process group gets a
+	// SIGINT first — every CLI treats it as a user abort and exits on its
+	// own. WaitDelay escalates to a hard kill only if it ignores the hint.
+	cmd.WaitDelay = 15 * time.Second
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
 		}
-		return killTree(cmd.Process.Pid)
+		return interruptTree(cmd.Process.Pid)
 	}
 
 	if err := cmd.Run(); err != nil {
@@ -432,9 +435,12 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 		// stderr — both tails must ride along or the failure is blind. The
 		// account password is redacted first: agents curl with -u user:pass
 		// (the onboarding template teaches it) and a tool-call echo would
-		// otherwise leak the credential into the terminal scrollback.
+		// otherwise leak the credential into the terminal scrollback. The
+		// raw stdout rides back too: a partial stream may still name the
+		// session, which the caller salvages so a retry resumes the same
+		// thread.
 		stderrStr, stdoutStr := redact(stderr.String(), cfg.Password), redact(stdout.String(), cfg.Password)
-		return nil, 0, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
+		return stdout.Bytes(), 0, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
 			name, err, truncate(stderrStr, 400), truncate(stdoutStr, 600))
 	}
 	return stdout.Bytes(), 0, nil
@@ -581,6 +587,10 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 
 	out, wakeTokens, err := runWake(ctx, cfg, "pi", args, digest, localPart(cfg.Address))
 	if err != nil {
+		// Salvage: a partial stream may still name the session.
+		if id, perr := firstJSONField(out, "type", "session", "id"); perr == nil {
+			return id, wakeTokens, err
+		}
 		return "", wakeTokens, err
 	}
 	id, err := firstJSONField(out, "type", "session", "id")
@@ -623,6 +633,10 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 
 	out, wakeTokens, err := runWake(ctx, cfg, "opencode", args, "", localPart(cfg.Address))
 	if err != nil {
+		// Salvage: a killed/failed run may still have announced the session.
+		if id, perr := firstJSONField(out, "type", "", "sessionID"); perr == nil {
+			return id, wakeTokens, err
+		}
 		return "", wakeTokens, err
 	}
 	id, err := firstJSONField(out, "type", "", "sessionID")
@@ -675,6 +689,13 @@ func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest st
 
 	out, wakeTokens, err := runWake(ctx, cfg, "claude", args, "", localPart(cfg.Address))
 	if err != nil {
+		// Salvage: a partial stream may still name the session.
+		var sv struct {
+			SessionID string `json:"session_id"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(out), &sv) == nil && sv.SessionID != "" {
+			return sv.SessionID, wakeTokens, err
+		}
 		return "", wakeTokens, err
 	}
 	var v struct {
@@ -721,6 +742,10 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 
 	out, wakeTokens, err := runWake(ctx, cfg, "codex", args, "", localPart(cfg.Address))
 	if err != nil {
+		// Salvage: a partial stream may still name the thread.
+		if id, perr := firstJSONField(out, "type", "thread.started", "thread_id"); perr == nil {
+			return id, wakeTokens, err
+		}
 		return "", wakeTokens, err
 	}
 	id, err := firstJSONField(out, "type", "thread.started", "thread_id")
