@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Adapter wakes the CLI coding agent: it builds the command line for one
@@ -487,10 +489,34 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 		// otherwise leak the credential into the terminal scrollback. The
 		// raw stdout rides back too: a partial stream may still name the
 		// session, which the caller salvages so a retry resumes the same
-		// thread.
+		// thread. The debug build widens the record further: exit code,
+		// stdin mode, and an argv synopsis (long args — the digest — shown
+		// by rune count + head) so argv-shape regressions are visible.
+		exitInfo := ""
+		var xe *exec.ExitError
+		if errors.As(err, &xe) {
+			exitInfo = fmt.Sprintf(" code=%d", xe.ExitCode())
+		}
+		stdinInfo := "off"
+		if stdinPayload != "" {
+			stdinInfo = fmt.Sprintf("%dB", len(stdinPayload))
+		}
+		argParts := make([]string, len(args))
+		for i, a := range args {
+			if n := utf8.RuneCountInString(a); n > 80 {
+				argParts[i] = fmt.Sprintf("[%drunes]%q", n, string([]rune(a)[:60]))
+			} else {
+				argParts[i] = fmt.Sprintf("%q", a)
+			}
+		}
 		stderrStr, stdoutStr := redact(stderr.String(), cfg.Password), redact(stdout.String(), cfg.Password)
-		return stdout.Bytes(), 0, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
-			name, err, truncate(stderrStr, 400), truncate(stdoutStr, 600))
+		head := redact(string(stdout.Bytes()), cfg.Password)
+		if r := []rune(head); len(r) > 300 {
+			head = string(r[:300])
+		}
+		return stdout.Bytes(), 0, fmt.Errorf("%s wake: %v%s; stdin=%s; argv: %s; stderr(%dB): %s; stdout head: %s; stdout tail: %s",
+			name, err, exitInfo, stdinInfo, strings.Join(argParts, " "),
+			len(stderr.String()), truncate(stderrStr, 2000), head, truncate(stdoutStr, 800))
 	}
 	return stdout.Bytes(), 0, nil
 }
@@ -681,11 +707,12 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 	if sessionID != "" {
 		args = append(args, "-s", sessionID)
 	}
-	// opencode is the one CLI that must keep the digest in argv: its stdin
-	// pipe is structurally unusable (EOF ⇒ dispose ⇒ fake success). On
-	// Windows npm-shim argv would truncate multi-line text at cmd.exe —
-	// opencode ships as a native binary, so unix and Windows argv are both
-	// safe; a Windows npm-shim install is NOT supported for this reason.
+	// The digest rides as the positional message. opencode's stdin pipe is
+	// structurally unusable (EOF ⇒ dispose ⇒ fake success), so argv is its
+	// only channel — this append was dropped in the 0.2.3 stdin migration
+	// (pi/claude/codex moved to stdin) and every opencode wake died with
+	// "You must provide a message or a command" (field report 2026-09-02).
+	args = append(args, digest)
 
 	out, wakeTokens, err := runWake(ctx, cfg, "opencode", args, "", localPart(cfg.Address))
 	if err != nil {

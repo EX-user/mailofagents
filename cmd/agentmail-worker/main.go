@@ -25,15 +25,27 @@ func isTerminal(f *os.File) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
+// buildTag is injected via -ldflags at build time (release builds stamp the
+// version; debug builds say so here). It prints once at startup so a running
+// worker can always be identified from its first log line.
+var buildTag = "unversioned"
+
 func main() {
 	cfgPath := flag.String("config", "worker.json", "path to worker config JSON")
 	fresh := flag.Bool("fresh", false, "start a brand-new session: drop the stored session id and CLEAR the workdir contents (asks per account; see -yes)")
 	yes := flag.Bool("yes", false, "assume yes for -fresh confirmations (for scripts; required when stdin is not a terminal)")
 	agentSel := flag.String("switch_address", "", "only run the matching account (address prefix, local-part, or 1-based index); default runs all")
+	showVer := flag.Bool("version", false, "print build tag and exit")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("[worker] ")
+
+	if *showVer {
+		fmt.Println("agentmail-worker build:", buildTag)
+		return
+	}
+	log.Printf("build: %s", buildTag)
 
 	cfgs, err := worker.LoadConfigs(*cfgPath, *agentSel)
 	if err != nil {

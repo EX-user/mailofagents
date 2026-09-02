@@ -79,9 +79,15 @@ func shortErr(err error) string {
 		return "provider quota/429"
 	case strings.Contains(s, "signal: killed"):
 		return "timeout kill"
+	case strings.Contains(s, "Unknown argument"), strings.Contains(s, "Unknown option"),
+		strings.Contains(s, "unknown flag"), strings.Contains(s, "Not enough arguments"):
+		return "cli rejected argv (flag/version mismatch?)"
 	}
 	// Generic exit: drop the embedded tails, keep the head.
 	if i := strings.Index(s, "; stderr:"); i > 0 {
+		s = s[:i]
+	}
+	if i := strings.Index(s, "; stdin="); i > 0 {
 		s = s[:i]
 	}
 	return s
@@ -92,11 +98,15 @@ func shortErr(err error) string {
 // terminal only ever shows the shortErr line.
 func (d *Duty) errorLog(err error) {
 	path := filepath.Join(filepath.Dir(d.cfg.StateFile), "errors-"+localPart(d.cfg.Address)+".log")
-	if fi, err := os.Stat(path); err == nil && fi.Size() > 256*1024 {
+	if fi, statErr := os.Stat(path); statErr == nil && fi.Size() > 256*1024 {
 		_ = os.Rename(path, path+".old")
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
+	// Shadowing hazard (fixed 2026-09-02): this function used `f, err :=`
+	// here, which shadowed the PARAMETER err with the OpenFile error — on
+	// every successful open the file archived a bare <nil> and the real wake
+	// failure was never recorded. Distinct names keep the parameter intact.
+	f, openErr := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if openErr != nil {
 		return
 	}
 	defer f.Close()
