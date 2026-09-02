@@ -90,9 +90,13 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 			// template above already covers credentials and memory-file
 			// hygiene, so this note only adds what it doesn't say: why the
 			// wake happened with nothing to process, that no reply is
-			// needed, and who owns the duty loop.
+			// needed, and who owns the duty loop. Mails arriving MID-turn
+			// are explicitly in scope: the agent reads its inbox itself and
+			// would otherwise mark them read without answering (the race
+			// this note closes).
 			b.WriteString("\n[值守初始化 / Bootstrap] 本次唤醒无待处理信件：完成环境自举后正常结束本轮即可，无需回信。" +
-				"值守由外部 worker 负责，新信到达时你会被再次唤醒。\n")
+				"若本轮期间有新信到达，请照常处理并回复。" +
+				"值守由外部 worker 负责，后续新信到达时你会被再次唤醒。\n")
 		}
 	}
 	if compactNotice != "" {
