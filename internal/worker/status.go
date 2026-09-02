@@ -18,11 +18,14 @@ import (
 )
 
 type statusRow struct {
-	tag     string
-	state   string // "waiting" | "working"
-	detail  string
-	since   time.Time // when the current state started
-	started time.Time // process start, for uptime
+	tag          string
+	state        string // "waiting" | "working"
+	detail       string
+	since        time.Time // when the current state started
+	started      time.Time // process start, for uptime
+	ctxTokens    int64     // latest context-size report from the CLI (0 = none yet)
+	ctxWindow    int64     // configured model window: percentage denominator
+	noticeTokens int64     // compact_notice_tokens: fallback denominator
 }
 
 type Board struct {
@@ -48,11 +51,26 @@ func init() {
 	}
 }
 
-// AddRow registers one account line at board creation time.
-func (b *Board) AddRow(tag string, started time.Time) {
+// AddRow registers one account line at board creation time. ctxWindow /
+// noticeTokens are the percentage denominators for the ctx readout (window
+// wins; notice is the fallback; neither = absolute tokens only).
+func (b *Board) AddRow(tag string, started time.Time, ctxWindow, noticeTokens int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.rows = append(b.rows, &statusRow{tag: tag, state: "waiting", since: started, started: started})
+	b.rows = append(b.rows, &statusRow{
+		tag: tag, state: "waiting", since: started, started: started,
+		ctxWindow: ctxWindow, noticeTokens: noticeTokens,
+	})
+}
+
+// SetCtx records the CLI's latest context-size report for the row's live
+// ctx readout (rendered by the next draw tick).
+func (b *Board) SetCtx(tag string, tokens int64) {
+	b.mu.Lock()
+	if row := b.row(tag); row != nil {
+		row.ctxTokens = tokens
+	}
+	b.mu.Unlock()
 }
 
 // Set updates a row's state/detail.
@@ -141,9 +159,26 @@ func (b *Board) draw() {
 				line += fmt.Sprintf(" · %s", age)
 			}
 		}
+		if r.ctxTokens > 0 {
+			line += " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
+		}
 		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", clampCols(line, w))
 		b.drawn++
 	}
+}
+
+// ctxReadout renders the context usage: a percentage against the configured
+// model window (or the notice threshold as the fallback denominator), else
+// just the absolute token count.
+func ctxReadout(tokens, ctxWindow, noticeTokens int64) string {
+	denom := ctxWindow
+	if denom <= 0 {
+		denom = noticeTokens
+	}
+	if denom > 0 {
+		return fmt.Sprintf("%d%%", int(float64(tokens)/float64(denom)*100+0.5))
+	}
+	return "≈" + humanTokens(tokens)
 }
 
 // clampCols cuts s to occupy at most w terminal columns, counting East

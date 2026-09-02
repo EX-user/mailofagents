@@ -137,6 +137,7 @@ func ensureWorkdir(path string) error {
 type lineTee struct {
 	tag      string
 	buf      bytes.Buffer
+	secret   string // account password: masked in anything shown on the board
 	lastText string // most recent spoken text; its tail anchors the next step_start
 }
 
@@ -151,7 +152,7 @@ func (w *lineTee) Write(p []byte) (int, error) {
 		line := append([]byte(nil), b[:i]...)
 		w.buf.Next(i + 1)
 		if s := w.summarize(line); s != "" {
-			board.Set(w.tag, "", SprintDetail(s))
+			board.Set(w.tag, "", SprintDetail(redact(s, w.secret)))
 		}
 	}
 	return len(p), nil
@@ -241,6 +242,7 @@ func (w *lineTee) summarize(line []byte) string {
 			}
 			if n := contextTokens(ev); n > 0 {
 				parts = append(parts, "ctx≈"+humanTokens(n))
+				board.SetCtx(w.tag, n)
 			}
 			if len(parts) == 0 {
 				if t == "step_start" {
@@ -410,7 +412,7 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	var stdout, stderr bytes.Buffer
-	tee := &lineTee{tag: tag}
+	tee := &lineTee{tag: tag, secret: cfg.Password}
 	cmd.Stdout = io.MultiWriter(&stdout, tee)
 	cmd.Stderr = &stderr
 	if stdinPayload != "" {
@@ -427,11 +429,24 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 
 	if err := cmd.Run(); err != nil {
 		// opencode >=1.18 writes its errors to the json stdout stream, not
-		// stderr — both tails must ride along or the failure is blind.
+		// stderr — both tails must ride along or the failure is blind. The
+		// account password is redacted first: agents curl with -u user:pass
+		// (the onboarding template teaches it) and a tool-call echo would
+		// otherwise leak the credential into the terminal scrollback.
+		stderrStr, stdoutStr := redact(stderr.String(), cfg.Password), redact(stdout.String(), cfg.Password)
 		return nil, 0, fmt.Errorf("%s wake: %v; stderr: %s; stdout tail: %s",
-			name, err, truncate(stderr.String(), 400), truncate(stdout.String(), 600))
+			name, err, truncate(stderrStr, 400), truncate(stdoutStr, 600))
 	}
 	return stdout.Bytes(), 0, nil
+}
+
+// redact masks the watched account's password in CLI output that ends up on
+// the status board or in error tails.
+func redact(s, secret string) string {
+	if secret == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, secret, "•••")
 }
 
 // ---- opencode: in-place session compaction ----

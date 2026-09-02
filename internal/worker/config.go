@@ -30,6 +30,7 @@ type Config struct {
 	SessionMaxMin       int               `json:"session_max_runtime_min"` // soft cap before interruption+resume
 	DutyWindowMin       int               `json:"duty_window_min"`         // max continuous duty stretch; 0/absent = unlimited (no time-beat wakes)
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`   // context-size notice threshold: one persist-memory round, then in-place compaction (adapter entry) or the CLI's built-in auto-compact; the session is never rotated. 0/absent = built-in compaction only
+	ContextWindow       int64             `json:"context_window"`          // model context window in tokens (optional) — powers the status board's ctx% readout; falls back to compact_notice_tokens as the reference, absolute count only when neither is set
 	Model               string            `json:"model"`                   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
 	Env                 map[string]string `json:"env"`                     // non-credential auxiliary env for the CLI process
 	FullPerm            *bool             `json:"full_perm"`               // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
@@ -183,6 +184,9 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 			if ag.CompactNoticeTokens > 0 {
 				c.CompactNoticeTokens = ag.CompactNoticeTokens
 			}
+			if ag.ContextWindow > 0 {
+				c.ContextWindow = ag.ContextWindow
+			}
 			if ag.FullPerm != nil {
 				c.FullPerm = ag.FullPerm
 			}
@@ -282,6 +286,7 @@ type fileConfig struct {
 	SessionMaxMin       int               `json:"session_max_runtime_min"`
 	DutyWindowMin       int               `json:"duty_window_min"`
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
+	ContextWindow       int64             `json:"context_window"`
 	Model               string            `json:"model"`
 	Env                 map[string]string `json:"env"`
 	FullPerm            *bool             `json:"full_perm"`
@@ -312,6 +317,7 @@ type agentConfig struct {
 	SessionMaxMin       int               `json:"session_max_runtime_min"`
 	DutyWindowMin       int               `json:"duty_window_min"`
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
+	ContextWindow       int64             `json:"context_window"`
 	FullPerm            *bool             `json:"full_perm"`
 	Emergency           Emergency         `json:"emergency"`
 }
@@ -325,6 +331,7 @@ func (f *fileConfig) globalRuntime(path string) *Config {
 		SessionMaxMin:       f.SessionMaxMin,
 		DutyWindowMin:       f.DutyWindowMin,
 		CompactNoticeTokens: f.CompactNoticeTokens,
+		ContextWindow:       f.ContextWindow,
 		Model:               f.Model,
 		Env:                 mergeEnv(f.Env, nil),
 		FullPerm:            f.FullPerm,

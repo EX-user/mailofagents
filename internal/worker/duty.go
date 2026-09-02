@@ -133,7 +133,7 @@ func (d *Duty) saveState() {
 // Run polls until ctx is cancelled (SIGTERM → graceful stop).
 func (d *Duty) Run(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
-	board.AddRow(tag, time.Now())
+	board.AddRow(tag, time.Now(), d.cfg.ContextWindow, d.cfg.CompactNoticeTokens)
 	// Binding workdir: create the last level on startup when missing
 	// (parent must exist — no silent mkdir -p); log-only on failure so the
 	// loop keeps polling (each wake will surface the error too).
