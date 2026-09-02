@@ -529,8 +529,15 @@ type TeamMember struct {
 // RegisterTeam provisions an owner account plus teamSize subordinate
 // member accounts and their declare edges in ONE transaction (crash =
 // nothing half-created). team_size counts MEMBERS ONLY — the owner is
-// extra (architect ruling: default 3 = 1 owner + 3 members; 10 = the
-// subordinate cap).
+// MaxSubordinates caps how many subordinate accounts one owner may have,
+// whether provisioned in one shot via team register or added pairwise via
+// the declare endpoint. Single source of truth for the store validation,
+// the API validation, and the declare guard (superior raised it 10 -> 20
+// for the 0.2.2 batch).
+const MaxSubordinates = 20
+
+// extra (architect ruling: default 3 = 1 owner + 3 members; bounded by
+// MaxSubordinates).
 //
 // memberNames is the v2 contract: when non-empty (len == teamSize) those
 // caller-chosen local-parts are used as the member names. A name that
@@ -542,8 +549,8 @@ type TeamMember struct {
 // returned members carry the ACTUAL addresses (post-dedup) so the caller
 // can show them verbatim.
 func (s *Store) RegisterTeam(username, domain, password string, teamSize int, memberNames []string) (*TeamMember, *[]TeamMember, error) {
-	if teamSize < 1 || teamSize > 10 {
-		return nil, nil, fmt.Errorf("team_size must be 1-10")
+	if teamSize < 1 || teamSize > MaxSubordinates {
+		return nil, nil, fmt.Errorf("team_size must be 1-%d", MaxSubordinates)
 	}
 	// v2: a member name list, when supplied, must match team_size. The
 	// handler validates shape/charset before calling; here we only enforce

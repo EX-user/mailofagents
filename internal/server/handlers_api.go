@@ -908,8 +908,8 @@ func (s *Server) handleRegisterTeam(w http.ResponseWriter, r *http.Request) {
 	if size == 0 {
 		size = 3
 	}
-	if size < 1 || size > 10 {
-		badRequest(w, "team_size must be 1-10")
+	if size < 1 || size > store.MaxSubordinates {
+		badRequest(w, fmt.Sprintf("team_size must be 1-%d", store.MaxSubordinates))
 		return
 	}
 	// v2: when a member name list is supplied it must match team_size and
@@ -942,7 +942,6 @@ func (s *Server) handleRegisterTeam(w http.ResponseWriter, r *http.Request) {
 		"members": membersRes,
 	})
 }
-
 
 // isULID delegates to the store's alphabet-derived check (single source of
 // truth — see store.IsULID).

@@ -177,8 +177,8 @@ func (s *Server) handleSubsRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.audit.Record(r.Context(), audit.ActionSubRemoved, me, "sub-remove target="+addr+" initiator_role="+role)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"removed":         true,
-		"initiator_role":  role,
+		"removed":        true,
+		"initiator_role": role,
 	})
 }
 
@@ -328,8 +328,9 @@ func stripAttachmentCodes(m store.Message) store.Message {
 // the one-time password is returned exactly once (same semantics as
 // /api/register). Deliberately NOT exposed through MCP: agents compose
 // register + subs API themselves.
-//   POST /api/register-subordinate (account auth, no body)
-//   -> {"address": "...", "password": "...", "declared": true}
+//
+//	POST /api/register-subordinate (account auth, no body)
+//	-> {"address": "...", "password": "...", "declared": true}
 func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -338,8 +339,8 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 	owner := accountFrom(r.Context())
 
 	// Guard 1: cap the number of subordinates one account may provision.
-	if got := len(s.store.SubordinatesOf(owner)); got >= 10 {
-		http.Error(w, "subordinate limit reached (10)", http.StatusTooManyRequests)
+	if got := len(s.store.SubordinatesOf(owner)); got >= store.MaxSubordinates {
+		http.Error(w, fmt.Sprintf("subordinate limit reached (%d)", store.MaxSubordinates), http.StatusTooManyRequests)
 		return
 	}
 	// Guard 2: reuse the per-IP registration throttle.
