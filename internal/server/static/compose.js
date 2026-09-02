@@ -1103,6 +1103,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     loadComposeThread();
     ensureComposeShowcaseVisibility();
     fitComposeOneScreen();
+    setTimeout(fitComposeOneScreen, 250); // second pass: late fonts/layout
   });
 
   // ---- mobile one-screen compose (superior 09-02): the recent-

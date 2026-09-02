@@ -2412,7 +2412,16 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function fitAccountsOneScreen() {
     var page = $("#tab-accounts");
     if (!page || page.classList.contains("hidden")) return;
-    if (window.innerWidth > 800) return;
+    if (window.innerWidth > 800) { page.style.removeProperty("--acc-1s"); return; }
+    // Document lock (superior 0.2.2 feedback point 2): size the tab itself
+    // like #tab-inbox so the page can never scroll, whatever the inner
+    // measurement timing does.
+    var tabTop = page.getBoundingClientRect().top;
+    if (tabTop > 0) {
+      var accH = window.innerHeight - tabTop - 10;
+      if (accH < 300) accH = 300;
+      page.style.setProperty("--acc-1s", accH + "px");
+    }
     var subList = document.querySelector(".sub-list");
     var ctBox = $("#acc-m-contacts");
     if (!ctBox) return;
@@ -2445,9 +2454,21 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       ctH = window.innerHeight - 10 - ctTop2;
     }
     ctBox.style.maxHeight = Math.max(96, ctH) + "px";
+    // Correction pass: if anything still pushes the document past the
+    // viewport (tab padding/margins included), give the difference back
+    // out of the locked tab height itself — the same closure the inbox
+    // and compose fits use.
+    var over = document.documentElement.scrollHeight - window.innerHeight;
+    if (over > 0) {
+      var curAcc = parseInt(page.style.getPropertyValue("--acc-1s"), 10) || 0;
+      if (curAcc > 300) page.style.setProperty("--acc-1s", Math.max(300, curAcc - over) + "px");
+    }
   }
   window.addEventListener("resize", fitAccountsOneScreen);
-  document.addEventListener("accounts:refresh", function () { setTimeout(fitAccountsOneScreen, 50); });
+  document.addEventListener("accounts:refresh", function () {
+    setTimeout(fitAccountsOneScreen, 50);
+    setTimeout(fitAccountsOneScreen, 300); // second pass: late fonts/layout
+  });
 
   // showApp reveals the panel and applies role-based tab visibility.
   function showApp() {

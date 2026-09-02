@@ -216,8 +216,12 @@ td.sig-cell.marquee .sig-dup { display: inline; }
 .mq.marquee .sig-track > span { padding-right: 48px; }
 .mq.marquee .sig-dup { display: inline; }
 /* Address cells share the sig-cell overflow grammar now that they carry
-   the marquee track (single line + ellipsis fallback on PC too). */
-td.addr-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+   the marquee track (single line + ellipsis fallback on PC too).
+   Scoped to the accounts table (superior 0.2.2 feedback point 1): as a
+   bare class rule it also hit the directory table, where table-layout
+   nowrap cells refuse to shrink — the address column ate the row and
+   squeezed the signature column into one-char-per-line stacks. */
+#accounts-table td.addr-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-sig { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sub-list { min-width: 0; }
 /* Keep wrapping as a fallback for very narrow viewports. */
@@ -891,11 +895,14 @@ nav .tab { flex: 0 0 auto; }
   }
   #accounts-table td { padding: 2px 0; }
   #accounts-table td[data-label]:empty { display: none; }
-  .addr-cell { order: 1; flex: 1 1 0; min-width: 0; }
-  .addr-cell + td { order: 2; flex: 0 0 auto; margin-left: 6px; }
-  td.sig-cell { order: 3; flex: 1 1 100%; }
-  td.sig-cell + td { order: 4; flex: 1 1 100%; font-size: 12px; color: var(--muted); }
-  td.actions-cell { order: 5; flex: 1 1 100%; margin-top: 4px; }
+  /* Row-cell grammar scoped to #accounts-table (superior 0.2.2 feedback
+     point 1): bare class versions also matched the directory table and
+     bent its table-layout columns on phones. */
+  #accounts-table .addr-cell { order: 1; flex: 1 1 0; min-width: 0; }
+  #accounts-table .addr-cell + td { order: 2; flex: 0 0 auto; margin-left: 6px; }
+  #accounts-table td.sig-cell { order: 3; flex: 1 1 100%; }
+  #accounts-table td.sig-cell + td { order: 4; flex: 1 1 100%; font-size: 12px; color: var(--muted); }
+  #accounts-table td.actions-cell { order: 5; flex: 1 1 100%; margin-top: 4px; }
   #accounts-table tr.ct-row, #accounts-table tr.own-row { display: none; } /* the mobile lists take over */
   #acc-m-own { margin-bottom: 10px; }
   #acc-m-own .ct-addr { font-size: 13px; font-weight: 600; }
@@ -1944,14 +1951,19 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 
 /* Compose mobile one-screen (superior 09-02): form fills the viewport below
    the header rows, the thread folds into a fullscreen modal via
-   #btn-thread-pane. PC keeps the inline thread below the form. */
+   #btn-thread-pane. PC keeps the inline thread below the form.
+   Superior 0.2.2 feedback point 2/3: the fallback height must be a
+   viewport-derived value (like #tab-inbox), never auto — an unmeasured
+   or early-measured tab left the document 2px scrollable; and the page
+   title row hides on phones like every other one-screen page. */
 @media (max-width: 800px) {
   #tab-compose:not(.hidden) {
     display: flex; flex-direction: column;
-    height: var(--compose-1s, auto);
-    min-height: 0;
+    height: var(--compose-1s, calc(100dvh - 330px));
+    min-height: 300px;
   }
-  #tab-compose > h2, #btn-thread-pane { flex: 0 0 auto; }
+  #tab-compose > h2 { flex: 0 0 auto; display: none; }
+  #btn-thread-pane { flex: 0 0 auto; }
   #btn-thread-pane { margin: 0 0 8px; width: 100%; }
   #tab-compose > .compose-form { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
   #compose-body { min-height: 140px; }
@@ -2043,6 +2055,58 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #thread-modal .modal-card { width: 67%; height: 100dvh; max-height: none; border-radius: 0; }
   #thread-modal .modal-head h2 { flex: 0 0 auto; }
   #thread-modal .modal-x { margin-left: auto; }
+}
+
+/* 总览-通讯录 移动端（boss 0.2.2 反馈点一）：v5 账户页一屏方案的裸类
+   选择器漏伤此表（table 布局下 nowrap 地址列拒缩→签名列一字一行、按钮
+   裁出屏）。泄漏已收敛回 #accounts-table；此处给通讯录补齐同款一屏
+   语法——量测高列（--ovw-dir-1s，manage.js fitMgmtOneScreen 设置）+
+   行卡片化（地址行/签名跑马灯行/写邮件钮行），桌面端不动。 */
+@media (max-width: 800px) {
+  #ovw-directory:not(.hidden) {
+    display: flex; flex-direction: column;
+    height: var(--ovw-dir-1s, calc(100dvh - 320px));
+    min-height: 280px;
+  }
+  #ovw-directory > * { flex: 0 0 auto; }
+  #ovw-directory > #directory-table {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    display: block; width: 100%;
+  }
+  #directory-table thead { display: none; }
+  #directory-table tbody { display: block; width: 100%; }
+  #directory-table tbody tr {
+    display: flex; flex-wrap: wrap; align-items: center;
+    border-bottom: 1px solid var(--border); padding: 6px 2px;
+  }
+  #directory-table tbody tr:last-child { border-bottom: none; }
+  #directory-table td { display: block; border: none; padding: 2px 0; }
+  #directory-table td.addr-cell {
+    order: 1; flex: 1 1 100%; min-width: 0; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #directory-table td.sig-cell { order: 2; flex: 1 1 100%; }
+  #directory-table td.actions-cell {
+    order: 3; flex: 1 1 100%; margin-top: 4px;
+    display: flex; justify-content: flex-end;
+  }
+  #directory-table td.actions-cell .row-action {
+    min-height: 0; padding: 3px 14px; font-size: 12px;
+    border-radius: 999px;
+  }
+}
+
+/* 账户页移动端文档锁高（boss 0.2.2 反馈点二）：内容虽按一屏钉底，但
+   JS 量测偏早或极端视口下仍有像素级溢出，文档就可微拖。对齐收发件页
+   口径——容器锁高取视口推导值（--acc-1s 未设时回退 calc），溢出裁切在
+   容器内，文档永不可滚；块内布局不动（保持已批观感）。弹窗层均在
+   tab 区块之外，不受裁切影响。 */
+@media (max-width: 800px) {
+  #tab-accounts:not(.hidden) {
+    height: var(--acc-1s, calc(100dvh - 330px));
+    min-height: 300px;
+    overflow: hidden;
+  }
 }
 
 /* 往来邮件入口钮改胶囊态（boss：看胶囊展开态效果）——常态胶囊、展开

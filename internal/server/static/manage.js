@@ -1769,10 +1769,12 @@ function fitMgmtOneScreen() {
   var th = document.getElementById("mgmt-threads");
   var ov = document.getElementById("mgmt-overview");
   var br = document.getElementById("mgmt-browse");
+  var dir = document.getElementById("ovw-directory");
   if (window.innerWidth > 800) {
     if (th) th.style.removeProperty("--th-1s");
     if (ov) ov.style.removeProperty("--ovw-m-1s");
     if (br) br.style.removeProperty("--mgmt-b-1s");
+    if (dir) dir.style.removeProperty("--ovw-dir-1s");
     return;
   }
   function fitBox(el, prop, min) {
@@ -1788,20 +1790,29 @@ function fitMgmtOneScreen() {
   if (br && !br.classList.contains("hidden")) fitBox(br, "--mgmt-b-1s", 280);
   if (th && !th.classList.contains("hidden")) fitBox(th, "--th-1s", 280);
   if (ov && !ov.classList.contains("hidden")) fitBox(ov, "--ovw-m-1s", 280);
+  // Directory (总览-通讯录, superior 0.2.2 feedback point 1): the table
+  // scrolls inside its own measured column.
+  if (dir && !dir.classList.contains("hidden")) fitBox(dir, "--ovw-dir-1s", 280);
 }
 window.addEventListener("resize", fitMgmtOneScreen);
 document.addEventListener("threads:entered", function () { setTimeout(fitMgmtOneScreen, 250); });
 (function () {
   var seg = document.getElementById("mgmt-seg");
   if (seg) seg.addEventListener("click", function () { setTimeout(fitMgmtOneScreen, 250); });
+  // Overview capsule (系统/我的/通讯录): switching views must re-fit — the
+  // directory column only exists once its sub-view is shown.
+  var oseg = document.getElementById("ovw-seg");
+  if (oseg) oseg.addEventListener("click", function () { setTimeout(fitMgmtOneScreen, 250); });
   if (!window.MutationObserver) return;
   var mo = new MutationObserver(function () { setTimeout(fitMgmtOneScreen, 80); });
   var th = document.getElementById("th-list");
   var ov = document.getElementById("mgmt-overview");
   var ml = document.getElementById("mail-list");
+  var odir = document.getElementById("ovw-directory");
   if (th) mo.observe(th, { childList: true, subtree: true });
   if (ov) mo.observe(ov, { childList: true, subtree: true });
   if (ml) mo.observe(ml, { childList: true, subtree: true });
+  if (odir) mo.observe(odir, { childList: true, subtree: true });
 })();
 
 document.addEventListener("manage:entered", function () {
