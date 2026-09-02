@@ -688,7 +688,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $("#invalid-confirm").classList.add("hidden");
     $("#invalid-ack").checked = false;
     $("#invalid-status").textContent = t("common.loading");
-    api("/api/admin/invalid").then(function (d) {
+    api("/admin/invalid").then(function (d) {
       renderInvalidList((d && d.messages) || []);
       $("#invalid-status").textContent = "";
     }).catch(function (e) {
@@ -755,12 +755,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $("#invalid-status").textContent = t("common.loading");
     try {
       var body = invalidPending.all ? { all: true } : { ids: invalidPending.ids };
-      var res = await api("/api/admin/invalid", { method: "DELETE", body: JSON.stringify(body) });
+      var res = await api("/admin/invalid", { method: "DELETE", body: JSON.stringify(body) });
       $("#invalid-confirm").classList.add("hidden");
       invalidPending = null;
       var doneMsg = t("inv.deleted", { n: (res && res.deleted) || 0 });
       // Refresh the list in place; the status line survives the reload.
-      api("/api/admin/invalid").then(function (d) {
+      api("/admin/invalid").then(function (d) {
         renderInvalidList((d && d.messages) || []);
         $("#invalid-status").textContent = doneMsg;
       }).catch(function () {
