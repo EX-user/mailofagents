@@ -62,6 +62,47 @@ func verboseEnabled() bool {
 	return os.Getenv("WORKER_VERBOSE") == "1"
 }
 
+// shortErr compresses a wake failure into one board-friendly line: the
+// classified reason instead of the multi-hundred-byte stderr/stdout tails
+// (which errorLog archives to the per-account error file).
+func shortErr(err error) string {
+	s := err.Error()
+	switch {
+	case strings.Contains(s, "database is locked"):
+		return "opencode db lock (retry queued)"
+	case strings.Contains(s, "certificate"), strings.Contains(s, "stream disconnected"),
+		strings.Contains(s, "Reconnecting"), strings.Contains(s, "connect"):
+		return "network/tls unreachable"
+	case strings.Contains(s, "429"), strings.Contains(s, "usage"),
+		strings.Contains(s, "quota"), strings.Contains(s, "限额"),
+		strings.Contains(s, "使用上限"):
+		return "provider quota/429"
+	case strings.Contains(s, "signal: killed"):
+		return "timeout kill"
+	}
+	// Generic exit: drop the embedded tails, keep the head.
+	if i := strings.Index(s, "; stderr:"); i > 0 {
+		s = s[:i]
+	}
+	return s
+}
+
+// errorLog appends a wake failure's FULL detail (tails included) to a
+// per-account error file next to the state file, rotated at ~256KB. The
+// terminal only ever shows the shortErr line.
+func (d *Duty) errorLog(err error) {
+	path := filepath.Join(filepath.Dir(d.cfg.StateFile), "errors-"+localPart(d.cfg.Address)+".log")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > 256*1024 {
+		_ = os.Rename(path, path+".old")
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "=== %s wake failure ===\n%v\n\n", time.Now().Format("2006-01-02 15:04:05"), err)
+}
+
 // contactAddrs resolves the escalation address set: explicit config wins;
 // otherwise the account's declared superiors (refreshed every 10 min).
 func (d *Duty) contactAddrs() []string {
@@ -164,6 +205,21 @@ func (d *Duty) Run(ctx context.Context) {
 			// pair — the session id is the fastest way back into a live
 			// scene (manual resume / support triage).
 			d.logf("duty stop: %v address=%s session=%q", ctx.Err(), d.cfg.Address, sess)
+			// Graceful-exit self-mail: an unread self-addressed letter
+			// guarantees the next start wakes the CLI (a bound session with
+			// an empty inbox would otherwise just sit waiting), so the agent
+			// learns it was interrupted and when. Best-effort: shutdown
+			// proceeds regardless of the send result.
+			if sess != "" {
+				stamp := time.Now().Format("060102150405")
+				if err := d.mail.SendMail(d.cfg.Address,
+					"[worker] 会话被掐断 "+stamp,
+					stamp+" 外部值守进程掐断了会话。"); err != nil {
+					d.logf("shutdown self-mail failed: %v", err)
+				} else {
+					d.logf("shutdown self-mail sent (guarantees a wake on next start)")
+				}
+			}
 			return
 		case <-t.C:
 		case <-d.urgentCh: // urgent interrupt landed: re-check at once
@@ -400,9 +456,17 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			d.logf("wake interrupted at timeout; session kept, mail re-queued")
 			return
 		}
-		board.Set(tag, "waiting", "last wake errored (see log)")
-		d.logf("wake error: %v", err)
-		d.noteFailure("wake: " + err.Error())
+		// Failure rendering stays compact: ONE classified line on the board
+		// and in the log, the full tails archived to the per-account error
+		// file (WORKER_VERBOSE=1 also echoes the detail to the log).
+		d.errorLog(err)
+		short := shortErr(err)
+		board.Set(tag, "waiting", "wake failed: "+short)
+		d.logf("wake failed: %s — detail in errors-%s.log", short, localPart(d.cfg.Address))
+		if verboseEnabled() {
+			d.logf("wake error detail: %v", err)
+		}
+		d.noteFailure("wake: " + short)
 		return
 	}
 	noticeDone := false

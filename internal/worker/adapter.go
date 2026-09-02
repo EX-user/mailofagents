@@ -104,12 +104,39 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 		b.WriteString("\n")
 	}
 	if len(mails) > 0 {
-		fmt.Fprintf(&b, "收件箱当前状态：%d 未读\n", len(mails))
-		for _, m := range mails {
-			fmt.Fprintf(&b, "%s from %s: %s\n", m.Subject, m.From, m.Preview)
+		fmt.Fprintf(&b, "收件箱当前状态：%d 未读（新→旧）\n", len(mails))
+		show := mails
+		if len(show) > 10 {
+			fmt.Fprintf(&b, "（仅列最新 10 封，其余 %d 封更早未读未列出）\n", len(mails)-10)
+			show = show[:10]
+		}
+		for i, m := range show {
+			// Numbered, fielded, single-line entries: previews carry raw
+			// body newlines (greeting + blank line + text), which used to
+			// shred one record across many visual lines until records were
+			// indistinguishable from each other. Previews clamp at 60
+			// runes on top of the server-side 100.
+			fmt.Fprintf(&b, "[未读 %d/%d]\n  发件人: %s\n  主题: %s（%s）\n  预览: %s\n",
+				i+1, len(mails), m.From, oneLine(m.Subject),
+				time.Unix(m.ReceivedAt, 0).Format("01-02 15:04"),
+				oneLine(clampRunes(m.Preview, 60)))
 		}
 	}
 	return b.String()
+}
+
+// oneLine collapses every whitespace run (newlines, tabs, multi-spaces) in
+// s to a single space — digest entries must never span visual lines.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// clampRunes truncates s to at most n runes, appending an ellipsis when cut.
+func clampRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
 }
 
 // ensureWorkdir materializes the binding workdir conservatively (superior
@@ -139,6 +166,7 @@ type lineTee struct {
 	buf      bytes.Buffer
 	secret   string // account password: masked in anything shown on the board
 	lastText string // most recent spoken text; its tail anchors the next step_start
+	maxCtx   int64  // largest context-size report this wake (side requests report tiny usage and must not drag the readout down)
 }
 
 func (w *lineTee) Write(p []byte) (int, error) {
@@ -198,17 +226,26 @@ func contextTokens(o any) int64 {
 }
 
 func usageContext(u map[string]any) int64 {
-	num := func(k string) int64 {
-		if f, ok := u[k].(float64); ok {
-			return int64(f)
-		}
-		return 0
-	}
 	// context = input (uncached) + cache read + cache write; output and
 	// reasoning excluded (they ride into next turn's input anyway).
-	return num("input") + num("input_tokens") + num("cacheRead") +
-		num("cache_read_input_tokens") + num("cached_input_tokens") +
-		num("cacheWrite") + num("cache_creation_input_tokens")
+	n := numOf(u, "input") + numOf(u, "input_tokens") + numOf(u, "cacheRead") +
+		numOf(u, "cache_read_input_tokens") + numOf(u, "cached_input_tokens") +
+		numOf(u, "cacheWrite") + numOf(u, "cache_creation_input_tokens")
+	// opencode nests its cache counters one level down: tokens.cache.{read,
+	// write} — the bulk of a cached session's context hides there.
+	if c, ok := u["cache"].(map[string]any); ok {
+		n += numOf(c, "read") + numOf(c, "write")
+	}
+	return n
+}
+
+// numOf reads a numeric field from a usage map (JSON numbers decode as
+// float64).
+func numOf(m map[string]any, k string) int64 {
+	if f, ok := m[k].(float64); ok {
+		return int64(f)
+	}
+	return 0
 }
 
 // summarize reduces one stdout line to a restrained board summary: the
@@ -241,8 +278,16 @@ func (w *lineTee) summarize(line []byte) string {
 				parts = append(parts, s)
 			}
 			if n := contextTokens(ev); n > 0 {
-				parts = append(parts, "ctx≈"+humanTokens(n))
-				board.SetCtx(w.tag, n)
+				// Track the wake's high-water mark: opencode interleaves
+				// tiny side-request steps (title generation etc.) whose
+				// usage would otherwise drag the readout down from the
+				// main turn's real context size. The tee is per wake, so
+				// the mark resets naturally (and after a real compaction).
+				if n > w.maxCtx {
+					w.maxCtx = n
+				}
+				board.SetCtx(w.tag, w.maxCtx)
+				parts = append(parts, "ctx≈"+humanTokens(w.maxCtx))
 			}
 			if len(parts) == 0 {
 				if t == "step_start" {
@@ -583,7 +628,10 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 	if sessionID != "" {
 		args = append(args, "--session", sessionID)
 	}
-	args = append(args, digest)
+	// Digest rides on STDIN only: npm-shim CLIs route argv through cmd.exe
+	// on Windows, which truncates multi-line arguments to their first line
+	// (field report: credentials never reached the session). pi reads the
+	// prompt from stdin in print mode (phase 0: stdin ok).
 
 	out, wakeTokens, err := runWake(ctx, cfg, "pi", args, digest, localPart(cfg.Address))
 	if err != nil {
@@ -629,7 +677,11 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 	if sessionID != "" {
 		args = append(args, "-s", sessionID)
 	}
-	args = append(args, digest)
+	// opencode is the one CLI that must keep the digest in argv: its stdin
+	// pipe is structurally unusable (EOF ⇒ dispose ⇒ fake success). On
+	// Windows npm-shim argv would truncate multi-line text at cmd.exe —
+	// opencode ships as a native binary, so unix and Windows argv are both
+	// safe; a Windows npm-shim install is NOT supported for this reason.
 
 	out, wakeTokens, err := runWake(ctx, cfg, "opencode", args, "", localPart(cfg.Address))
 	if err != nil {
@@ -685,9 +737,11 @@ func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest st
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}
-	args = append(args, digest)
+	// Digest rides on STDIN only: `claude -p` reads the prompt from stdin
+	// when no positional prompt is given (phase 0: stdin ok). argv would go
+	// through cmd.exe on Windows npm shims and truncate multi-line text.
 
-	out, wakeTokens, err := runWake(ctx, cfg, "claude", args, "", localPart(cfg.Address))
+	out, wakeTokens, err := runWake(ctx, cfg, "claude", args, digest, localPart(cfg.Address))
 	if err != nil {
 		// Salvage: a partial stream may still name the session.
 		var sv struct {
@@ -738,9 +792,12 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	if sessionID != "" {
 		args = append(args, "resume", sessionID)
 	}
-	args = append(args, digest)
+	// Digest rides on STDIN only: `codex exec` reads the prompt from stdin
+	// when no positional prompt is given (phase 0: stdin native ok). argv
+	// would go through cmd.exe on Windows npm shims and truncate
+	// multi-line text — the field report that started this.
 
-	out, wakeTokens, err := runWake(ctx, cfg, "codex", args, "", localPart(cfg.Address))
+	out, wakeTokens, err := runWake(ctx, cfg, "codex", args, digest, localPart(cfg.Address))
 	if err != nil {
 		// Salvage: a partial stream may still name the thread.
 		if id, perr := firstJSONField(out, "type", "thread.started", "thread_id"); perr == nil {

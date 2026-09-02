@@ -31,11 +31,12 @@ func NewMailClient(server, address, password string) *MailClient {
 
 // MailSummary mirrors the /api/inbox entry fields the worker needs.
 type MailSummary struct {
-	ID      string `json:"id"`
-	From    string `json:"from"`
-	Subject string `json:"subject"`
-	Preview string `json:"preview"`
-	Unread  bool   `json:"unread"`
+	ID         string `json:"id"`
+	From       string `json:"from"`
+	Subject    string `json:"subject"`
+	Preview    string `json:"preview"`
+	ReceivedAt int64  `json:"received_at"`
+	Unread     bool   `json:"unread"`
 }
 
 // MailStats is the volume snapshot injected into the fresh-session digest:
