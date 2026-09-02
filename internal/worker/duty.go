@@ -54,6 +54,14 @@ func (d *Duty) logf(format string, args ...any) {
 	board.Logf(localPart(d.cfg.Address), format, args...)
 }
 
+// verboseEnabled reports whether pre-flight wake lines (unread counts,
+// time beats — both already visible on the status board) should also hit
+// the log. WORKER_VERBOSE=1 turns them on; quiet-by-default keeps the
+// terminal scrollback to roughly one line per completed wake.
+func verboseEnabled() bool {
+	return os.Getenv("WORKER_VERBOSE") == "1"
+}
+
 // contactAddrs resolves the escalation address set: explicit config wins;
 // otherwise the account's declared superiors (refreshed every 10 min).
 func (d *Duty) contactAddrs() []string {
@@ -291,10 +299,15 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		return
 	}
 	if len(unread) > 0 {
-		d.logf("wake: %d unread (session %q)", len(unread), d.sessionID)
+		// The board row already shows the unread count and the waiting→
+		// working transition, so this pre-flight line is scrollback noise
+		// during normal duty; WORKER_VERBOSE=1 restores it.
+		if verboseEnabled() {
+			d.logf("wake: %d unread (session %q)", len(unread), d.sessionID)
+		}
 	} else if d.sessionID == "" {
 		d.logf("wake: bootstrap (empty inbox, fresh session)")
-	} else {
+	} else if verboseEnabled() {
 		d.logf("wake: time beat (session %q)", d.sessionID)
 	}
 	board.Set(tag, "working", "digest sent, model is on it…")
