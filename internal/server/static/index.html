@@ -361,6 +361,7 @@
     <section id="tab-accounts" class="tab-panel hidden">
       <h2>Accounts <small class="muted" data-i18n="sub.accounts">— your contacts and account settings</small></h2>
       <button id="btn-register" class="primary" data-i18n="subs.registerBtn">Register a mailbox for your AI agent</button>
+      <button id="btn-invalid" class="row-action hidden" data-i18n="inv.title" style="margin-left:8px;">Invalid letters</button>
       <div id="register-result" class="callout hidden"></div>
       <!-- PC register-subordinate block (superior feedback round 3): the
            button moves out of the table; sub accounts render as leading
@@ -371,10 +372,19 @@
         <button id="btn-subreg-pc" class="primary" data-i18n="subs.registerBtn">Register a mailbox for your AI agent</button>
         <div class="muted" style="font-size: 12px; margin-top: 6px;" data-i18n="subs.registerNote">Creates a new mailbox for your AI assistant (Codex, Claude, etc.). You can read its mail here anytime.</div>
       </div>
+      <!-- Accounts one-screen plan (mobile only): the own account renders
+           here as a compact card matching the contact cards below; the
+           matching table row hides via CSS (.own-row). PC ignores it. -->
+      <div id="acc-m-own" class="m-only"></div>
       <table id="accounts-table">
         <thead><tr><th data-i18n="hdr.address">Address</th><th data-i18n="hdr.tags">Tags</th><th data-i18n="prof.signature">Signature</th><th data-i18n="hdr.created">Created</th><th data-i18n="hdr.actions">Actions</th></tr></thead>
         <tbody></tbody>
       </table>
+      <!-- Accounts one-screen plan (mobile only): contacts render here as
+           compact scrollable cards; the matching table rows hide via CSS
+           (.ct-row). PC ignores this container (display:none). Lives inside
+           #subs-section, so admin sessions never see it. -->
+      <div id="acc-m-contacts" class="m-only"></div>
       </div>
     </section>
 
@@ -801,6 +811,11 @@
           <button id="btn-send" class="primary" data-i18n="compose.send">Send</button>
           <button id="btn-attach" class="row-action" data-i18n="compose.attach">📎 Attach</button>
           <input type="file" id="compose-file-input" multiple hidden />
+          <!-- Mobile one-screen plan: the recent-conversation thread folds
+               into a side drawer via this compact button (same size/placement
+               grammar as 刷新会话); the thread node and the refresh button
+               MOVE into the drawer while it is open. PC keeps both inline. -->
+          <button id="btn-thread-pane" class="row-action m-only" data-i18n="compose.recentConv">Recent conversation</button>
           <button id="btn-refresh-thread" class="row-action" data-i18n="compose.refreshThread">Refresh thread</button>
           <!-- Public showcase opt-in (v0.4.4): also publish this letter on the
                guest portal. Default off; hidden when the admin disables
@@ -815,9 +830,24 @@
       </div>
 
       <h3 id="thread-title" data-i18n="compose.recentConv">Recent conversation</h3>
+      <span id="thread-holder" style="display:none"></span>
       <div id="compose-thread" class="thread-list muted">Fill in "To" and click Send or Refresh to load the thread.</div>
     </section>
   </main>
+
+  <!-- Mobile thread modal (accounts one-screen family): hosts the compose
+       page's recent-conversation list on phones, opened from
+       #btn-thread-pane. The list node is moved here and back. -->
+  <div id="thread-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="thread-modal-title">
+    <div class="modal-card" style="display:flex; flex-direction:column;">
+      <div class="modal-head">
+        <h2 id="thread-modal-title" data-i18n="compose.recentConv">Recent conversation</h2>
+        <div id="thread-modal-tools" class="row"></div>
+        <button id="btn-thread-close" class="modal-x" title="Close" aria-label="Close" data-i18n-aria="modal.close">×</button>
+      </div>
+      <div id="thread-modal-body" style="overflow-y:auto; min-height:0;"></div>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
 
@@ -867,6 +897,36 @@
         <span id="subreg-copy-status" class="muted"></span>
       </div>
       <pre class="code-block hidden" id="subreg-prompt"></pre>
+    </div>
+  </div>
+
+  <!-- Admin: invalid-letter inspector (开工令 01M1FSKAD — DB 删除从严口径).
+       Lists letters whose every TO recipient no longer exists; per-row
+       checkboxes, delete-selected / delete-all, and a hard-confirm state
+       (red warning + irreversibility acknowledgement checkbox). -->
+  <div id="invalid-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="invalid-title">
+    <div class="modal-card" style="max-width:820px;">
+      <div class="modal-head">
+        <h2 id="invalid-title" data-i18n="inv.title">Invalid letters</h2>
+        <button id="btn-invalid-close" class="modal-x" title="Close" aria-label="Close" data-i18n-aria="modal.close">×</button>
+      </div>
+      <p class="muted" data-i18n="inv.desc">Listed here: letters whose every TO recipient address no longer exists (CC is not counted). Deleting removes them from the database permanently; normal mail is unaffected.</p>
+      <div id="invalid-list" class="invalid-list"></div>
+      <div class="row" style="justify-content:space-between; margin-top:10px;">
+        <button type="button" id="btn-invalid-delchecked" class="row-action" data-i18n="inv.delChecked">Delete selected</button>
+        <button type="button" id="btn-invalid-delall" class="row-action inv-danger" data-i18n="inv.delAll">Delete all</button>
+      </div>
+      <div id="invalid-confirm" class="hidden" style="margin-top:10px; border:1px solid #c0392b; border-radius:8px; padding:10px 12px;">
+        <p style="color:#c0392b; font-weight:600; margin:0 0 6px;" data-i18n="inv.warn">This permanently deletes the selected letters from the database. This cannot be undone.</p>
+        <label style="display:flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
+          <input type="checkbox" id="invalid-ack" /> <span data-i18n="inv.ack">I understand this action is irreversible</span>
+        </label>
+        <div class="row" style="justify-content:flex-end; margin-top:8px;">
+          <button type="button" id="btn-invalid-cancel" class="row-action" data-i18n="subs.cancel">Cancel</button>
+          <button type="button" id="btn-invalid-confirm" class="primary" style="margin-left:8px;" data-i18n="inv.confirmDelete">Delete</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;"><span id="invalid-status" class="muted"></span></div>
     </div>
   </div>
 

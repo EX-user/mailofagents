@@ -83,7 +83,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       // the hover title.
       box += '<tr data-mgmt-acct="' + esc(s.address) + '">' +
         '<td data-label="' + esc(t("mgmt.colAccount")) + '"><span class="dot ' + dotCls + '" title="' + esc(liveTxt) + '"></span><span class="mono">' + esc(s.address) + '</span>' +
-        (s.signature ? '<br><small class="muted">' + esc(s.signature) + "</small>" : "") + "</td>" +
+        (s.signature ? '<div class="ovw-sig mq"><span class="sig-track"><span class="sig-txt">' + esc(s.signature) + '</span><span class="sig-dup" aria-hidden="true">' + esc(s.signature) + "</span></span></div>" : "") + "</td>" +
         '<td data-label="' + esc(t("mgmt.colCounts")) + '" class="mono">' + (s.count_in_7d || 0) + " / " + (s.count_out_7d || 0) + "</td>" +
         '<td data-label="' + esc(t("mgmt.colAvg")) + '" class="mono">' + fmtAvg(s.avg_len_in) + " / " + fmtAvg(s.avg_len_out) + "</td>" +
         '<td data-label="' + esc(t("mgmt.colTop")) + '" class="mono">' + esc(top) + "</td></tr>";
@@ -308,15 +308,55 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       mgmtOverviewLoaded = true;
       syncGraphControlLabels();
       wireGraphControls();
+      wireOvwSplit();
       renderMgmtGraph(d && d.graph, (d && d.subs) || []);
+      // S2: the marquee measurer lives in app.js — let it size the new
+      // .mq signature lines (accounts one-screen plan shares the grammar).
+      document.dispatchEvent(new CustomEvent("ovw:rendered"));
     } catch (e) {
       box.innerHTML = '<p class="muted">' + esc(t("common.error", { msg: e.message })) + "</p>";
     }
   }
 
+  // Split drag handle (superior 09-02): on phones the Overview stacks the
+  // scrollable subs table above the connections graph; the handle between
+  // them drags the split vertically. Height persists in localStorage.
+  function wireOvwSplit() {
+    var wrap = document.getElementById("mgmt-graph-wrap");
+    var box = document.getElementById("mgmt-overview");
+    if (!wrap || !box || wrap.dataset.splitWired === "1") return;
+    var handle = document.createElement("button");
+    handle.type = "button";
+    handle.className = "ovw-split";
+    handle.setAttribute("aria-label", "drag to resize");
+    wrap.parentNode.insertBefore(handle, wrap);
+    var saved = 0;
+    try { saved = parseInt(localStorage.getItem("ovw_graph_h") || "0", 10); } catch (_) {}
+    if (saved > 100) wrap.style.height = saved + "px";
+    handle.addEventListener("pointerdown", function (e) {
+      if (window.innerWidth > 800) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      var startY = e.clientY;
+      var startH = wrap.getBoundingClientRect().height;
+      function move(ev) {
+        var h = startH + (startY - ev.clientY); // dragging up grows the graph
+        var max = box.getBoundingClientRect().height - 160; // keep ≥160px for the list
+        wrap.style.height = Math.max(120, Math.min(max, h)) + "px";
+      }
+      function up() {
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", up);
+        try { localStorage.setItem("ovw_graph_h", String(Math.round(wrap.getBoundingClientRect().height))); } catch (_) {}
+      }
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", up);
+    });
+    wrap.dataset.splitWired = "1";
+  }
+
   // Floating graph controls: one click cycles the value, persists, and
-  // re-renders. map/nums reuse the cached payload; days refetches.
-  // Superior 01M186FW6Y: map/nums restyle edges IN PLACE (DataSet.update of
+  // re-renders. map/nums reuse the cached payload; days refetches.  // Superior 01M186FW6Y: map/nums restyle edges IN PLACE (DataSet.update of
   // visual props never re-runs physics — nodes stay exactly where they are).
   function restyleGraphEdges() {
     if (!mgmtNetwork || !mgmtEdgeSet) {

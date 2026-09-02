@@ -1102,5 +1102,51 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     ensureComposeAccounts();
     loadComposeThread();
     ensureComposeShowcaseVisibility();
+    fitComposeOneScreen();
   });
+
+  // ---- mobile one-screen compose (superior 09-02): the recent-
+  // conversation list folds into a fullscreen modal; the node is MOVED in
+  // and out (listeners ride along), everything else fits the viewport.
+  function fitComposeOneScreen() {
+    var tab = document.getElementById("tab-compose");
+    if (!tab || tab.classList.contains("hidden")) return;
+    if (window.innerWidth > 800) { tab.style.removeProperty("--compose-1s"); return; }
+    var top = tab.getBoundingClientRect().top;
+    if (top <= 0) return;
+    var h = window.innerHeight - Math.max(top, 0) - 10;
+    if (h < 360) h = 360;
+    tab.style.setProperty("--compose-1s", h + "px");
+    var over = document.documentElement.scrollHeight - window.innerHeight;
+    if (over > 0) tab.style.setProperty("--compose-1s", Math.max(h - over, 360) + "px");
+  }
+  window.addEventListener("resize", fitComposeOneScreen);
+  (function wireThreadModal() {
+    var btn = document.getElementById("btn-thread-pane");
+    var thread = document.getElementById("compose-thread");
+    var modal = document.getElementById("thread-modal");
+    var holder = document.getElementById("thread-holder");
+    var bodyBox = document.getElementById("thread-modal-body");
+    var tools = document.getElementById("thread-modal-tools");
+    var refresh = document.getElementById("btn-refresh-thread");
+    var refreshHome = refresh ? refresh.parentNode : null;
+    if (!btn || !thread || !modal || !holder || !bodyBox) return;
+    function open() {
+      bodyBox.appendChild(thread); // move the node in — listeners ride along
+      if (refresh && tools) tools.appendChild(refresh); // 刷新会话 lives in the drawer
+      modal.classList.remove("hidden");
+      fitComposeOneScreen();
+    }
+    function close() {
+      holder.appendChild(thread); // back to the (hidden) inline anchor
+      modal.classList.add("hidden");
+    }
+    btn.addEventListener("click", open);
+    document.getElementById("btn-thread-close").addEventListener("click", close);
+    modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if (!modal.classList.contains("hidden")) close();
+    });
+  })();
 })();

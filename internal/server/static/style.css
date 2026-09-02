@@ -204,9 +204,25 @@ td.sig-cell.marquee .sig-dup { display: inline; }
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
+/* Inline marquee cells beyond table sigs (accounts one-screen plan):
+   .mq elements carry the same track/dup markup as td.sig-cell and join
+   the same measure-and-spin pass (maybeMarqueeSigs). */
+.mq { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+.mq.marquee { text-overflow: clip; }
+.mq.marquee .sig-track {
+  display: inline-block; white-space: nowrap;
+  animation: sig-loop var(--wm-dur, 12s) linear infinite;
+}
+.mq.marquee .sig-track > span { padding-right: 48px; }
+.mq.marquee .sig-dup { display: inline; }
+/* Address cells share the sig-cell overflow grammar now that they carry
+   the marquee track (single line + ellipsis fallback on PC too). */
+td.addr-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-sig { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sub-list { min-width: 0; }
 /* Keep wrapping as a fallback for very narrow viewports. */
 @media (max-width: 520px) {
-  td.addr-cell, td.sig-cell { white-space: normal; word-break: break-all; }
+  td.sig-cell { white-space: normal; word-break: break-all; }
 }
 
 .compose-form { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
@@ -417,6 +433,24 @@ td code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 
 
 .detail-row { padding: 3px 0; }
 .detail-row b { color: var(--muted); font-weight: 500; display: inline-block; min-width: 64px; }
+
+/* Admin invalid-letter inspector (strict-delete, 开工令 01M1FSKAD). */
+.invalid-list {
+  border: 1px solid var(--border); border-radius: 8px;
+  max-height: 320px; overflow-y: auto; background: var(--bg);
+}
+.inv-head, .inv-row {
+  display: grid; grid-template-columns: 28px 1.2fr 1.4fr 1.2fr 0.9fr;
+  gap: 8px; align-items: center; padding: 6px 10px;
+  border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.inv-head { font-weight: 600; color: var(--muted); position: sticky; top: 0; background: var(--panel); }
+.inv-row { cursor: pointer; }
+.inv-row:hover { background: var(--panel-2); }
+.inv-row:last-child { border-bottom: none; }
+.inv-to { color: #c0392b; }
+.inv-time { color: var(--muted); }
+.inv-danger { color: #c0392b; border-color: #c0392b; }
 .body {
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -843,6 +877,41 @@ nav .tab { flex: 0 0 auto; }
   /* PC-only leading sub rows disappear on phones (the container card
      takes over there); the container row disappears on desktop. */
   .subrow-pc { display: none !important; }
+
+  /* ---- Accounts one-screen plan (superior 09-02, phones only) ----
+     Captions gone; badges + address share ONE line (address marquees on
+     overflow, no wrapping); signature max one line; contact rows hand
+     over to the scrollable #acc-m-contacts list; the page title hides;
+     every button stays. PC keeps the plain table. */
+  #tab-accounts > h2 { display: none; }
+  #accounts-table td[data-label]::before { content: none; }
+  #accounts-table tr {
+    display: flex; flex-wrap: wrap; align-items: center;
+    padding: 10px 12px;
+  }
+  #accounts-table td { padding: 2px 0; }
+  #accounts-table td[data-label]:empty { display: none; }
+  .addr-cell { order: 1; flex: 1 1 0; min-width: 0; }
+  .addr-cell + td { order: 2; flex: 0 0 auto; margin-left: 6px; }
+  td.sig-cell { order: 3; flex: 1 1 100%; }
+  td.sig-cell + td { order: 4; flex: 1 1 100%; font-size: 12px; color: var(--muted); }
+  td.actions-cell { order: 5; flex: 1 1 100%; margin-top: 4px; }
+  #accounts-table tr.ct-row, #accounts-table tr.own-row { display: none; } /* the mobile lists take over */
+  #acc-m-own { margin-bottom: 10px; }
+  #acc-m-own .ct-addr { font-size: 13px; font-weight: 600; }
+  /* The two scrollable zones get a visible boundary (superior feedback):
+     ONE rounded box per zone, inner cards flattened to hairline rows and
+     clipped by the container — no nested rounded boxes. */
+  .sub-list, #acc-m-contacts {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--sub-card-bg);
+  }
+  .sub-list .sub-card, #acc-m-contacts .ct-card {
+    border: none; border-bottom: 1px solid var(--border);
+    border-radius: 0; background: transparent; margin: 0;
+  }
+  .sub-list .sub-card:last-child, #acc-m-contacts .ct-card:last-child { border-bottom: none; }
+  .sub-list { overflow-y: auto; margin: 4px 0 2px; }
 }
 
 /* Agent-mailbox register zone (superior feedback round 3): on DESKTOP the
@@ -851,6 +920,8 @@ nav .tab { flex: 0 0 auto; }
    container card; .pc-only hides desktop-only blocks there. */
 .pc-only { }
 @media (max-width: 800px) { .pc-only { display: none !important; } }
+/* Phone-only companion (accounts one-screen plan): #acc-m-contacts. */
+.m-only { display: none; }
 .agentreg-row { display: none; }
 .agentreg-cell { padding: 0; }
 .agentreg-card {
@@ -880,22 +951,34 @@ nav .tab { flex: 0 0 auto; }
    layout, same micro-label ::before, same cell rhythm. MUST stay after
    the flex base rule above — equal specificity, source order wins. */
 @media (max-width: 800px) {
-  /* Phones: compact card (superior-approved round). Address on its own
-     line; badges + signature share one meta line; a small pill compose
-     button bottom-right; container padding tightened a notch. */
+  /* Phones (one-screen plan): badges + address share ONE line (address
+     marquees on overflow), signature max one line, pill buttons
+     bottom-right; the card list scrolls via .sub-list max-height. */
   .agentreg-card { padding: 10px 12px; }
   .sub-card {
-    display: block; padding: 7px 9px; margin: 5px 0;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px;
+    padding: 7px 9px; margin: 5px 0;
     border: 1px solid var(--sub-card-border); border-radius: 10px;
     background: var(--sub-card-bg);
   }
-  .sub-addr { font-size: 13px; overflow-wrap: anywhere; }
-  .sub-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px;
-    flex-wrap: wrap; }
-  .sub-sig { font-size: 12px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
-  .sub-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .sub-meta { order: 2; flex: 0 0 auto; }
+  .sub-addr { order: 1; flex: 1 1 0; font-size: 13px; min-width: 0; }
+  .sub-sig { order: 3; flex: 1 1 100%; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .sub-foot { order: 4; flex: 1 1 100%; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   button.row-action.pill-btn { font-size: 12px; padding: 3px 14px;
     border-radius: 999px; min-height: 0; }
+  /* Phone-only contacts list (accounts one-screen plan). */
+  .m-only { display: block; }
+  #acc-m-contacts { overflow-y: auto; margin-top: 10px; }
+  .ct-card {
+    border: 1px solid var(--sub-card-border); border-radius: 10px;
+    background: var(--sub-card-bg); padding: 7px 9px; margin: 5px 0;
+  }
+  .ct-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .ct-addr { font-size: 13px; flex: 1 1 0; order: 1; }
+  .ct-line > .badge-listed { order: 2; flex: 0 0 auto; }
+  .ct-sig { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .ct-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 }
 
 /* Team register v2 (superior-approved): stepper + member name rows with
@@ -1782,6 +1865,22 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #tab-inbox .inbox-pager { flex: 0 0 auto; margin-top: 10px; margin-bottom: 0; }
 }
 
+/* Superior 09-02: one-screen Inbox on PC as well — same measured flex
+   column as phones (height = viewport minus header/nav/title/rows, set by
+   fitInboxOneScreen via --inbox-pc-1s). Columns keep the 1fr/1fr ratio;
+   panes scroll internally; the pager stays inside the viewport. */
+@media (min-width: 801px) {
+  #tab-inbox:not(.hidden) {
+    display: flex; flex-direction: column;
+    height: var(--inbox-pc-1s, auto);
+    min-height: 0;
+  }
+  #tab-inbox > h2, #tab-inbox > .row, #tab-inbox .mail-tabs { flex: 0 0 auto; }
+  #inbox-grid { flex: 1 1 auto; min-height: 0; }
+  #inbox-grid > .pane { height: 100%; min-height: 0; max-height: none; }
+  #tab-inbox .inbox-pager { flex: 0 0 auto; margin-bottom: 0; }
+}
+
 /* Superior 08-31 (inbox one-screen follow-up): compact controls on phones —
    page title out; Load/Mark-all become icon-only buttons (Material refresh /
    done_all double-check) sharing one row with the search box; the mode pill
@@ -1802,4 +1901,178 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41 6 19l1.41-1.41L1.83 12 .41 13.41z'/%3E%3C/svg%3E");
   }
   #inbox-row-ctl #inbox-search { flex: 1 1 auto; min-width: 0; max-width: none; }
+}
+
+/* Overview mobile (superior 09-02): three-line compact rows (account /
+   signature marquee / counts+avg merged) + drag handle for the graph split.
+   Appended last so it wins the cascade over the generic ovw card rules. */
+@media (max-width: 800px) {
+  .ovw-split {
+    display: block; width: 100%; height: 14px; margin: 4px 0;
+    border: none; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    background: var(--panel-2); cursor: row-resize; padding: 0; touch-action: none;
+  }
+  .mgmt-ovw tr {
+    display: flex; flex-wrap: wrap; align-items: center;
+    border-bottom: 1px solid var(--border); padding: 4px 0;
+  }
+  .mgmt-ovw td { border: none; padding: 1px 4px; overflow: hidden; }
+  .mgmt-ovw td:nth-child(4) { display: none; } /* 高频联系人 hides on phones */
+  .mgmt-ovw td:first-child { flex: 1 1 100%; order: 1; }
+  .mgmt-ovw td[data-label]::before { display: inline; margin: 0 4px 0 0; }
+  .mgmt-ovw td:nth-child(2) { order: 2; flex: 1 1 50%; }
+  .mgmt-ovw td:nth-child(3) { order: 3; flex: 1 1 50%; }
+  .ovw-sig { font-size: 11px; color: var(--muted); margin-top: 1px; }
+}
+/* 拼行强化：两个指标格强制同排（basis 0 防内容撑行） */
+@media (max-width: 800px) {
+  .mgmt-ovw td:nth-child(2), .mgmt-ovw td:nth-child(3) { flex: 1 1 0; min-width: 0; font-size: 11px; }
+}
+/* 权重对齐：tbody tr(0,1,2) 压过前块，flex 三行结构生效 */
+@media (max-width: 800px) {
+  .mgmt-ovw tbody tr { display: flex; flex-wrap: wrap; align-items: center; }
+  .mgmt-ovw tbody td:nth-child(4) { display: none; }
+  .mgmt-ovw tbody td:first-child { flex: 1 1 100%; order: 1; }
+  .mgmt-ovw tbody td:nth-child(2) { order: 2; flex: 1 1 0; min-width: 0; font-size: 11px; }
+  .mgmt-ovw tbody td:nth-child(3) { order: 3; flex: 1 1 0; min-width: 0; font-size: 11px; }
+}
+/* 表格布局解除：table/tbody block 化，tr flex 才能真正约束列宽（长签名
+   才会溢出并触发跑马灯） */
+@media (max-width: 800px) {
+  .mgmt-ovw, .mgmt-ovw tbody { display: block; width: 100%; }
+}
+
+/* Compose mobile one-screen (superior 09-02): form fills the viewport below
+   the header rows, the thread folds into a fullscreen modal via
+   #btn-thread-pane. PC keeps the inline thread below the form. */
+@media (max-width: 800px) {
+  #tab-compose:not(.hidden) {
+    display: flex; flex-direction: column;
+    height: var(--compose-1s, auto);
+    min-height: 0;
+  }
+  #tab-compose > h2, #btn-thread-pane { flex: 0 0 auto; }
+  #btn-thread-pane { margin: 0 0 8px; width: 100%; }
+  #tab-compose > .compose-form { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  #compose-body { min-height: 140px; }
+  #thread-title, #thread-holder { display: none; }
+  #thread-modal .modal-card { padding: 12px; }
+}
+/* 原位往来列表在移动端隐藏（只在弹窗内显示）；弹窗内恢复显示 */
+@media (max-width: 800px) {
+  #tab-compose > #compose-thread { display: none; }
+  #thread-modal:not(.hidden) #compose-thread { display: block; }
+}
+
+/* Thread drawer v2 (superior 09-02 feedback): side drawer instead of a
+   centered modal — the composer stays visible/psychologically "live" —
+   plus a circular icon refresh inside the drawer. Overrides the earlier
+   top-button rule (#btn-thread-pane now sits in the button row). */
+@media (max-width: 800px) {
+  #btn-thread-pane { margin: 0; width: auto; }
+  #thread-modal { justify-content: flex-end; align-items: stretch; padding: 0; }
+  #thread-modal .modal-card {
+    width: 84%; max-width: 360px; height: 100%; max-height: none;
+    border-radius: 0; margin: 0;
+    transform: translateX(100%); transition: transform .22s ease;
+  }
+  #thread-modal:not(.hidden) .modal-card { transform: translateX(0); }
+  #thread-modal-tools .row-action {
+    width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 50%;
+    font-size: 0; overflow: hidden;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 1 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: center; background-size: 14px 14px;
+  }
+}
+
+/* 账户页 v3（boss 01M1FWBSM6）：注册钮改小（同写邮件钮尺寸、保留蓝底），
+   收紧外卡内边距——滑动列表本身不再独大 */
+@media (max-width: 800px) {
+  .agentreg-card { padding: 10px 12px; }
+  .agentreg-card button.primary {
+    display: inline-block; width: auto; min-height: 0;
+    font-size: 12px; padding: 4px 14px; margin: 0;
+    border-radius: 999px;
+  }
+}
+
+/* 概览 v3（boss 01M1G1JSC）：推拉控件撤除（无标准控件不做）；滑动容器
+   边缘加强到清晰可见 */
+@media (max-width: 800px) {
+  .ovw-split { display: none !important; }
+  #mgmt-overview > .mgmt-ovw {
+    border: 1px solid var(--muted); border-radius: 10px;
+    background: var(--sub-card-bg); padding: 4px;
+  }
+}
+
+/* 写邮件抽屉 v2（boss 01M1G1GTK）：全高不露角；宽度≈2/3；刷新小圆钮与
+   标题同行；标题改「往来邮件」 */
+@media (max-width: 800px) {
+  #thread-modal { padding: 0; justify-content: flex-end; align-items: stretch; }
+  #thread-modal .modal-card {
+    width: 67%; max-width: none; height: 100dvh; max-height: none;
+    border-radius: 0;
+    transform: translateX(100%); transition: transform .22s ease;
+  }
+  #thread-modal:not(.hidden) .modal-card { transform: translateX(0); }
+  #thread-modal .modal-head { display: flex; align-items: center; gap: 8px; }
+  #thread-modal .modal-head h2 { flex: 1 1 auto; margin: 0; font-size: 16px; }
+  #thread-modal-tools { margin: 0 !important; display: flex; align-items: center; order: 2; }
+  #thread-modal .modal-x { order: 3; }
+}
+
+/* 概览 v4（boss 四点之一/二）：边缘用账户页已批样式（--border 细线+圆角
+   +白底），内部行压平为细横线分割（去卡片/厚 margin） */
+@media (max-width: 800px) {
+  #mgmt-overview > .mgmt-ovw {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--sub-card-bg); padding: 2px;
+  }
+  .mgmt-ovw tbody tr {
+    border: none; border-bottom: 1px solid var(--border);
+    border-radius: 0; background: transparent; margin: 0; padding: 6px 8px;
+  }
+  .mgmt-ovw tbody tr:last-child { border-bottom: none; }
+}
+
+/* 写邮件抽屉 v3（boss 四点之三/四）：modal-card 内联 width:94%/
+   max-height:88vh 移除后由此处接管——全高不露角、宽 67%；刷新小圆钮
+   紧邻标题（×推到最右） */
+@media (max-width: 800px) {
+  #thread-modal .modal-card { width: 67%; height: 100dvh; max-height: none; border-radius: 0; }
+  #thread-modal .modal-head h2 { flex: 0 0 auto; }
+  #thread-modal .modal-x { margin-left: auto; }
+}
+
+/* 往来邮件入口钮改胶囊态（boss：看胶囊展开态效果）——常态胶囊、展开
+   （抽屉开）时反色激活 */
+@media (max-width: 800px) {
+  #btn-thread-pane {
+    border-radius: 999px; padding: 3px 14px; min-height: 0;
+    font-size: 12px; background: var(--panel); width: auto;
+  }
+  #btn-thread-pane.pane-open {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+}
+
+/* 入口钮胶囊样式回退（boss 01M1G8M7Z：他说的胶囊=往来信件可展开胶囊，
+   非按钮）——恢复普通行内钮语法；行内刷新钮移动端隐藏（抽屉内小圆钮替代） */
+@media (max-width: 800px) {
+  #btn-thread-pane { border-radius: 6px; padding: 4px 10px; background: var(--panel); }
+  #tab-compose .row #btn-refresh-thread { display: none; }
+  #thread-modal-tools #btn-refresh-thread { display: inline-block; }
+}
+
+@media (max-width: 800px) {
+  #thread-modal .thread-list { max-height: none; overflow-y: visible; }
+}
+
+/* 账户页两表对齐概览页压平语法（boss 01M1GAV79）：行=纯细线分割单列
+   堆叠（6px 8px 紧凑内边距），从属/非从属/概览三处行观感一致 */
+@media (max-width: 800px) {
+  .sub-list .sub-card, #acc-m-contacts .ct-card { padding: 6px 8px; margin: 0; }
+  .sub-foot, .ct-foot { margin-top: 2px; }
+  #acc-m-own .ct-card { padding: 6px 8px; }
 }

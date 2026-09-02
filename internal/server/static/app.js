@@ -359,6 +359,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (s && !s.is_admin) {
       await loadAccountsRegular(s.address);
       maybeMarqueeSigs();
+      fitAccountsOneScreen();
       return;
     }
     // Admin view has global tools; the subordinate manager is regular-only.
@@ -366,6 +367,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (subsSectionAdmin) subsSectionAdmin.classList.add("hidden");
     const subregPcAdmin = $("#subreg-pc");
     if (subregPcAdmin) subregPcAdmin.classList.add("hidden");
+    const invBtnAdmin = $("#btn-invalid");
+    if (invBtnAdmin) invBtnAdmin.classList.remove("hidden");
     const tbody = $("#accounts-table tbody");
     tbody.textContent = "";
     try {
@@ -424,6 +427,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // The "+ Register new account" button is admin-only.
     const regBtn = $("#btn-register");
     if (regBtn) regBtn.classList.add("hidden");
+    const invBtnRegular = $("#btn-invalid");
+    if (invBtnRegular) invBtnRegular.classList.add("hidden");
     // PC register-subordinate block above the table (mobile keeps the
     // in-container button; admin sessions never see it).
     const subregPc = $("#subreg-pc");
@@ -460,20 +465,31 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     } catch (e) { /* non-fatal — badges degrade to sub-only */ }
     var rows = [];
     rows.push(
-      "<tr>" +
-      '<td class="addr-cell" data-label="' + t("col.address") + '"><strong>' + esc(selfAddr) + "</strong> <small class=\"muted\">(you)</small></td>" +
+      "<tr class=\"own-row\">" +
+      '<td class="addr-cell mq" data-label="' + t("col.address") + '"><span class="sig-track"><span class="sig-txt"><strong>' + esc(selfAddr) + '</strong></span><span class="sig-dup" aria-hidden="true"><strong>' + esc(selfAddr) + "</strong></span></span></td>" +
       '<td data-label="' + t("col.tags") + '"><span class="badge-listed">you</span>' + (ownVisible ? ' <span class="badge-listed">listed</span>' : "") + "</td>" +
       '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(ownSig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(ownSig) + "</span></span></td>" +
       "<td data-label=\"Created\"></td>" +
       '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" id="btn-change-pw">' + t("act.changePw") + '</button></td>' +
       "</tr>"
     );
+    // Mobile one-screen plan: the own account renders as a compact card
+    // (same grammar as the contact cards) above the subordinate zone; the
+    // table row above hides on phones via CSS (.own-row).
+    var ownMobile =
+      '<div class="ct-card">' +
+      '<div class="ct-line">' + (ownVisible ? '<span class="badge-listed">listed</span>' : "") +
+      '<div class="ct-addr mq"><span class="sig-track"><span class="sig-txt"><strong>' + esc(selfAddr) + '</strong></span><span class="sig-dup" aria-hidden="true"><strong>' + esc(selfAddr) + "</strong></span></span></div>" +
+      '<span class="badge-listed">you</span></div>' +
+      (ownSig ? '<div class="ct-sig mq"><span class="sig-track"><span class="sig-txt">' + esc(ownSig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(ownSig) + "</span></span></div>" : "") +
+      '<div class="ct-foot"><button class="row-action pill-btn" id="btn-change-pw-m">' + t("act.changePw") + '</button></div>' +
+      "</div>";
     // Subordinates render TWICE from one pass (superior feedback round 3):
     // PC = leading table rows right after the own row (no container; the
     // register button lives above the table — #subreg-pc in index.html);
     // phones keep the approved container card (agentreg-row below) and hide
     // the PC rows via CSS.
-    var subZone = "", pcSubRows = "";
+    var subZone = "", pcSubRows = "", ctZone = "";
     subsList.forEach(function (e) {
       var sig = e.signature || listedSig[e.address] || "";
       var badge = '<span class="badge-sub">' + t("subs.badge") + "</span>" +
@@ -486,13 +502,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         "<td data-label=\"Created\"></td>" +
         '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" data-compose="' + esc(e.address) + '">' + t("act.compose") + '</button><button class="row-action" data-remove-sub="' + esc(e.address) + '">' + t("subs.removeBtn") + "</button></td>" +
         "</tr>";
-      // Mobile container card (compact round, superior-approved): address
-      // on its own line, badges + signature share one meta line, a small
-      // pill compose button sits bottom-right - no micro-labels.
+      // Mobile container card (one-screen plan): badges + address share one
+      // line (address marquees on overflow), signature max one line (same),
+      // pill buttons bottom-right — all inside the scrollable .sub-list.
       subZone +=
         '<div class="sub-card">' +
-        '<div class="sub-addr">' + esc(e.address) + "</div>" +
-        '<div class="sub-meta">' + badge + (sig ? '<span class="sub-sig">' + esc(sig) + "</span>" : "") + "</div>" +
+        '<div class="sub-meta">' + badge + "</div>" +
+        '<div class="sub-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(e.address) + '</span><span class="sig-dup" aria-hidden="true">' + esc(e.address) + "</span></span></div>" +
+        '<div class="sub-sig mq">' + (sig ? '<span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span>" : "") + "</div>" +
         '<div class="sub-foot"><button class="row-action pill-btn" data-compose="' + esc(e.address) + '">' + "✉ " + t("act.compose") + '</button><button class="row-action pill-btn" data-remove-sub="' + esc(e.address) + '">' + "✕ " + t("subs.removeBtn") + "</button></div>" +
         "</div>";
     });
@@ -504,7 +521,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       '<button id="btn-subreg" class="primary">' + t("subs.registerBtn") + "</button>" +
       '<div class="muted" style="font-size:12px; margin-top:5px;">' + t("subs.registerNote") + "</div>" +
       '<div class="sep-line" style="margin:8px 0;"></div>' +
-      (subZone || '<div class="muted" style="font-size:12px;">' + t("subs.noneVisible") + "</div>") +
+      (subZone ? '<div class="sub-list">' + subZone + "</div>" : '<div class="muted" style="font-size:12px;">' + t("subs.noneVisible") + "</div>") +
       "</div></td>" +
       "</tr>"
     );
@@ -521,15 +538,25 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         // Every address row gets the same shape (feedback: subordinate
         // rows with and without mail history must look identical):
         // badge column, Compose action; Created only where known.
+        // The address carries the marquee track for the mobile one-screen
+        // plan (phones merge badges+address into one line); the twin card
+        // below feeds #acc-m-contacts (the phone-only scrollable list).
         rows.push(
-          "<tr>" +
-          '<td class="addr-cell" data-label="' + t("col.address") + '">' + esc(c) + "</td>" +
+          "<tr class=\"ct-row\">" +
+          '<td class="addr-cell mq" data-label="' + t("col.address") + '"><span class="sig-track"><span class="sig-txt">' + esc(c) + '</span><span class="sig-dup" aria-hidden="true">' + esc(c) + "</span></span></td>" +
           '<td data-label="' + t("col.tags") + '">' + badge.trim() + "</td>" +
           '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(listedSig[c] || "") + '</span><span class="sig-dup" aria-hidden="true">' + esc(listedSig[c] || "") + "</span></span></td>" +
           "<td data-label=\"Created\"></td>" +
           '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" data-compose="' + esc(c) + '">' + t("act.compose") + "</button></td>" +
           "</tr>"
         );
+        ctZone +=
+          '<div class="ct-card">' +
+          '<div class="ct-line">' + badge.trim() +
+          '<div class="ct-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(c) + '</span><span class="sig-dup" aria-hidden="true">' + esc(c) + "</span></span></div></div>" +
+          '<div class="ct-sig mq">' + (listedSig[c] ? '<span class="sig-track"><span class="sig-txt">' + esc(listedSig[c]) + '</span><span class="sig-dup" aria-hidden="true">' + esc(listedSig[c]) + "</span></span>" : "") + "</div>" +
+          '<div class="ct-foot"><button class="row-action pill-btn" data-compose="' + esc(c) + '">✉ ' + t("act.compose") + "</button></div>" +
+          "</div>";
       });
     } catch (e) {
       // contacts failure is non-fatal; just show self.
@@ -547,6 +574,21 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $$("[data-remove-sub]", tbody).forEach(function (b) {
       b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("subs:remove", { detail: { address: b.dataset.removeSub, role: "superior" } })); });
     });
+    // Mobile one-screen plan: the phone-only contacts list mirrors the
+    // contact rows (which hide via CSS); compose wiring included.
+    var ctBox = $("#acc-m-contacts");
+    if (ctBox) {
+      ctBox.innerHTML = ctZone;
+      $$("#acc-m-contacts [data-compose]").forEach(function (b) {
+        b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:to", { detail: { address: b.dataset.compose } })); });
+      });
+    }
+    var ownBox = $("#acc-m-own");
+    if (ownBox) {
+      ownBox.innerHTML = ownMobile;
+      var pwM = $("#btn-change-pw-m");
+      if (pwM) pwM.addEventListener("click", openChangePassword);
+    }
   }
 
   // composeTo switches to the Compose tab and prefills the To field with the
@@ -635,6 +677,99 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // owned by manage.js — request it via the S2 event.
   $("#btn-register").addEventListener("click", function () {
     document.dispatchEvent(new CustomEvent("subs:register"));
+  });
+
+  // ---- admin: invalid-letter inspector (开工令 01M1FSKAD) ----
+  // Strict-delete ruling: real DB removal, so the UI gates every deletion
+  // behind a red-warning confirm state plus an irreversibility checkbox.
+  var invalidPending = null; // { ids: [...] } built when the confirm state opens
+  function openInvalidModal() {
+    $("#invalid-modal").classList.remove("hidden");
+    $("#invalid-confirm").classList.add("hidden");
+    $("#invalid-ack").checked = false;
+    $("#invalid-status").textContent = t("common.loading");
+    api("/api/admin/invalid").then(function (d) {
+      renderInvalidList((d && d.messages) || []);
+      $("#invalid-status").textContent = "";
+    }).catch(function (e) {
+      $("#invalid-status").textContent = t("common.error", { msg: e.message });
+    });
+  }
+  function renderInvalidList(msgs) {
+    var box = $("#invalid-list");
+    if (!msgs.length) {
+      box.innerHTML = '<div class="muted" style="padding:10px;">' + t("inv.empty") + "</div>";
+      return;
+    }
+    box.innerHTML = '<div class="inv-head"><span></span><span>' + t("inv.from") + '</span><span>' + t("inv.subject") + '</span><span>' + t("inv.toInvalid") + '</span><span>' + t("inv.time") + "</span></div>" +
+      msgs.map(function (m) {
+        return '<label class="inv-row">' +
+          '<input type="checkbox" class="inv-check" data-id="' + esc(m.id) + '" />' +
+          '<span class="inv-from">' + esc(m.from || "") + "</span>" +
+          '<span class="inv-subj">' + esc(m.subject || "") + "</span>" +
+          '<span class="inv-to">' + esc(m.to || "") + "</span>" +
+          '<span class="inv-time">' + fmtTime(m.received_at) + "</span>" +
+          "</label>";
+      }).join("");
+  }
+  function closeInvalidModal() {
+    $("#invalid-modal").classList.add("hidden");
+    $("#invalid-confirm").classList.add("hidden");
+    invalidPending = null;
+  }
+  $("#btn-invalid").addEventListener("click", openInvalidModal);
+  $("#btn-invalid-close").addEventListener("click", closeInvalidModal);
+  $("#invalid-modal").addEventListener("click", function (e) {
+    if (e.target === this) closeInvalidModal();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    var m = $("#invalid-modal");
+    if (m && !m.classList.contains("hidden")) closeInvalidModal();
+  });
+  function askInvalidDelete(all) {
+    var ids = $$(".inv-check:checked").map(function (c) { return c.dataset.id; });
+    if (!all && !ids.length) {
+      $("#invalid-status").textContent = t("inv.needSel");
+      return;
+    }
+    invalidPending = { ids: all ? [] : ids, all: !!all };
+    $("#invalid-confirm").classList.remove("hidden");
+    $("#invalid-ack").checked = false;
+    $("#btn-invalid-confirm").disabled = true;
+    $("#invalid-status").textContent = "";
+  }
+  $("#btn-invalid-delchecked").addEventListener("click", function () { askInvalidDelete(false); });
+  $("#btn-invalid-delall").addEventListener("click", function () { askInvalidDelete(true); });
+  $("#invalid-ack").addEventListener("change", function () {
+    $("#btn-invalid-confirm").disabled = !this.checked;
+  });
+  $("#btn-invalid-cancel").addEventListener("click", function () {
+    $("#invalid-confirm").classList.add("hidden");
+    invalidPending = null;
+  });
+  $("#btn-invalid-confirm").addEventListener("click", async function () {
+    if (!invalidPending) return;
+    var btn = this;
+    btn.disabled = true;
+    $("#invalid-status").textContent = t("common.loading");
+    try {
+      var body = invalidPending.all ? { all: true } : { ids: invalidPending.ids };
+      var res = await api("/api/admin/invalid", { method: "DELETE", body: JSON.stringify(body) });
+      $("#invalid-confirm").classList.add("hidden");
+      invalidPending = null;
+      var doneMsg = t("inv.deleted", { n: (res && res.deleted) || 0 });
+      // Refresh the list in place; the status line survives the reload.
+      api("/api/admin/invalid").then(function (d) {
+        renderInvalidList((d && d.messages) || []);
+        $("#invalid-status").textContent = doneMsg;
+      }).catch(function () {
+        $("#invalid-status").textContent = doneMsg;
+      });
+    } catch (e) {
+      btn.disabled = false;
+      $("#invalid-status").textContent = t("common.error", { msg: e.message });
+    }
   });
 
   // ---- directory (public address book) ----
@@ -2126,6 +2261,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var pre = $("#subreg-prompt");
     if (pre) pre.textContent = buildAgentPrompt(d.address, d.password);
   });
+  // Overview rows carry .mq signature marquees — measure them after each
+  // render (the measurer lives here; the renderer is overview.js).
+  document.addEventListener("ovw:rendered", maybeMarqueeSigs);
 
   function showRegisterSuccess(address, password) {
     $("#login-form-block").classList.add("hidden");
@@ -2253,7 +2391,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // Reduced-motion users keep the ellipsis.
   function maybeMarqueeSigs() {
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    $$(".sig-cell").forEach(function (cell) {
+    $$(".sig-cell, .mq").forEach(function (cell) {
       cell.classList.remove("marquee"); // dup hidden again -> measure raw overflow
       cell.style.removeProperty("--wm-dur");
       const diff = cell.scrollWidth - cell.clientWidth;
@@ -2265,6 +2403,51 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     });
   }
   window.addEventListener("resize", maybeMarqueeSigs);
+
+  // Accounts-page one-screen fit (mobile plan): the own card and the
+  // register button stay fixed; the subordinate list and the contacts list
+  // scroll within the remaining viewport height — the contacts box bottom
+  // is pinned just above the viewport bottom so the height alignment is
+  // visible. PC keeps the table.
+  function fitAccountsOneScreen() {
+    var page = $("#tab-accounts");
+    if (!page || page.classList.contains("hidden")) return;
+    if (window.innerWidth > 800) return;
+    var subList = document.querySelector(".sub-list");
+    var ctBox = $("#acc-m-contacts");
+    if (!ctBox) return;
+    ctBox.style.maxHeight = "none";
+    if (subList) subList.style.maxHeight = "none";
+    var ctTop = ctBox.getBoundingClientRect().top;
+    if (ctTop <= 0) return; // not laid out (hidden tab)
+    var reserve = 120; // minimum visible slice of the contacts list
+    var card = document.querySelector(".agentreg-card");
+    if (subList) {
+      // Superior 09-02 (01M1FWBSM6): "subordinate may take slightly more"
+      // means the WHOLE subordinate card (button + note + sliding list) —
+      // so budget the card at ~52% of the space below the own card and cap
+      // the sliding list at whatever the button/note chrome leaves.
+      var cardTop = card ? card.getBoundingClientRect().top : subList.getBoundingClientRect().top;
+      var avail = window.innerHeight - 10 - cardTop;
+      var fixed = card ? card.offsetHeight - subList.offsetHeight : 0;
+      var cardTarget = Math.round(avail * 0.52);
+      var subH = Math.min(subList.scrollHeight, Math.max(96, cardTarget - fixed));
+      subList.style.maxHeight = subH + "px";
+    }
+    var ctTop2 = ctBox.getBoundingClientRect().top;
+    var ctH = window.innerHeight - 10 - ctTop2;
+    if (ctH < reserve && subList) {
+      // Shrink the subordinate list by the deficit, then re-pin exactly.
+      var deficit = reserve - ctH;
+      var cur = parseInt(subList.style.maxHeight, 10) || 0;
+      subList.style.maxHeight = Math.max(96, cur - deficit) + "px";
+      ctTop2 = ctBox.getBoundingClientRect().top;
+      ctH = window.innerHeight - 10 - ctTop2;
+    }
+    ctBox.style.maxHeight = Math.max(96, ctH) + "px";
+  }
+  window.addEventListener("resize", fitAccountsOneScreen);
+  document.addEventListener("accounts:refresh", function () { setTimeout(fitAccountsOneScreen, 50); });
 
   // showApp reveals the panel and applies role-based tab visibility.
   function showApp() {

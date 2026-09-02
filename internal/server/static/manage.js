@@ -1727,7 +1727,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
 function fitInboxOneScreen() {
   var tab = document.getElementById("tab-inbox");
   if (!tab) return;
-  if (window.innerWidth > 800 || tab.classList.contains("hidden")) { tab.style.height = ""; return; }
+  if (window.innerWidth > 800) {
+    // Superior 09-02: PC one-screen too — same measured flex column, the
+    // grid grows to the viewport and the panes scroll internally (all
+    // three modes share one grid, so mode switches need no re-fit).
+    tab.style.height = "";
+    fitInboxPcOneScreen();
+    return;
+  }
   var top = tab.getBoundingClientRect().top;
   var h = window.innerHeight - Math.max(top, 0) - 10;
   if (h < 300) h = 300;
@@ -1738,6 +1745,19 @@ function fitInboxOneScreen() {
     h = Math.max(h - over, 300);
     tab.style.setProperty("--inbox-1s", h + "px");
   }
+}
+
+// PC twin of the mobile inbox fit: tab height = viewport minus whatever
+// sits above it; grid flexes, panes scroll, pager stays visible.
+function fitInboxPcOneScreen() {
+  var tab = document.getElementById("tab-inbox");
+  if (!tab || tab.classList.contains("hidden")) return;
+  var top = tab.getBoundingClientRect().top;
+  var h = window.innerHeight - Math.max(top, 0) - 10;
+  if (h < 360) h = 360;
+  tab.style.setProperty("--inbox-pc-1s", h + "px");
+  var over = document.documentElement.scrollHeight - window.innerHeight;
+  if (over > 0) tab.style.setProperty("--inbox-pc-1s", Math.max(h - over, 360) + "px");
 }
 window.addEventListener("resize", fitInboxOneScreen);
 
