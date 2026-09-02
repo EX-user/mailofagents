@@ -245,7 +245,25 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/static/", handleStaticCached)
 	mux.HandleFunc("/", s.serveIndex)
 
-	return mux
+	// Unmatched /api/* paths: plain-text 404 (weber ③: no Go default page
+	// on the API face). Explicit routes above always win (ServeMux
+	// longest-pattern).
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+
+	// OPTIONS is rejected outright (weber ②): the mux is method-blind and
+	// an OPTIONS used to execute the GET handler and return data. Real
+	// methods keep their existing behavior; same-origin panel has no
+	// preflight needs.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Allow", "GET, HEAD, POST, DELETE")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // requireInitialized gates a handler on the system being bootstrapped. Before

@@ -446,7 +446,12 @@ func (s *Server) handleAdminSend(w http.ResponseWriter, r *http.Request) {
 		res, err = s.store.Send(from, fromName, body.To, body.CC, body.Subject, body.Body, body.InReplyTo)
 	}
 	if err != nil {
-		badRequest(w, err.Error())
+		// Sentinel first (user-facing), then generic+log (weber ③).
+		if errors.Is(err, store.ErrNoSuchParent) {
+			badRequest(w, err.Error())
+			return
+		}
+		s.badRequestErr(w, r, err)
 		return
 	}
 	_ = s.audit.Record(r.Context(), audit.ActionSend, from,

@@ -13,9 +13,11 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/agentmail/agentmail/internal/worker"
 )
@@ -36,6 +38,7 @@ func main() {
 	yes := flag.Bool("yes", false, "assume yes for -fresh confirmations (for scripts; required when stdin is not a terminal)")
 	agentSel := flag.String("switch_address", "", "only run the matching account (address prefix, local-part, or 1-based index); default runs all")
 	showVer := flag.Bool("version", false, "print build tag and exit")
+	plan := flag.String("plan", "", "print the exact invocation(s) the wake would build for the matching account(s), then exit — no CLI is run (argv-shape debugging; same matching as -switch_address)")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
@@ -50,6 +53,30 @@ func main() {
 	cfgs, err := worker.LoadConfigs(*cfgPath, *agentSel)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+
+	if *plan != "" {
+		plans, err := worker.LoadConfigs(*cfgPath, *plan)
+		if err != nil {
+			log.Fatalf("load config: %v", err)
+		}
+		for _, c := range plans {
+			name, args, stdin, _ := worker.PickAdapter(c.CLI).Plan(c, "", "SAMPLE DIGEST")
+			syn := make([]string, len(args))
+			for i, a := range args {
+				if n := utf8.RuneCountInString(a); n > 60 {
+					syn[i] = fmt.Sprintf("[%d runes]%.57q", n, a)
+				} else {
+					syn[i] = strconv.Quote(a)
+				}
+			}
+			mode := "stdin=" + strconv.Itoa(len(stdin)) + "B"
+			if stdin == "" {
+				mode = "stdin=off (digest in argv)"
+			}
+			fmt.Printf("%s cli=%s %s\n  argv: %s\n", c.Address, name, mode, strings.Join(syn, " "))
+		}
+		return
 	}
 
 	// -fresh clears workdirs — destructive, so confirm per account unless

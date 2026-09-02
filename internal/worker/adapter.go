@@ -40,6 +40,15 @@ type Adapter interface {
 	// Wake runs one non-interactive session turn. sessionID=="" means new
 	// session. It returns the (possibly new) session id.
 	Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error)
+
+	// Plan builds the EXACT invocation Wake would run: cli name, argv,
+	// stdin payload ("" when the digest rides in argv) and the config the
+	// wake would use (adapters may derive env overrides — claude's window
+	// pin). One source of truth, three consumers: Wake executes it, the
+	// -plan flag prints it, and the construction assertions test it
+	// (0.2.4: regression class = argv/stdin shape drift, e.g. the 0.2.3
+	// opencode digest loss).
+	Plan(cfg *Config, sessionID, digest string) (name string, args []string, stdin string, cfg2 *Config)
 }
 
 func pickAdapter(id string) Adapter {
@@ -56,6 +65,10 @@ func pickAdapter(id string) Adapter {
 		return piAdapter{}
 	}
 }
+
+// PickAdapter is the exported form for tooling outside the duty loop
+// (cmd -plan): same mapping, no surprises.
+func PickAdapter(id string) Adapter { return pickAdapter(id) }
 
 // Digest renders the wake payload. Superior feedback: keep the unread
 // injection light — short mechanical text, no full JSON. The fresh-session
@@ -641,16 +654,8 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 
 type piAdapter struct{}
 
-func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+func (piAdapter) Plan(cfg *Config, sessionID, digest string) (string, []string, string, *Config) {
 	sessionsDir := filepath.Join(cfg.Workdir, ".pi-sessions")
-	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
-		return "", 0, err
-	}
-	// pi's built-in compaction trigger is window-relative (settings.json
-	// compaction.reserveTokens; contextWindow comes from model metadata) —
-	// no absolute-limit knob to pin from here, so keep compact_notice_tokens
-	// well below the model window: the notice round must land before the
-	// built-in compaction fires.
 	args := []string{"-p", "--mode", "json", "--session-dir", sessionsDir}
 	if cfg.Model != "" {
 		args = append(args, "--model", cfg.Model)
@@ -662,8 +667,22 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 	// on Windows, which truncates multi-line arguments to their first line
 	// (field report: credentials never reached the session). pi reads the
 	// prompt from stdin in print mode (phase 0: stdin ok).
+	return "pi", args, digest, cfg
+}
 
-	out, wakeTokens, err := runWake(ctx, cfg, "pi", args, digest, localPart(cfg.Address))
+func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+	sessionsDir := filepath.Join(cfg.Workdir, ".pi-sessions")
+	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
+		return "", 0, err
+	}
+	// pi's built-in compaction trigger is window-relative (settings.json
+	// compaction.reserveTokens; contextWindow comes from model metadata) —
+	// no absolute-limit knob to pin from here, so keep compact_notice_tokens
+	// well below the model window: the notice round must land before the
+	// built-in compaction fires.
+	name, args, stdin, cfg := piAdapter{}.Plan(cfg, sessionID, digest)
+
+	out, wakeTokens, err := runWake(ctx, cfg, name, args, stdin, localPart(cfg.Address))
 	if err != nil {
 		// Salvage: a partial stream may still name the session.
 		if id, perr := firstJSONField(out, "type", "session", "id"); perr == nil {
@@ -685,7 +704,7 @@ func (piAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string
 
 type opencodeAdapter struct{}
 
-func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+func (opencodeAdapter) Plan(cfg *Config, sessionID, digest string) (string, []string, string, *Config) {
 	// full_perm (default on): --auto auto-approves every permission not
 	// explicitly denied (official flag; 1.18 help). No workdir files written
 	// — the workdir stays the agent's turf. The CLI surface has no compact
@@ -712,9 +731,15 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 	// only channel — this append was dropped in the 0.2.3 stdin migration
 	// (pi/claude/codex moved to stdin) and every opencode wake died with
 	// "You must provide a message or a command" (field report 2026-09-02).
+	// The construction assertions pin this line: last argv element == digest.
 	args = append(args, digest)
+	return "opencode", args, "", cfg
+}
 
-	out, wakeTokens, err := runWake(ctx, cfg, "opencode", args, "", localPart(cfg.Address))
+func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+	name, args, stdin, cfg := opencodeAdapter{}.Plan(cfg, sessionID, digest)
+
+	out, wakeTokens, err := runWake(ctx, cfg, name, args, stdin, localPart(cfg.Address))
 	if err != nil {
 		// Salvage: a killed/failed run may still have announced the session.
 		if id, perr := firstJSONField(out, "type", "", "sessionID"); perr == nil {
@@ -736,7 +761,7 @@ func (opencodeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest 
 
 type claudeAdapter struct{}
 
-func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+func (claudeAdapter) Plan(cfg *Config, sessionID, digest string) (string, []string, string, *Config) {
 	// Ordering guarantee for compact_notice_tokens (no worker-invocable
 	// compaction entry here): cap the effective window above the notice
 	// value so auto-compact fires only AFTER the notice round. Undocumented
@@ -771,8 +796,13 @@ func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest st
 	// Digest rides on STDIN only: `claude -p` reads the prompt from stdin
 	// when no positional prompt is given (phase 0: stdin ok). argv would go
 	// through cmd.exe on Windows npm shims and truncate multi-line text.
+	return "claude", args, digest, cfg
+}
 
-	out, wakeTokens, err := runWake(ctx, cfg, "claude", args, digest, localPart(cfg.Address))
+func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+	name, args, stdin, cfg := claudeAdapter{}.Plan(cfg, sessionID, digest)
+
+	out, wakeTokens, err := runWake(ctx, cfg, name, args, stdin, localPart(cfg.Address))
 	if err != nil {
 		// Salvage: a partial stream may still name the session.
 		var sv struct {
@@ -800,7 +830,7 @@ func (claudeAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest st
 
 type codexAdapter struct{}
 
-func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+func (codexAdapter) Plan(cfg *Config, sessionID, digest string) (string, []string, string, *Config) {
 	args := []string{"exec", "--json", "--skip-git-repo-check"}
 	// Provider plumbing (base_url/env_key/wire_api) lives in
 	// ~/.codex/config.toml — file-level, not automated; the model select is
@@ -827,8 +857,13 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	// when no positional prompt is given (phase 0: stdin native ok). argv
 	// would go through cmd.exe on Windows npm shims and truncate
 	// multi-line text — the field report that started this.
+	return "codex", args, digest, cfg
+}
 
-	out, wakeTokens, err := runWake(ctx, cfg, "codex", args, digest, localPart(cfg.Address))
+func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest string) (string, int64, error) {
+	name, args, stdin, cfg := codexAdapter{}.Plan(cfg, sessionID, digest)
+
+	out, wakeTokens, err := runWake(ctx, cfg, name, args, stdin, localPart(cfg.Address))
 	if err != nil {
 		// Salvage: a partial stream may still name the thread.
 		if id, perr := firstJSONField(out, "type", "thread.started", "thread_id"); perr == nil {

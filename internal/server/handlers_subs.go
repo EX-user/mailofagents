@@ -107,7 +107,7 @@ func (s *Server) handleSubsDeclare(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no such account", http.StatusNotFound)
 			return
 		}
-		badRequest(w, err.Error())
+		s.badRequestErr(w, r, err)
 		return
 	}
 	_ = s.audit.Record(r.Context(), audit.ActionSubDeclare, me, "declare-sub superior="+body.Superior)
@@ -133,7 +133,11 @@ func (s *Server) handleSubsRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.RevokeSubordinate(superior, me); err != nil {
-		badRequest(w, err.Error())
+		if err == store.ErrNoSuchAccount {
+			http.Error(w, "no such account", http.StatusNotFound)
+			return
+		}
+		s.badRequestErr(w, r, err)
 		return
 	}
 	_ = s.audit.Record(r.Context(), audit.ActionSubRevoke, me, "revoke-sub superior="+superior)

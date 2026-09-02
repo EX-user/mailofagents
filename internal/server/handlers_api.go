@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -275,7 +276,12 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		res, err = s.store.Send(from, fromName, body.To, body.CC, body.Subject, body.Body, body.InReplyTo)
 	}
 	if err != nil {
-		badRequest(w, err.Error())
+		// Sentinel first (user-facing), then generic+log (weber ③).
+		if errors.Is(err, store.ErrNoSuchParent) {
+			badRequest(w, err.Error())
+			return
+		}
+		s.badRequestErr(w, r, err)
 		return
 	}
 	// Local delivery succeeded: fan out notification pushes (v0.6.30).
@@ -802,6 +808,15 @@ func decodeJSON(r *http.Request, v any) error {
 }
 
 func badRequest(w http.ResponseWriter, msg string) { http.Error(w, msg, http.StatusBadRequest) }
+
+// badRequestErr responds 400 with a fixed client message while the real
+// error goes to the server log (weber ③: internal strings — bbolt, paths —
+// must not reach the client). Only fallthrough-after-sentinel sites use
+// this; store validation errors keep their caller-facing wording.
+func (s *Server) badRequestErr(w http.ResponseWriter, r *http.Request, err error) {
+	log.Printf("[server] %s %s: %v", r.Method, r.URL.Path, err)
+	badRequest(w, "bad request")
+}
 func conflict(w http.ResponseWriter, msg string)   { http.Error(w, msg, http.StatusConflict) }
 func internalError(w http.ResponseWriter, msg string) {
 	http.Error(w, msg, http.StatusInternalServerError)
