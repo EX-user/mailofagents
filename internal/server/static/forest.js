@@ -261,9 +261,12 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       var lastTap = 0; // 自管双击检测（原生 dblclick 在部分环境不合成）
       el.addEventListener("mousedown", function (ev) {
         ev.stopPropagation(); // 卡上按下不触发画布平移
+        // 拖拽跟手修（上级 09-03）：卡坐标是内容空间，鼠标位移是屏幕空间
+        // ——须按 mousedown 瞬间的缩放折算，否则放大拖多、缩小拖少。
+        var fScale = fPz.getTransform().scale;
         var startX = ev.clientX, startY = ev.clientY, origX = n.x, origY = n.y, moved = false;
         function mv(e2) {
-          var dx = e2.clientX - startX, dy = e2.clientY - startY;
+          var dx = (e2.clientX - startX) / fScale, dy = (e2.clientY - startY) / fScale;
           if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
           if (moved) {
             el.style.left = (origX + dx) + "px";
@@ -274,8 +277,8 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
           window.removeEventListener("mousemove", mv);
           window.removeEventListener("mouseup", fUp);
           if (moved) {
-            n.x = origX + (e2.clientX - startX);
-            n.y = origY + (e2.clientY - startY);
+            n.x = origX + (e2.clientX - startX) / fScale;
+            n.y = origY + (e2.clientY - startY) / fScale;
             el.__dragged = true;
             if (fVis && fNodes) fLinksDraw();
           }
@@ -521,7 +524,8 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       var t0 = e.touches[0];
       var card = e.target.closest && e.target.closest(".f-card");
       if (card && card.__fnode) {
-        tdrag = { mode: "card", card: card, n: card.__fnode, x: t0.clientX, y: t0.clientY, ox: card.__fnode.x, oy: card.__fnode.y, dx: 0, dy: 0, moved: false, t0: Date.now() };
+        // 同鼠标端：触摸卡片拖拽位移按当下缩放折算（跟手修，上级 09-03）
+        tdrag = { mode: "card", card: card, n: card.__fnode, x: t0.clientX, y: t0.clientY, ox: card.__fnode.x, oy: card.__fnode.y, dx: 0, dy: 0, moved: false, t0: Date.now(), s: fPz.getTransform().scale };
       } else {
         tdrag = { mode: "pan", x: t0.clientX, y: t0.clientY, px: fPz.getTransform().x, py: fPz.getTransform().y, dx: 0, dy: 0, moved: false, t0: Date.now(), target: e.target };
       }
@@ -547,8 +551,8 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
       if (tdrag.moved && tdrag.mode === "pan") {
         fPz.moveTo(tdrag.px + tdrag.dx, tdrag.py + tdrag.dy);
       } else if (tdrag.moved && tdrag.mode === "card") {
-        tdrag.card.style.left = (tdrag.ox + tdrag.dx) + "px";
-        tdrag.card.style.top = (tdrag.oy + tdrag.dy) + "px";
+        tdrag.card.style.left = (tdrag.ox + tdrag.dx / tdrag.s) + "px";
+        tdrag.card.style.top = (tdrag.oy + tdrag.dy / tdrag.s) + "px";
       }
     }, { passive: false });
     fScroller.addEventListener("touchend", function (e) {
@@ -567,8 +571,8 @@ import { $, $$, esc, api, fmtTime } from "./core.js";
         return;
       }
       if (t.moved && t.mode === "card") {
-        t.n.x = t.ox + t.dx;
-        t.n.y = t.oy + t.dy;
+        t.n.x = t.ox + t.dx / t.s;
+        t.n.y = t.oy + t.dy / t.s;
         fLinksDraw();
       }
     });

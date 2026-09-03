@@ -1910,6 +1910,12 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #inbox-row-ctl #inbox-search { flex: 1 1 auto; min-width: 0; max-width: none; }
 }
 
+/* Base rule (defect report, desktop leak): wireOvwSplit() inserts the
+   splitter unconditionally, but it is phone-only — hide it by default so
+   desktops never see an unstyled dead button; the ≤800px block below
+   (display:none !important per the later removal ruling) keeps it off
+   there too. Accessible trees no longer expose a useless control. */
+.ovw-split { display: none; }
 /* Overview mobile (superior 09-02): three-line compact rows (account /
    signature marquee / counts+avg merged) + drag handle for the graph split.
    Appended last so it wins the cascade over the generic ovw card rules. */
