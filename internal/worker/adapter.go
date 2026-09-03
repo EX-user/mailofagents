@@ -617,6 +617,11 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 		}
 	}
 	if prov == "" || model == "" {
+		if p, m, derr := discoverDefaultModel(client, base); derr == nil && p != "" && m != "" {
+			prov, model = p, m
+		}
+	}
+	if prov == "" || model == "" {
 		if p, m, derr := discoverSessionModel(client, base, sessionID); derr == nil && p != "" && m != "" {
 			prov, model = p, m
 		}
@@ -640,19 +645,20 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 		if err != nil {
 			continue
 		}
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
 		var msgs []struct {
 			Info struct {
 				Role    string `json:"role"`
 				Summary bool   `json:"summary"`
 			} `json:"info"`
 		}
-		if json.Unmarshal(b, &msgs) == nil {
-			for _, msg := range msgs {
-				if msg.Info.Role == "assistant" && msg.Info.Summary {
-					return nil // compaction landed
-				}
+		err = json.NewDecoder(resp.Body).Decode(&msgs)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			if msg.Info.Role == "assistant" && msg.Info.Summary {
+				return nil // compaction landed
 			}
 		}
 	}
@@ -892,13 +898,46 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 // discoverSessionModel reads the session's message list and returns the
 // provider/model the session was actually driven with (last message that
 // carries both). Used when the account config has no model pin.
+// discoverDefaultModel asks the serve instance which model it would use by
+// default (GET /config/providers → default map, values "provider/model").
+// For an unpinned account this is exactly what a duty run would be driven
+// with, and the response is tiny regardless of session size.
+func discoverDefaultModel(client *http.Client, base string) (string, string, error) {
+	resp, err := client.Get(base + "/config/providers")
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Default map[string]string `json:"default"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out) != nil {
+		return "", "", fmt.Errorf("unreadable provider defaults")
+	}
+	for _, key := range []string{"build", "plan", "agent"} {
+		if v := out.Default[key]; v != "" {
+			if i := strings.Index(v, "/"); i > 0 {
+				return v[:i], v[i+1:], nil
+			}
+		}
+	}
+	for _, v := range out.Default {
+		if i := strings.Index(v, "/"); i > 0 {
+			return v[:i], v[i+1:], nil
+		}
+	}
+	return "", "", fmt.Errorf("no default model in provider config")
+}
+
 func discoverSessionModel(client *http.Client, base, sessionID string) (string, string, error) {
 	resp, err := client.Get(base + "/session/" + sessionID + "/message")
 	if err != nil {
 		return "", "", err
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// stream-decode without a size cap: long sessions produce multi-MB
+	// listings (info+parts per message) and a capped ReadAll truncates the
+	// JSON mid-array, which Unmarshal rejects as unreadable.
 	var msgs []struct {
 		Info struct {
 			ProviderID string `json:"providerID"`
@@ -906,7 +945,7 @@ func discoverSessionModel(client *http.Client, base, sessionID string) (string, 
 			Role       string `json:"role"`
 		} `json:"info"`
 	}
-	if json.Unmarshal(b, &msgs) != nil {
+	if json.NewDecoder(resp.Body).Decode(&msgs) != nil {
 		return "", "", fmt.Errorf("unreadable session messages")
 	}
 	prov, model := "", ""
