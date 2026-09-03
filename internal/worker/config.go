@@ -124,8 +124,9 @@ func (c *Config) defaults() {
 //     agent entry may override any global field per-field (empty = inherit
 //     global).
 //
-// select limits the result to the matching agent (address prefix, address
-// local-part, or 1-based index); empty select returns all.
+// select limits the result to matching agents: a single pattern
+// (address prefix, address local-part, or 1-based index) or comma-separated
+// alternatives of those (any hit matches); empty select returns all.
 func LoadConfigs(path, select_ string) ([]*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -211,7 +212,23 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 		var picked []*Config
 		for _, c := range out {
 			lp := localPart(c.Address)
-			if lp == select_ || strings.HasPrefix(c.Address, select_) || select_ == fmt.Sprint(indexOf(out, c)+1) {
+			matched := lp == select_ || strings.HasPrefix(c.Address, select_) || select_ == fmt.Sprint(indexOf(out, c)+1)
+			if !matched && strings.Contains(select_, ",") {
+				// comma-separated alternatives: match if ANY pattern hits
+				// (prefix/local-part/index per alternative) — e.g.
+				// -compact-before-wake "regft,dev" compresses both.
+				for _, alt := range strings.Split(select_, ",") {
+					alt = strings.TrimSpace(alt)
+					if alt == "" {
+						continue
+					}
+					if lp == alt || strings.HasPrefix(c.Address, alt) || alt == fmt.Sprint(indexOf(out, c)+1) {
+						matched = true
+						break
+					}
+				}
+			}
+			if matched {
 				picked = append(picked, c)
 			}
 		}
