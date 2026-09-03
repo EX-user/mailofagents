@@ -589,6 +589,27 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 		}
 		return nil
 	}
+	// summarize is a synchronous full-history LLM turn on 1.18.27 — it
+	// blocks for minutes on long sessions, far past the 15s client
+	// (field report: alice session, timed out at ~16s awaiting headers).
+	// Long-timeout client, still bounded by the ctx (compactTimeout).
+	postLong := func(path string, body map[string]any) error {
+		b, _ := json.Marshal(body)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(b))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := (&http.Client{Timeout: 9 * time.Minute}).Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("%s -> %s", path, resp.Status)
+		}
+		return nil
+	}
 
 	// wait for the server to come up
 	up := false
@@ -629,7 +650,7 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 	if prov == "" || model == "" {
 		return fmt.Errorf("opencode compact: no model resolvable (cfg.Model=%q, session messages carried none)", cfg.Model)
 	}
-	if err := post("/session/"+sessionID+"/summarize", map[string]any{"providerID": prov, "modelID": model}); err != nil {
+	if err := postLong("/session/"+sessionID+"/summarize", map[string]any{"providerID": prov, "modelID": model}); err != nil {
 		return fmt.Errorf("summarize: %w", err)
 	}
 
