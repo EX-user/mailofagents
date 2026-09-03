@@ -102,6 +102,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       '<button type="button" class="gg-btn" id="gg-map" title="' + esc(t("mgmt.gMap")) + '"></button>' +
       '<button type="button" class="gg-btn" id="gg-nums" title="' + esc(t("mgmt.gNums")) + '"></button>' +
       '<button type="button" class="gg-btn gg-btn-days" id="gg-days"></button>' +
+      '<button type="button" class="gg-btn" id="gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
       "</div>" +
       '<div id="mgmt-graph" class="mgmt-graph"></div>' +
       "</div>";
@@ -158,6 +159,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
   // linear/log (and numbers) toggles restyle IN PLACE — a full re-render
   // re-ran physics and visibly jiggled the layout.
   var mgmtEdgeSet = null, mgmtEdgeMeta = [], mgmtMaxCount = 1;
+var mgmtNodeSet = null;
   function renderMgmtGraph(graph, subs) {
     var el = $("#mgmt-graph");
     if (!el) return;
@@ -165,6 +167,8 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     var edges = (graph && graph.edges) || [];
     mgmtNetwork = null; // fresh render invalidates the old instance
     mgmtEdgeSet = null;
+    mgmtNodeSet = null;
+    playSeqCache = null; // 图数据重载→播放序列缓存失效
     if (!nodes.length) { el.textContent = ""; return; }
     var livenessByAddr = {};
     (subs || []).forEach(function (s) { livenessByAddr[String(s.address).toLowerCase()] = mgmtIsActive(s); });
@@ -182,13 +186,19 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
           : kind === "sub" ? (st === "strong" ? "#dcf2e4" : st === "weak" ? "#f7edd4" : "#eceff3")
           : "#f2f4f7";
         var wl = windowLabel(graphPrefs.days);
+        // 播放特性一（上级 0.2.5）：「我」节点大一号更醒目——scaling 上限
+        // 抬高 + 字号加大，其余节点照旧。
+        var nodeScaling = isMe
+          ? { min: 20, max: 38, label: { enabled: false } }
+          : { min: 8, max: 26, label: { enabled: false } };
+        var nodeFont = { face: "ui-monospace, Consolas, monospace", size: isMe ? 12 : 11, color: "#23303f" };
         return {
           id: n.address, label: (isMe ? t("mgmt.meLabel") : shortAddr(n.address)) +
             (kind !== "external" ? "\n" + wl + " " + (n.volume || 0) : ""),
           shape: "box", borderWidth: isMe ? 2 : 1,
           color: { background: bg, border: border },
-          font: { face: "ui-monospace, Consolas, monospace", size: 11, color: "#23303f" },
-          value: Math.max(1, n.volume || 1), scaling: { min: 8, max: 26, label: { enabled: false } },
+          font: nodeFont,
+          value: Math.max(1, n.volume || 1), scaling: nodeScaling,
           title: shortAddr(n.address) + (kind !== "external" ? " · " + wl + " " + (n.volume || 0) : ""),
           _kind: kind
         };
@@ -228,7 +238,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       });
       function mgmtGraphEdge(from, to, count, last, orig, eid) {
         var k = graphScale(count);
-        mgmtEdgeMeta.push({ id: eid, count: count });
+        mgmtEdgeMeta.push({ id: eid, count: count, from: from, to: to });
         // v0.6.6: alpha rides the same normalization as width — light
         // traffic reads thin AND faint. Label = count only; the
         // last-activity time moved to the hover tooltip (it occluded the
@@ -256,6 +266,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       }
       var data = { nodes: vn, edges: new vis.DataSet(ve) };
       mgmtEdgeSet = data.edges;
+      mgmtNodeSet = data.nodes;
       // Keep the instance: re-entering the tab re-fits the viewport so the
       // graph never drifts off-center between visits (superior feedback).
       mgmtNetwork = new vis.Network(el, data, {
@@ -275,6 +286,20 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
         try { mgmtNetwork.fit({ animation: false }); } catch (_) {}
       });
       mgmtNetwork.on("click", function (params) {
+        // 播放/暂停期间：canvas 点按=暂停↔继续（上级 0.2.5），不触发跳转
+        if (playState) {
+          if (playState.paused) {
+            playState.paused = false;
+            playState.timer = setInterval(playTick, playBeatMs());
+            if (playBadge) playBadge.textContent = playBadgeLabel("");
+          } else {
+            clearInterval(playState.timer);
+            playState.timer = null;
+            playState.paused = true;
+            if (playBadge) playBadge.textContent = playBadgeLabel("⏸ ");
+          }
+          return;
+        }
         // Node click: jump to Messages preselected on that sub; edge click:
         // preselect the sub endpoint of the pair. The browse pane belongs
         // to the manage module — ask it via the event bus.
@@ -381,6 +406,259 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     });
     mgmtEdgeSet.update(updates);
   }
+
+  // ---- 播放模式（上级 0.2.5）----
+  // 范围内（如 7d）全部发信活动按时间排序后逐拍高亮：当拍的发件节点与
+  // 连线加亮（高亮=更醒目，非变浅），非当拍元素降显；播放/暂停期间禁
+  // 拖拽/选中、节点位置冻结、数字隐藏；canvas 点按=暂停/继续，暂停时左
+  // 下角浮层显示当拍信件（上级复核口径：信件 id+时间，不显示 from/to）；
+  // 停止完整还原（经 restyleGraphEdges+节点原档回填）。
+  // 数据两档：真实档=自+从属各收件/发件箱分页拉取逐信 {id,t,from,to}
+  // （cc 经收件方邮箱覆盖）；拉取失败/为空回退合成档（按各边 count 合
+  // 成均匀时刻）。缓存按 days 键控，换档/重载失效。
+  var playState = null;      // null | {steps, idx, timer, paused, seqNo, total, real}
+  var playNodeOrig = null;   // 节点原样式快照（id → {color, font, borderWidth}）
+  var playBadge = null;      // 左下角当前信浮层
+  var playSeqCache = null;   // {days, steps, real}
+
+  function playGroupSteps(evs) {
+    // 上级 09-03 复核：不合拍——每信一拍，浮层逐信显示 id
+    return evs.map(function (ev) { return [ev]; });
+  }
+  function buildPlaySteps() { // 合成档（退化回退）
+    var evs = [];
+    mgmtEdgeMeta.forEach(function (meta) {
+      if (!(meta.count > 0) || !meta.from) return;
+      for (var i = 0; i < meta.count; i++) {
+        // 合成时刻：每条边内部均匀、边间按比例交错（无真实时间戳时）
+        evs.push({ t: (i + 0.5) / meta.count, id: meta.id, from: meta.from, to: meta.to, n: i + 1 });
+      }
+    });
+    evs.sort(function (a, b) { return a.t - b.t; });
+    return { steps: playGroupSteps(evs), total: evs.length, real: false };
+  }
+  // 真实档：逐信拉取自+从属的收件/发件箱（分页），窗口内按时间排序。
+  // 事件→边映射：发件箱信 × 每个 to = (owner→to) 边事件；收件箱信 =
+  // (from→owner) 边事件（cc 收件方经其收件箱覆盖）。(letterId, 边) 去重。
+  async function fetchPlaySteps() {
+    if (playSeqCache && playSeqCache.days === graphPrefs.days) return playSeqCache;
+    var myAddr = ((getSession() || {}).address || "").toLowerCase();
+    var subs = (mgmtOverviewData && mgmtOverviewData.subs) || [];
+    var owners = [myAddr];
+    subs.forEach(function (s) {
+      var a = String(s.address || "").toLowerCase();
+      if (a && owners.indexOf(a) < 0) owners.push(a);
+    });
+    var cutoff = Date.now() - graphPrefs.days * 86400000;
+    var edgeByPair = {};
+    mgmtEdgeMeta.forEach(function (meta) {
+      if (meta.count > 0 && meta.from) {
+        edgeByPair[String(meta.from).toLowerCase() + ">" + String(meta.to).toLowerCase()] = meta;
+      }
+    });
+    var seenEv = {};
+    var evs = [];
+    function absorb(owner, sent, msgs) {
+      (msgs || []).forEach(function (m) {
+        var t = m.received_at || 0;
+        if (t > 0 && t < 1e12) t = t * 1000; // 秒级时间戳→毫秒归一
+        if (t && t < cutoff) return;
+        var pairs = [];
+        if (sent) {
+          (m.to || []).forEach(function (rcpt) { pairs.push([owner, String(rcpt).toLowerCase()]); });
+        } else {
+          pairs.push([String(m.from || "").toLowerCase(), owner]);
+        }
+        pairs.forEach(function (pr) {
+          var meta = edgeByPair[pr[0] + ">" + pr[1]];
+          if (!meta) return;
+          var key = m.id + "|" + meta.id;
+          if (seenEv[key]) return;
+          seenEv[key] = 1;
+          evs.push({ t: t, id: meta.id, lid: m.id, from: pr[0], to: pr[1] });
+        });
+      });
+    }
+    async function pullOwn(sent) {
+      var path = sent ? "/api/sent" : "/api/inbox";
+      for (var offset = 0; offset < 3000; offset += 50) {
+        var d = await api(path + "?limit=50&offset=" + offset, { keepSession: true });
+        var msgs = (d && d.messages) || [];
+        absorb(myAddr, sent, msgs);
+        if (msgs.length < 50) break;
+      }
+    }
+    async function pullSub(owner) {
+      // 从属箱：/api/subs/{addr}/messages?folder=inbox|sent（单大页，无 offset）
+      for (var fi = 0; fi < 2; fi++) {
+        var folder = fi === 0 ? "inbox" : "sent";
+        try {
+          var d = await api("/api/subs/" + encodeURIComponent(owner) +
+            "/messages?folder=" + folder + "&limit=1000", { keepSession: true });
+          absorb(owner, folder === "sent", (d && d.messages) || []);
+        } catch (_) { /* 单箱失败降级跳过 */ }
+      }
+    }
+    for (var i = 0; i < owners.length; i++) {
+      if (owners[i] === myAddr) {
+        await pullOwn(false);
+        await pullOwn(true);
+      } else {
+        await pullSub(owners[i]);
+      }
+    }
+    evs.sort(function (a, b) { return a.t - b.t; });
+    var built = { days: graphPrefs.days, steps: playGroupSteps(evs), total: evs.length, real: true };
+    if (!built.steps.length) return null; // 真实档空→调用方回退合成档
+    playSeqCache = built;
+    return built;
+  }
+  function playBadgeEnsure() {
+    var wrap = document.querySelector("#mgmt-graph-wrap");
+    if (!wrap) return null;
+    if (!playBadge) {
+      playBadge = document.createElement("div");
+      playBadge.className = "play-badge";
+      wrap.appendChild(playBadge);
+    }
+    return playBadge;
+  }
+  // 四态拖尾（上级 09-03）：当拍全亮，此后每过一拍降一档——
+  // tier0 全亮 → tier1 .78 → tier2 .5 → tier3 淡化 .25；节点同步（opacity
+  // 不影响 vis label，文字色每档并行下调）。
+  var playTiers = [
+    { edge: { color: "#2563eb", width: 3, font: "#23303f", arrow: 0.5, esize: 10 },
+      node: { opacity: 1, font: "rgba(35,48,63,1)" } },
+    { edge: { color: "rgba(37,99,235,0.72)", width: 2.4, font: "rgba(35,48,63,0.72)", arrow: 0.45, esize: 9 },
+      node: { opacity: 0.78, font: "rgba(35,48,63,0.75)" } },
+    { edge: { color: "rgba(37,99,235,0.42)", width: 1.5, font: "rgba(35,48,63,0.42)", arrow: 0.3, esize: 9 },
+      node: { opacity: 0.5, font: "rgba(35,48,63,0.48)" } },
+    { edge: { color: "rgba(91,107,125,0.10)", width: 0.5, font: "rgba(35,48,63,0.10)", arrow: 0.15, esize: 9 },
+      node: { opacity: 0.25, font: "rgba(35,48,63,0.25)" } }
+  ];
+  function playTierStep(step, tier) {
+    var T0 = playTiers[Math.max(0, Math.min(3, tier))];
+    mgmtEdgeSet.update(step.map(function (ev) {
+      return { id: ev.id, color: { color: T0.edge.color }, width: T0.edge.width,
+        font: { size: T0.edge.esize, face: "Consolas", color: T0.edge.font },
+        arrows: { to: { enabled: true, scaleFactor: T0.edge.arrow } } };
+    }));
+    var seen = {};
+    var nUp = [];
+    step.forEach(function (ev) {
+      [ev.from, ev.to].forEach(function (id) {
+        if (seen[id]) return;
+        seen[id] = 1;
+        var o = (playNodeOrig || {})[id] || {};
+        var f = o.font || {};
+        if (tier === 0) { // 全亮档回填原色原字
+          nUp.push({ id: id, opacity: 1, color: o.color, font: o.font, borderWidth: o.borderWidth || 1 });
+        } else {
+          nUp.push({ id: id, opacity: T0.node.opacity,
+            font: { face: f.face || "ui-monospace, Consolas, monospace", size: f.size || 11, color: T0.node.font } });
+        }
+      });
+    });
+    mgmtNodeSet.update(nUp);
+  }
+  // 浮层文本（上级口径：信件 id+时间，不显示 from/to）；prefix=暂停符号等
+  function playBadgeLabel(prefix) {
+    var step = playState.steps[playState.idx - 1];
+    if (!step) return prefix + "…";
+    var e0 = step[0];
+    // fmtTime 的数字参数按秒计（core.js），内部 t 已归一毫秒——显示前折回
+    var label = e0.lid ? ("✉ " + e0.lid + " · " + fmtTime(Math.round(e0.t / 1000))) : ("✉ 合成序列 #" + playState.idx);
+    return prefix + label + (step.length > 1 ? " ×" + step.length : "") +
+      "  [" + playState.idx + "/" + playState.steps.length + "]";
+  }
+  function playTick() {
+    if (!playState) return;
+    if (playState.idx >= playState.steps.length) { stopPlay(); return; }
+    // 四态拖尾（上级 09-03）：当拍全亮，越旧的拍逐档下沉，隔帧下降。
+    // 刷档顺序=从最旧到最新：同一连线在相邻拍重复出现时，最新一拍的
+    // 档位最后落笔获胜（否则旧拍的淡化会盖掉当拍高亮——上级实测 bug）。
+    for (var back = 3; back >= 1; back--) {
+      if (playState.idx - back >= 0) playTierStep(playState.steps[playState.idx - back], back);
+    }
+    playTierStep(playState.steps[playState.idx], 0);
+    playState.idx++;
+    if (playBadge) playBadge.textContent = playBadgeLabel("");
+  }
+  function stopPlay() {
+    if (playState && playState.timer) clearInterval(playState.timer);
+    playState = null;
+    restyleGraphEdges(); // 连线按偏好完整还原（含数字）
+    if (mgmtNodeSet && playNodeOrig) {
+      var nUp = Object.keys(playNodeOrig).map(function (id) {
+        var o = playNodeOrig[id];
+        return { id: id, opacity: 1, color: o.color, font: o.font, borderWidth: o.borderWidth || 1 };
+      });
+      mgmtNodeSet.update(nUp);
+    }
+    playNodeOrig = null;
+    if (playBadge) { playBadge.remove(); playBadge = null; }
+    if (mgmtNetwork) mgmtNetwork.setOptions({ interaction: { dragNodes: true, dragView: true, selectable: true, hover: true } });
+    var bp = $("#gg-play");
+    if (bp) { bp.textContent = "▶"; bp.classList.remove("is-stop"); }
+  }
+  var playLoading = false;
+  async function startPlay() {
+    if (!mgmtNetwork || !mgmtEdgeSet || playState || playLoading) return;
+    playLoading = true;
+    playBadgeEnsure();
+    if (playBadge) playBadge.textContent = "载入往来…";
+    var built = null;
+    try { built = await fetchPlaySteps(); } catch (_) {}
+    if (!built || !built.steps.length) built = buildPlaySteps(); // 真实档空/失败→合成档
+    if (!built.steps.length) {
+      if (playBadge) playBadge.textContent = "范围内无流量";
+      setTimeout(function () { if (!playState && playBadge) { playBadge.remove(); playBadge = null; } }, 1500);
+      playLoading = false;
+      return;
+    }
+    playState = { steps: built.steps, idx: 0, timer: null, paused: false, total: built.total, real: !!built.real, speed: 1 };
+    // 冻结+禁拖+禁选（暂停态下边不再可选中，上级 0.2.5 复核）+隐藏数字
+    mgmtNetwork.setOptions({ interaction: { dragNodes: false, dragView: false, selectable: false, hover: false } });
+    playNodeOrig = {};
+    var nUp = [];
+    mgmtNodeSet.forEach(function (n) {
+      playNodeOrig[n.id] = { color: n.color, font: n.font, borderWidth: n.borderWidth };
+      nUp.push({ id: n.id, opacity: 0.25, font: { face: "ui-monospace, Consolas, monospace", size: 11, color: "rgba(35,48,63,0.25)" } });
+    });
+    mgmtNodeSet.update(nUp);
+    mgmtEdgeSet.update(mgmtEdgeMeta.map(function (meta) {
+      return { id: meta.id, label: " ", width: 0.5,
+        color: { color: "rgba(91,107,125,0.10)" },
+        font: { size: 9, face: "Consolas", color: "rgba(35,48,63,0.10)" },
+        arrows: { to: { enabled: true, scaleFactor: 0.15 } } };
+    }));
+    playBadgeEnsure();
+    var bp = $("#gg-play");
+    // 三态循环（上级 09-03）：▶ 待播 → ▶▶ 一倍速播放中（点进二倍速）→ ■(大) 二倍速播放中（点停）
+    if (bp) { bp.textContent = "▶▶"; bp.classList.remove("is-stop"); }
+    playLoading = false;
+    playState.timer = setInterval(playTick, playBeatMs());
+  }
+  function playBeatMs() { // 一倍速=原先一半（上级定义），2×=原速
+    return playState && playState.speed === 2 ? 30 : 60;
+  }
+  function togglePlay() {
+    if (playLoading) return;
+    if (!playState) { startPlay(); return; }
+    if (playState.speed === 1) { // 1×→2×
+      playState.speed = 2;
+      if (playState.timer) { clearInterval(playState.timer); playState.timer = setInterval(playTick, playBeatMs()); }
+      var b2 = $("#gg-play");
+      if (b2) {
+        b2.textContent = "■"; b2.classList.add("is-stop");
+        // 内联同款字号（上级 09-03：■ 字形天然小于 ▶，放大一档；内联防 CSS 缓存吞变更）
+        b2.style.fontSize = "16px"; b2.style.lineHeight = "1";
+      }
+      return;
+    }
+    stopPlay(); // 2×→停止
+  }
+
   function wireGraphControls() {
     var b1 = $("#gg-map"), b2 = $("#gg-nums"), b3 = $("#gg-days");
     if (b1) b1.addEventListener("click", function () {
@@ -398,6 +676,8 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       saveGraphPrefs();
       loadMgmtOverview();
     });
+    var bp = $("#gg-play");
+    if (bp) bp.addEventListener("click", togglePlay);
   }
 
 

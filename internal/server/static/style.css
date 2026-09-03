@@ -1504,6 +1504,16 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
   padding: 0; text-align: center;
 }
 .gg-btn:hover { border-color: var(--accent, #3b82f6); }
+/* 播放模式当前信浮层（上级 0.2.5）：左下角、指针穿透、画布之上 */
+.play-badge {
+  position: absolute; left: 10px; bottom: 10px; z-index: 6;
+  max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis;
+  background: rgba(37, 99, 235, 0.92); color: #fff;
+  font-size: 11px; line-height: 1.4; padding: 3px 8px;
+  border-radius: 6px; pointer-events: none; white-space: nowrap;
+}
+/* 停止态 ■ 放大一档（上级 09-03：原字号下 ■ 视觉上比 ▶ 小太多） */
+#gg-play.is-stop { font-size: 16px; line-height: 1; }
 .gg-btn { white-space: nowrap; overflow: hidden; flex: 0 0 auto; }
 .gg-btn.off { opacity: .45; }         /* numbers hidden state */
 .gg-btn-days { font-size: 11px; font-weight: 600; }
