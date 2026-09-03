@@ -1629,17 +1629,22 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   document.addEventListener("audit:entered", function () { loadAudit(); fitAuditOneScreen(); });
   // Audit mobile one-screen (superior 0.2.4 pool item): same measured
   // column + correction closure as the other one-screen fits.
+  // 键盘态视口高（0.2.5 高优 v2）：pan 模式键盘下 innerHeight 不缩、只有
+  // visualViewport 缩——量测一律取两者较小值，两种键盘模式都成立。
+  function mgKbVh() {
+    return window.visualViewport ? Math.min(window.innerHeight, Math.round(window.visualViewport.height)) : window.innerHeight;
+  }
   function fitAuditOneScreen() {
     var tab = document.getElementById("tab-audit");
     if (!tab || tab.classList.contains("hidden")) return;
     if (window.innerWidth > 800) { tab.style.removeProperty("--audit-1s"); return; }
     var top = tab.getBoundingClientRect().top;
     if (top <= 0) return;
-    var h = window.innerHeight - top - 10;
+    var h = mgKbVh() - top - 10;
     if (h < 300) h = 300;
     tab.style.setProperty("--audit-1s", h + "px");
     var over = document.documentElement.scrollHeight - window.innerHeight;
-    if (over > 0) tab.style.setProperty("--audit-1s", Math.max(300, h - over) + "px");
+    if (over > 0) tab.style.setProperty("--audit-1s", Math.max(240, h - over) + "px");
   }
   window.addEventListener("resize", fitAuditOneScreen);
   async function loadAudit() {
@@ -1752,13 +1757,13 @@ function fitInboxOneScreen() {
     return;
   }
   var top = tab.getBoundingClientRect().top;
-  var h = window.innerHeight - Math.max(top, 0) - 10;
+  var h = mgKbVh() - Math.max(top, 0) - 10;
   if (h < 300) h = 300;
   tab.style.setProperty("--inbox-1s", h + "px");
   // 精调：容器尾部内边距等造成的页面溢出量直接扣除（一屏=零页面滚动）
   var over = document.documentElement.scrollHeight - window.innerHeight;
   if (over > 0) {
-    h = Math.max(h - over, 300);
+    h = Math.max(h - over, 240);
     tab.style.setProperty("--inbox-1s", h + "px");
   }
 }
@@ -1769,13 +1774,38 @@ function fitInboxPcOneScreen() {
   var tab = document.getElementById("tab-inbox");
   if (!tab || tab.classList.contains("hidden")) return;
   var top = tab.getBoundingClientRect().top;
-  var h = window.innerHeight - Math.max(top, 0) - 10;
+  var h = mgKbVh() - Math.max(top, 0) - 10;
   if (h < 360) h = 360;
   tab.style.setProperty("--inbox-pc-1s", h + "px");
   var over = document.documentElement.scrollHeight - window.innerHeight;
   if (over > 0) tab.style.setProperty("--inbox-pc-1s", Math.max(h - over, 360) + "px");
 }
 window.addEventListener("resize", fitInboxOneScreen);
+
+// 输入法弹出/收起高优修（上级 0.2.5，01M1JG5D）：软键盘改变视口时一屏
+// 量测高度还是键盘前的旧值——底部控件停在旧位盖住输入栏。visualViewport
+// 的 resize 在两种键盘模式（窗口重排/仅视觉视口变化）下都会触发，统一
+// 在此重算本模块全部一屏量测；防抖 120ms 防连发。
+(function fWireVvRefit() {
+  var vv = window.visualViewport;
+  if (!vv) return;
+  var t = null;
+  vv.addEventListener("resize", function () {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      fitInboxOneScreen();
+      fitInboxPcOneScreen();
+      fitMgmtOneScreen();
+      fitAuditOneScreen();
+      // 重算改变了布局，浏览器原生的焦点滚动会被作废——重算后再把
+      // 焦点输入框滚回可视区（0.2.5 v2：修「输入栏不动被键盘遮大半」）
+      var ae = document.activeElement;
+      if (ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) {
+        try { ae.scrollIntoView({ block: "center" }); } catch (_) {}
+      }
+    }, 120);
+  });
+})();
 
 // Superior 09-01 (01M1D7QBV): one-screen Mail-manage on phones — threads
 // list scrolls inside a measured column, forest viewport aligns to it,
@@ -1795,11 +1825,13 @@ function fitMgmtOneScreen() {
   }
   function fitBox(el, prop, min) {
     var top = el.getBoundingClientRect().top;
-    var h = window.innerHeight - Math.max(top, 0) - 10;
+    var h = mgKbVh() - Math.max(top, 0) - 10;
     if (h < min) h = min;
     el.style.setProperty(prop, h + "px");
     var over = document.documentElement.scrollHeight - window.innerHeight;
-    if (over > 0) el.style.setProperty(prop, Math.max(h - over, min) + "px");
+    // 修正下限 240（<min）：键盘缩视口时要能真正抵消溢出，否则页面仍可
+    // 微拖、底部控件盖输入栏（上级 0.2.5 高优 01M1JG5D）
+    if (over > 0) el.style.setProperty(prop, Math.max(h - over, 240) + "px");
   }
   // Browse (superior 09-01): 查信 sub-page joins the one-screen family —
   // the mail grid scrolls inside the measured column.
