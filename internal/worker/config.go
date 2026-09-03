@@ -124,9 +124,10 @@ func (c *Config) defaults() {
 //     agent entry may override any global field per-field (empty = inherit
 //     global).
 //
-// select limits the result to matching agents: a single pattern
-// (address prefix, address local-part, or 1-based index) or comma-separated
-// alternatives of those (any hit matches); empty select returns all.
+// select limits the result to matching agents: a single pattern or
+// comma-separated alternatives of those (any hit matches), where a pattern
+// is the exact local-part, the exact full address, or a 1-based index;
+// empty select returns all.
 func LoadConfigs(path, select_ string) ([]*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -209,20 +210,23 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 	}
 
 	if select_ != "" {
+		// Full-word matching only (superior ruling 2026-09-03): an
+		// unanchored prefix would drag look-alike siblings along —
+		// "psum-ospm" compacting "psum-ospm-pp" too. An alternative must be
+		// the exact local-part, the exact full address, or a 1-based index.
+		isSel := func(pat string, c *Config, idx int) bool {
+			return pat == localPart(c.Address) || pat == c.Address || pat == fmt.Sprint(idx+1)
+		}
 		var picked []*Config
 		for _, c := range out {
-			lp := localPart(c.Address)
-			matched := lp == select_ || strings.HasPrefix(c.Address, select_) || select_ == fmt.Sprint(indexOf(out, c)+1)
+			idx := indexOf(out, c)
+			matched := isSel(select_, c, idx)
 			if !matched && strings.Contains(select_, ",") {
-				// comma-separated alternatives: match if ANY pattern hits
-				// (prefix/local-part/index per alternative) — e.g.
-				// -compact-before-wake "regft,dev" compresses both.
+				// comma-separated alternatives: exact match on ANY — e.g.
+				// -compact-before-wake "psum-ospm,psum-osp-dev".
 				for _, alt := range strings.Split(select_, ",") {
 					alt = strings.TrimSpace(alt)
-					if alt == "" {
-						continue
-					}
-					if lp == alt || strings.HasPrefix(c.Address, alt) || alt == fmt.Sprint(indexOf(out, c)+1) {
+					if alt != "" && isSel(alt, c, idx) {
 						matched = true
 						break
 					}
