@@ -552,15 +552,6 @@ func redact(s, secret string) string {
 // lands. providerID/modelID come from cfg.Model ("provider/model").
 
 func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionID string) error {
-	prov, model := "", ""
-	if cfg.Model != "" {
-		if i := strings.Index(cfg.Model, "/"); i > 0 {
-			prov, model = cfg.Model[:i], cfg.Model[i+1:]
-		}
-	}
-	if prov == "" || model == "" {
-		return fmt.Errorf("opencode compact needs cfg.Model as provider/model (got %q)", cfg.Model)
-	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -613,6 +604,26 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 		}
 	}
 	_ = up
+
+	// Resolve the model for the summarize call: a config pin wins; otherwise
+	// discover what the session itself was driven with (last message carrying
+	// provider/model) — accounts without a model pin run the CLI default, and
+	// hard-requiring a pin broke compaction for exactly those accounts
+	// (field report 2026-09-03: regft, model="" → compact FAILED at 0s).
+	prov, model := "", ""
+	if cfg.Model != "" {
+		if i := strings.Index(cfg.Model, "/"); i > 0 {
+			prov, model = cfg.Model[:i], cfg.Model[i+1:]
+		}
+	}
+	if prov == "" || model == "" {
+		if p, m, derr := discoverSessionModel(client, base, sessionID); derr == nil && p != "" && m != "" {
+			prov, model = p, m
+		}
+	}
+	if prov == "" || model == "" {
+		return fmt.Errorf("opencode compact: no model resolvable (cfg.Model=%q, session messages carried none)", cfg.Model)
+	}
 	if err := post("/session/"+sessionID+"/summarize", map[string]any{"providerID": prov, "modelID": model}); err != nil {
 		return fmt.Errorf("summarize: %w", err)
 	}
@@ -876,6 +887,38 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 		return "", wakeTokens, fmt.Errorf("codex wake: %w", err)
 	}
 	return id, wakeTokens, nil
+}
+
+// discoverSessionModel reads the session's message list and returns the
+// provider/model the session was actually driven with (last message that
+// carries both). Used when the account config has no model pin.
+func discoverSessionModel(client *http.Client, base, sessionID string) (string, string, error) {
+	resp, err := client.Get(base + "/session/" + sessionID + "/message")
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var msgs []struct {
+		Info struct {
+			ProviderID string `json:"providerID"`
+			ModelID    string `json:"modelID"`
+			Role       string `json:"role"`
+		} `json:"info"`
+	}
+	if json.Unmarshal(b, &msgs) != nil {
+		return "", "", fmt.Errorf("unreadable session messages")
+	}
+	prov, model := "", ""
+	for _, msg := range msgs {
+		if msg.Info.ProviderID != "" && msg.Info.ModelID != "" {
+			prov, model = msg.Info.ProviderID, msg.Info.ModelID
+		}
+	}
+	if prov == "" || model == "" {
+		return "", "", fmt.Errorf("no provider/model found in session messages")
+	}
+	return prov, model, nil
 }
 
 // permOn reports whether full tool permissions are requested (default on:
