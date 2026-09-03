@@ -48,7 +48,7 @@ Mail of Agents 设计了从属机制：agent 可以把自己的对话定向、�
 - `-version`：打印构建标识并退出（release 构建由 CI 以 tag 名注入，本地构建显示 unversioned）
 - `-plan <账户全字>`：打印唤醒将构造的精确命令行（argv 概要+stdin 模式），不执行任何 CLI——排查 argv 形状回归用
 - `-switch_address <账户全字>`：只运行匹配账户（其余照常定义但不启动）
-- `-compact <账户全字>`：**纯压缩即退**——对匹配账户的已绑定会话做一次原地压缩（走 CLI 自带的无头压缩入口，如 opencode serve→summarize），不做任何唤醒、不进入会话生成；未匹配账户连状态都不读。无会话则为空操作；CLI 无压缩入口时会话原样保留（其内置 auto-compact 兜底）。适合 cron 闲时跑
+- `-compact <账户全字>`：**纯压缩即退**——对匹配账户的已绑定会话做一次原地压缩（走 CLI 自带的无头压缩入口，如 opencode serve→summarize），不做任何唤醒、不进入会话生成；未匹配账户连状态都不读。无会话则为空操作；CLI 无压缩入口时会话原样保留（其内置 auto-compact 兜底）。适合 cron 闲时跑（预算 25min，独立于唤醒路径的 10min——分治预算，架构背书 0903）
 - `-compact-before-wake <账户全字>`：正常进入值守循环，但匹配账户的**首轮唤醒前**先做一次上述压缩——只延迟该账户自己的第一轮，其余账户照常即时启动（每账户独立循环）。不逐轮压缩
 > 账户全字匹配语义（上级裁定 2026-09-03）：**精确匹配** local-part 或完整地址（不用前缀——`psum-ospm` 不得误中 `psum-ospm-pp`），支持**逗号分隔多选**（`"a,b"` 精确命中两个）与 1-based 序号。四旗标（-switch_address/-compact/-compact-before-wake/-plan）同享。
 - 压缩三层语义互补不重叠：`-compact`（闲时一次性）／`-compact-before-wake`（启动前一次）／`compact_notice_tokens`（值守中按上下文水位预告，预告轮后原地压缩；后续将转为向紧急联系人告警的语义）

@@ -23,6 +23,8 @@ type Duty struct {
 
 	compactBeforeWake bool // -compact-before-wake: compress the bound session once, before this account's first wake of the run
 
+	compactBudget time.Duration // per-run compaction budget; zero = compactTimeout (the tight wake-path default)
+
 	mu             sync.Mutex
 	sessionID      string // current bound session ("" = start a new one next wake)
 	failStreak     int
@@ -151,7 +153,17 @@ func (d *Duty) refreshContacts(ctx context.Context) {
 // can legitimately take a long while (full-history summarize), so this is
 // deliberately generous — the whole point of the flag forms is that the
 // wait lands where the operator chose it, not in front of unrelated wakes.
-const compactTimeout = 10 * time.Minute
+const (
+	// compactTimeout bounds one in-place compression on the wake path
+	// (-compact-before-wake): the wait lands in front of a wake, keep it
+	// tight.
+	compactTimeout = 10 * time.Minute
+	// compactTimeoutCron is the looser budget for the standalone -compact
+	// form: cron-friendly, no wake waits behind it, and a full-history
+	// summarize on the team's largest sessions measured ~7min — leave real
+	// headroom (budget split endorsed by the architect, 2026-09-03).
+	compactTimeoutCron = 25 * time.Minute
+)
 
 // compactOnce compresses the bound session IN PLACE, once. opencode ships a
 // headless entry (temporary serve → summarize API); CLIs without one keep
@@ -176,10 +188,17 @@ func (d *Duty) compactOnce(ctx context.Context) error {
 	}
 	start := time.Now()
 	d.logf("compact: compressing session %s in place…", sess)
-	cctx, cancel := context.WithTimeout(ctx, compactTimeout)
+	budget := d.compactBudget
+	if budget <= 0 {
+		budget = compactTimeout
+	}
+	cctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	if err := c.CompactSession(cctx, d.cfg, sess); err != nil {
-		d.logf("compact FAILED after %s: %v (session untouched)", time.Since(start).Round(time.Second), err)
+		// the adapter error states whether the session was touched
+		// (early failures leave it untouched; a summarize that returned
+		// but whose summary went undetected does NOT)
+		d.logf("compact FAILED after %s: %v", time.Since(start).Round(time.Second), err)
 		return err
 	}
 	d.logf("compact ok in %s: session %s continues with its summary", time.Since(start).Round(time.Second), sess)
@@ -191,6 +210,7 @@ func (d *Duty) compactOnce(ctx context.Context) error {
 // generation, no other account is even read.
 func CompactOnce(cfg *Config) error {
 	d := NewDuty(cfg, false, false)
+	d.compactBudget = compactTimeoutCron
 	d.loadState()
 	return d.compactOnce(context.Background())
 }
