@@ -1119,18 +1119,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     if (h < 360) h = 360;
     tab.style.setProperty("--compose-1s", h + "px");
     var over = document.documentElement.scrollHeight - window.innerHeight;
-    if (over > 0) tab.style.setProperty("--compose-1s", Math.max(h - over, 240) + "px");
+    if (over > 0) tab.style.setProperty("--compose-1s", Math.max(h - over, 360) + "px");
   }
   window.addEventListener("resize", fitComposeOneScreen);
-  // 输入法高优修（上级 0.2.5）：软键盘视口变化时写邮件页重算量测，
-  // 发送行贴回键盘上缘，不再盖住输入栏（与 manage.js 同口径，防抖 120ms）。
-  if (window.visualViewport) {
-    var compVvT = null;
-    window.visualViewport.addEventListener("resize", function () {
-      clearTimeout(compVvT);
-      compVvT = setTimeout(fitComposeOneScreen, 120);
-    });
-  }
   (function wireThreadModal() {
     var btn = document.getElementById("btn-thread-pane");
     var thread = document.getElementById("compose-thread");
