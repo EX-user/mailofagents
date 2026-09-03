@@ -654,7 +654,13 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 		return fmt.Errorf("summarize: %w", err)
 	}
 
-	// poll until the compaction lands (summary assistant message appears)
+	// Poll until the compaction lands (summary assistant message appears).
+	// The full message listing for a long session is many MB and the server
+	// takes a while to render it, so polls time out and completion goes
+	// undetected even though compaction succeeded (field report: alice
+	// session, "did not complete within 180s" while the summary was there).
+	// /message?limit=N is served newest-first (MessageV2.page, time_created
+	// DESC), so the latest 5 messages are a tiny, instant probe.
 	deadline := time.Now().Add(180 * time.Second)
 	for time.Now().Before(deadline) {
 		select {
@@ -662,7 +668,7 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 			return ctx.Err()
 		case <-time.After(3 * time.Second):
 		}
-		resp, err := client.Get(base + "/session/" + sessionID + "/message")
+		resp, err := client.Get(base + "/session/" + sessionID + "/message?limit=5")
 		if err != nil {
 			continue
 		}
@@ -683,7 +689,7 @@ func (opencodeAdapter) CompactSession(ctx context.Context, cfg *Config, sessionI
 			}
 		}
 	}
-	return fmt.Errorf("compaction did not complete within 180s")
+	return fmt.Errorf("summary not detected within 180s of summarize returning (it may have landed right after; the session is NOT untouched)")
 }
 
 // ---- pi ----
