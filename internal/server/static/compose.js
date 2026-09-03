@@ -397,26 +397,257 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   function renderComposeAttachments(items) {
     const wrap = $("#compose-attachments");
     wrap.innerHTML = items.map(function (a, i) {
-      return '<div class="attach-card' + (a.error ? " attach-error" : "") + '">' +
+      // Flow states (over-limit / compressing / preview / uploading) render
+      // as a stacked column card — inline styles only, so this face carries
+      // zero style.css coupling. The name gets nowrap+ellipsis so it can
+      // never stack one-char-per-line in the narrow flex row.
+      const stacked = a.compressing || a.uploading || a.readyPreview || a.overLimit;
+      const nameHtml = '<span class="attach-name" style="' + (stacked ?
+        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;' : '') + '">' +
+        esc(a.filename) + "</span>";
+      let body;
+      if (a.compressing) {
+        body = '<span class="attach-size">' + esc(t("attach.compressing")) + "</span>";
+      } else if (a.uploading) {
+        body = '<span class="attach-size">' + esc(t("attach.uploading")) + "</span>";
+      } else if (a.readyPreview) {
+        // Compressed & pending upload (boss 0.2.5): the fullscreen lightbox
+        // is the quality-check surface; the card keeps a 预览 re-open button.
+        body = '<span class="attach-size" title="' + esc(t("attach.exifNote")) + '">' +
+          esc(t("attach.compressed", { from: fmtBytes(a.compressedFrom), to: fmtBytes(a.size) })) + "</span>" +
+          '<button type="button" class="row-action" data-pv="' + i + '" style="margin-top:6px;width:100%;">' + esc(t("attach.openPreview")) + "</button>";
+      } else if (a.overLimit) {
+        body = '<span class="attach-size" style="color:#c0392b;font-size:12px;">' + esc(t("attach.overLimit")) + "</span>" +
+          '<button type="button" class="row-action" data-compress="' + i + '" style="margin-top:6px;width:100%;">' + esc(t("attach.compressAndUpload")) + "</button>";
+      } else if (a.error) {
+        body = '<span class="attach-size">' + esc(a.error) + "</span>";
+      } else if (a.compressedFrom) {
+        body = '<span class="attach-size" title="' + esc(t("attach.exifNote")) + '">' +
+          esc(t("attach.compressed", { from: fmtBytes(a.compressedFrom), to: fmtBytes(a.size) })) + "</span>";
+      } else {
+        body = '<span class="attach-size">' + esc(fmtBytes(a.size)) + "</span>";
+      }
+      const cardStyle = stacked ? ' style="display:flex;flex-direction:column;align-items:stretch;min-width:0;"' : "";
+      return '<div class="attach-card' + (a.error ? " attach-error" : "") + '"' + cardStyle + '>' +
         '<span class="attach-clip">📎</span>' +
-        '<span class="attach-name">' + esc(a.filename) + "</span>" +
-        (a.error
-          ? '<span class="attach-size">' + esc(a.error) + "</span>"
-          : '<span class="attach-size">' + esc(fmtBytes(a.size)) + "</span>") +
+        nameHtml +
+        body +
         '<button type="button" class="attach-x" data-rm="' + i + '" title="Remove">×</button>' +
         "</div>";
     }).join("");
     $$("[data-rm]", wrap).forEach(function (btn) {
       btn.addEventListener("click", function () {
         const i = +btn.dataset.rm;
+        const it = composeAttachmentItems[i];
+        if (it && it.previewUrl) URL.revokeObjectURL(it.previewUrl);
         composeAttachmentItems.splice(i, 1);
         composeAttachmentIds = composeAttachmentItems.filter(function (a) { return a.id; }).map(function (a) { return a.id; });
         renderComposeAttachments(composeAttachmentItems);
       });
     });
+    // 压缩后上传 (boss 0.2.5): compress → show the quality-check preview.
+    $$("[data-compress]", wrap).forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const i = +btn.dataset.compress;
+        const item = composeAttachmentItems[i];
+        if (!item || !item.rawFile || item.compressing) return;
+        btn.disabled = true;
+        item.overLimit = false;
+        item.compressing = true;
+        renderComposeAttachments(composeAttachmentItems);
+        try {
+          const blob = await compressImageFile(item.rawFile);
+          const base = item.rawFile.name.replace(/\.[^.]+$/, "");
+          item.blob = blob;
+          item.compressedFrom = item.rawFile.size;
+          item.size = blob.size; // preview shows the compressed size as "to"
+          item.previewUrl = URL.createObjectURL(blob);
+          item.readyPreview = true;
+          item.filename = base + ".jpg";
+        } catch (_) {
+          item.compressFailed = true;
+        }
+        item.compressing = false;
+        renderComposeAttachments(composeAttachmentItems);
+        if (item.readyPreview) openCompressLightbox(item);
+      });
+    });
+    // 预览 re-open: the fullscreen lightbox with the bottom 上传 button.
+    $$("[data-pv]", wrap).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const i = +btn.dataset.pv;
+        const item = composeAttachmentItems[i];
+        if (item && item.readyPreview) openCompressLightbox(item);
+      });
+    });
+    // 上传 (boss 0.2.5): only this button puts the compressed file on the wire.
+    $$("[data-up]", wrap).forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const i = +btn.dataset.up;
+        const item = composeAttachmentItems[i];
+        if (!item || !item.blob || item.uploading) return;
+        btn.disabled = true;
+        item.readyPreview = false;
+        item.uploading = true;
+        renderComposeAttachments(composeAttachmentItems);
+        const up = new File([item.blob], item.filename, { type: "image/jpeg" });
+        await uploadItem(item, up);
+      });
+    });
   }
 
   let composeAttachmentItems = [];
+
+  // ---- image over-limit flow (0.2.5, boss-directed): an image over the
+  // server's 1 MiB gate is NOT auto-uploaded — the card shows the over-limit
+  // note with a 压缩后上传 button; compressing reveals a quality-check
+  // preview with an explicit 上传 button that performs the actual upload.
+  // Canvas re-encode also strips EXIF (incl. GPS) — surfaced in the card.
+  const IMG_TRIGGER = 1048576; // 1 MiB — mirrors the server byte gate
+  const IMG_TARGET = 972800;   // 950 KiB — ~5% headroom under the gate
+
+  async function compressImageFile(file) {
+    // Text-heavy PNGs (screenshots) get the high-quality lane per design.
+    const q0 = file.type === "image/png" ? 0.9 : 0.82;
+    const img = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const cv = document.createElement("canvas");
+    const cx = cv.getContext("2d");
+    for (const maxEdge of [2560, 2048, 1600]) {
+      const k = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      cv.width = Math.max(1, Math.round(img.width * k));
+      cv.height = Math.max(1, Math.round(img.height * k));
+      cx.drawImage(img, 0, 0, cv.width, cv.height);
+      let q = q0;
+      for (let round = 0; round < 5; round++) {
+        const blob = await new Promise(function (res) { cv.toBlob(res, "image/jpeg", q); });
+        if (blob && blob.size <= IMG_TARGET) return blob;
+        q -= 0.08;
+      }
+    }
+    throw new Error("uncompressible");
+  }
+
+  async function uploadItem(item, file) {
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      const res = await fetch("/api/files/upload", {
+        method: "POST",
+        headers: { Authorization: basicAuth() },
+        body: fd,
+      });
+      if (!res.ok) {
+        let msg = res.status + " " + res.statusText;
+        try { const tx = await res.text(); if (tx) msg = tx; } catch (_) {}
+        throw new Error(msg);
+      }
+      const meta = await res.json();
+      item.id = meta.id;
+      item.size = meta.size;
+      composeAttachmentIds = composeAttachmentItems.filter(function (a) { return a.id; }).map(function (a) { return a.id; });
+      if (item.previewUrl) { URL.revokeObjectURL(item.previewUrl); item.previewUrl = null; }
+    } catch (e) {
+      item.error = (e.message || "").indexOf("too large") >= 0 ? t("attach.tooLarge") : t("attach.upFailed");
+    }
+    item.uploading = false;
+    renderComposeAttachments(composeAttachmentItems);
+  }
+
+  // Fullscreen quality-check preview (boss 0.2.5): same lightbox surface the
+  // read-side image attachments use — zoomable fullscreen image with a
+  // bottom action bar. Here the action is 上传 (uploads the compressed
+  // file); Escape / click-outside just closes (the card keeps a 预览
+  // button to re-open).
+  function openCompressLightbox(item) {
+    closeImageLightbox();
+    const lb = document.createElement("div");
+    lb.className = "img-lightbox";
+    const im = document.createElement("img");
+    im.src = item.previewUrl;
+    im.alt = item.filename || "";
+    im.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    // Zoom, same mechanics as the read-side lightbox (manage.js, superior
+    // 01M1B6J5W): wheel / double-click / pinch (1-6x, pointer-anchored),
+    // drag to pan once zoomed; close stays on backdrop / Esc.
+    let lbScale = 1, lbTx = 0, lbTy = 0;
+    const lbApply = function () {
+      im.style.transform = "translate(" + lbTx + "px," + lbTy + "px) scale(" + lbScale + ")";
+      im.style.cursor = lbScale > 1 ? "grab" : "zoom-in";
+    };
+    const lbZoomAt = function (cx, cy, factor) {
+      const ns = Math.min(6, Math.max(1, lbScale * factor));
+      if (ns === lbScale) return;
+      const r = im.getBoundingClientRect();
+      lbTx += (cx - r.left) * (1 - ns / lbScale);
+      lbTy += (cy - r.top) * (1 - ns / lbScale);
+      lbScale = ns;
+      if (lbScale === 1) { lbTx = 0; lbTy = 0; }
+      lbApply();
+    };
+    im.style.transformOrigin = "0 0";
+    im.style.touchAction = "none";
+    lb.style.touchAction = "none";
+    lb.addEventListener("wheel", function (ev) {
+      ev.preventDefault();
+      lbZoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.2 : 1 / 1.2);
+    }, { passive: false });
+    lb.addEventListener("dblclick", function (ev) {
+      ev.preventDefault();
+      lbZoomAt(ev.clientX, ev.clientY, lbScale > 1 ? 1 / lbScale : 2.5);
+    });
+    let lbPinch = null;
+    let lbDrag = null;
+    lb.addEventListener("touchstart", function (ev) {
+      if (ev.touches.length === 2) {
+        lbPinch = { d: Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX,
+                                  ev.touches[0].clientY - ev.touches[1].clientY) };
+        lbDrag = null;
+      } else if (ev.touches.length === 1) {
+        lbDrag = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, bx: lbTx, by: lbTy, moved: false };
+      }
+    }, { passive: true });
+    lb.addEventListener("touchmove", function (ev) {
+      ev.preventDefault();
+      if (lbPinch && ev.touches.length === 2) {
+        const d = Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX,
+                             ev.touches[0].clientY - ev.touches[1].clientY);
+        lbZoomAt((ev.touches[0].clientX + ev.touches[1].clientX) / 2,
+                 (ev.touches[0].clientY + ev.touches[1].clientY) / 2, d / lbPinch.d);
+        lbPinch.d = d;
+        return;
+      }
+      if (lbDrag && ev.touches.length === 1 && lbScale > 1) {
+        const dx = ev.touches[0].clientX - lbDrag.x, dy = ev.touches[0].clientY - lbDrag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 6) lbDrag.moved = true;
+        lbTx = lbDrag.bx + dx;
+        lbTy = lbDrag.by + dy;
+        lbApply();
+      }
+    }, { passive: false });
+    lb.appendChild(im);
+    const info = document.createElement("div");
+    info.className = "img-lightbox-info";
+    info.textContent = t("attach.compressed", { from: fmtBytes(item.compressedFrom), to: fmtBytes(item.size) }) +
+      " · " + t("attach.exifNote");
+    lb.appendChild(info);
+    const up = document.createElement("button");
+    up.className = "img-lightbox-dl";
+    up.type = "button";
+    up.textContent = t("attach.uploadNow");
+    up.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      closeImageLightbox();
+      item.readyPreview = false;
+      item.uploading = true;
+      renderComposeAttachments(composeAttachmentItems);
+      const upFile = new File([item.blob], item.filename, { type: "image/jpeg" });
+      uploadItem(item, upFile);
+    });
+    lb.appendChild(up);
+    lb.addEventListener("click", closeImageLightbox);
+    document.addEventListener("keydown", closeImageLightbox);
+    document.body.appendChild(lb);
+  }
 
   $("#btn-attach").addEventListener("click", function () {
     $("#compose-file-input").click();
@@ -426,31 +657,17 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const files = Array.from(this.files || []);
     this.value = "";
     for (const f of files) {
-      const item = { filename: f.name, size: f.size };
+      const item = { filename: f.name, size: f.size, rawFile: f };
       composeAttachmentItems.push(item);
       renderComposeAttachments(composeAttachmentItems);
-      try {
-        const fd = new FormData();
-        fd.append("file", f, f.name);
-        const res = await fetch("/api/files/upload", {
-          method: "POST",
-          headers: { Authorization: basicAuth() },
-          body: fd,
-        });
-        if (!res.ok) {
-          let msg = res.status + " " + res.statusText;
-          try { const tx = await res.text(); if (tx) msg = tx; } catch (_) {}
-          throw new Error(msg);
-        }
-        const meta = await res.json();
-        item.id = meta.id;
-        item.size = meta.size;
-        composeAttachmentIds = composeAttachmentItems.filter(function (a) { return a.id; }).map(function (a) { return a.id; });
+      if (/^image\//.test(f.type || "") && f.size > IMG_TRIGGER) {
+        // Boss flow (0.2.5): an oversized image waits for the explicit
+        // 压缩后上传 → preview → 上传 sequence; nothing auto-fires.
+        item.overLimit = true;
         renderComposeAttachments(composeAttachmentItems);
-      } catch (e) {
-        item.error = (e.message || "").indexOf("too large") >= 0 ? t("attach.tooLarge") : t("attach.upFailed");
-        renderComposeAttachments(composeAttachmentItems);
+        continue;
       }
+      await uploadItem(item, f);
     }
   });
 
