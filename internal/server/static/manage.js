@@ -1798,10 +1798,11 @@ window.addEventListener("resize", fitInboxOneScreen);
       fitMgmtOneScreen();
       fitAuditOneScreen();
       // 重算改变了布局，浏览器原生的焦点滚动会被作废——重算后再把
-      // 焦点输入框滚回可视区（0.2.5 v2：修「输入栏不动被键盘遮大半」）
+      // 焦点输入框滚回可视区顶部（0.2.5 v4：与写邮件页 v3 同口径 start，
+      // 输入框以下的内容让位，不被键盘遮）
       var ae = document.activeElement;
       if (ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) {
-        try { ae.scrollIntoView({ block: "center" }); } catch (_) {}
+        try { ae.scrollIntoView({ block: "start" }); } catch (_) {}
       }
     }, 120);
   });

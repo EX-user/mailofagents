@@ -2487,7 +2487,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         fitAccountsOneScreen();
         var ae = document.activeElement;
         if (ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) {
-          try { ae.scrollIntoView({ block: "center" }); } catch (_) {}
+          try { ae.scrollIntoView({ block: "start" }); } catch (_) {}
         }
       }, 120);
     });
