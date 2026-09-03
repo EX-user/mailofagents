@@ -39,6 +39,8 @@ func main() {
 	agentSel := flag.String("switch_address", "", "only run the matching account (address prefix, local-part, or 1-based index); default runs all")
 	showVer := flag.Bool("version", false, "print build tag and exit")
 	plan := flag.String("plan", "", "print the exact invocation(s) the wake would build for the matching account(s), then exit — no CLI is run (argv-shape debugging; same matching as -switch_address)")
+	compact := flag.String("compact", "", "compress the matching account's bound session IN PLACE (cli built-in entry) and exit — no wake, no session generation; other accounts are not even read (same matching as -switch_address)")
+	compactBeforeWake := flag.String("compact-before-wake", "", "run the normal duty loop, but compress the matching account's bound session once before its first wake — only that account's first turn is delayed (same matching as -switch_address)")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
@@ -53,6 +55,30 @@ func main() {
 	cfgs, err := worker.LoadConfigs(*cfgPath, *agentSel)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+
+	// -compact: standalone in-place compression, then exit. No wake and no
+	// session generation ever happens on this path (superior semantics);
+	// accounts outside the match are not even loaded.
+	if *compact != "" {
+		list, err := worker.LoadConfigs(*cfgPath, *compact)
+		if err != nil {
+			log.Fatalf("load config: %v", err)
+		}
+		if len(list) == 0 {
+			log.Fatalf("-compact: no account matches %q", *compact)
+		}
+		failed := 0
+		for _, c := range list {
+			if err := worker.CompactOnce(c); err != nil {
+				log.Printf("compact failed: %v", err)
+				failed++
+			}
+		}
+		if failed > 0 {
+			os.Exit(1)
+		}
+		return
 	}
 
 	if *plan != "" {
@@ -113,11 +139,25 @@ func main() {
 	// stops all of them. The status board redraws itself on a fast tick.
 	go worker.RenderLoop(ctx)
 	var wg sync.WaitGroup
+	cbwSet := map[string]bool{}
+	if *compactBeforeWake != "" {
+		list, err := worker.LoadConfigs(*cfgPath, *compactBeforeWake)
+		if err != nil {
+			log.Fatalf("load config (-compact-before-wake): %v", err)
+		}
+		for _, c := range list {
+			cbwSet[c.Address] = true
+		}
+		if len(cbwSet) == 0 {
+			log.Fatalf("-compact-before-wake: no account matches %q", *compactBeforeWake)
+		}
+	}
+
 	for i, cfg := range cfgs {
 		wg.Add(1)
 		go func(c *worker.Config, f bool) {
 			defer wg.Done()
-			worker.NewDuty(c, f).Run(ctx)
+			worker.NewDuty(c, f, cbwSet[c.Address]).Run(ctx)
 		}(cfg, freshList[i])
 	}
 	wg.Wait()

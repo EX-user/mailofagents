@@ -21,6 +21,8 @@ type Duty struct {
 	adapter Adapter
 	fresh   bool // -fresh: ignore the stored session binding and clean worker artifacts
 
+	compactBeforeWake bool // -compact-before-wake: compress the bound session once, before this account's first wake of the run
+
 	mu             sync.Mutex
 	sessionID      string // current bound session ("" = start a new one next wake)
 	failStreak     int
@@ -37,13 +39,14 @@ type Duty struct {
 // the comment at the Wake call site in checkOnce).
 var cliWakeLocks sync.Map // cli id -> *sync.Mutex
 
-func NewDuty(cfg *Config, fresh bool) *Duty {
+func NewDuty(cfg *Config, fresh, compactBeforeWake bool) *Duty {
 	return &Duty{
-		cfg:      cfg,
-		mail:     NewMailClient(cfg.Server, cfg.Address, cfg.Password),
-		adapter:  pickAdapter(cfg.CLI),
-		fresh:    fresh,
-		urgentCh: make(chan struct{}, 1),
+		cfg:               cfg,
+		mail:              NewMailClient(cfg.Server, cfg.Address, cfg.Password),
+		adapter:           pickAdapter(cfg.CLI),
+		fresh:             fresh,
+		compactBeforeWake: compactBeforeWake,
+		urgentCh:          make(chan struct{}, 1),
 	}
 }
 
@@ -144,6 +147,54 @@ func (d *Duty) refreshContacts(ctx context.Context) {
 // statePath returns the session binding store — next to the config by
 // default (the workdir is the agent's turf), overridable via "state_file".
 // Legacy location (workdir/.worker-state.json) is migrated once, silently.
+// compactTimeout bounds one in-place compression. Superior note: compaction
+// can legitimately take a long while (full-history summarize), so this is
+// deliberately generous — the whole point of the flag forms is that the
+// wait lands where the operator chose it, not in front of unrelated wakes.
+const compactTimeout = 10 * time.Minute
+
+// compactOnce compresses the bound session IN PLACE, once. opencode ships a
+// headless entry (temporary serve → summarize API); CLIs without one keep
+// the session — their built-in auto-compact reduces it — because a
+// summarize TURN is deliberately NOT used: -compact must never enter
+// session generation (superior semantics, three-round finalized design).
+// Safe no-op on an empty binding. Before/after lines carry the session id
+// and duration; token counters are not available on this path (they ride
+// the wake report in the duty loop).
+func (d *Duty) compactOnce(ctx context.Context) error {
+	d.mu.Lock()
+	sess := d.sessionID
+	d.mu.Unlock()
+	if sess == "" {
+		d.logf("compact: no bound session — nothing to compress")
+		return nil
+	}
+	c, ok := d.adapter.(Compacter)
+	if !ok {
+		d.logf("compact: cli=%s has no headless compact entry — session kept, its built-in auto-compact covers reduction", d.cfg.CLI)
+		return nil
+	}
+	start := time.Now()
+	d.logf("compact: compressing session %s in place…", sess)
+	cctx, cancel := context.WithTimeout(ctx, compactTimeout)
+	defer cancel()
+	if err := c.CompactSession(cctx, d.cfg, sess); err != nil {
+		d.logf("compact FAILED after %s: %v (session untouched)", time.Since(start).Round(time.Second), err)
+		return err
+	}
+	d.logf("compact ok in %s: session %s continues with its summary", time.Since(start).Round(time.Second), sess)
+	return nil
+}
+
+// CompactOnce is the standalone -compact entry (cmd): load the account's
+// state, compress its bound session in place, done. No wake, no session
+// generation, no other account is even read.
+func CompactOnce(cfg *Config) error {
+	d := NewDuty(cfg, false, false)
+	d.loadState()
+	return d.compactOnce(context.Background())
+}
+
 func (d *Duty) statePath() string { return d.cfg.StateFile }
 
 func (d *Duty) loadState() {
@@ -198,6 +249,15 @@ func (d *Duty) Run(ctx context.Context) {
 	}
 	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v duty_window=%dm session=%q",
 		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.cfg.DutyWindowMin, d.sessionID)
+	if d.compactBeforeWake {
+		// -compact-before-wake: one in-place compression before this
+		// account's first wake. Only THIS account's first turn is delayed —
+		// every account runs its own duty loop (goroutine), so cross-account
+		// starts are unaffected by design.
+		if err := d.compactOnce(ctx); err != nil {
+			d.logf("compact-before-wake: %v (continuing into the duty loop; built-in auto-compact remains the net)", err)
+		}
+	}
 	d.lastBeat = time.Now()
 	d.startedAt = time.Now()
 	go d.refreshContacts(ctx)
