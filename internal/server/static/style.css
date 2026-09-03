@@ -1961,11 +1961,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
    Superior 0.2.2 feedback point 2/3: the fallback height must be a
    viewport-derived value (like #tab-inbox), never auto — an unmeasured
    or early-measured tab left the document 2px scrollable; and the page
-   title row hides on phones like every other one-screen page.
-   Superior 0.2.4: rigid editor layout — the Body label absorbs all
-   leftover height so the FORM itself never scrolls (typing only scrolls
-   text inside the body box), and 往来邮件 rides on the Body label line,
-   right-aligned to the input column edge (reachable while typing). */
+   title row hides on phones like every other one-screen page. */
 @media (max-width: 800px) {
   #tab-compose:not(.hidden) {
     display: flex; flex-direction: column;
@@ -1973,27 +1969,10 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     min-height: 300px;
   }
   #tab-compose > h2 { flex: 0 0 auto; display: none; }
+  #btn-thread-pane { flex: 0 0 auto; }
+  #btn-thread-pane { margin: 0 0 8px; width: 100%; }
   #tab-compose > .compose-form { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-  #compose-body-label { flex: 1 1 auto; min-height: 0; }
-  #compose-body-label .lbl-row {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 8px; flex: 0 0 auto;
-  }
-  #compose-body-label .lbl-row #btn-thread-pane {
-    /* 0.2.4 微调（boss）：去按钮轮廓，超链接观感——蓝色加粗+回信符号 */
-    margin: 0; width: auto; flex: 0 0 auto;
-    min-height: 0; padding: 0;
-    background: none; border: none; border-radius: 0;
-    color: var(--accent, #2563eb); font-weight: 700; font-size: 13px;
-  }
-  #compose-body-label .lbl-row #btn-thread-pane::before {
-    content: "\21A9\00a0"; /* ↩ 回信符号 + 不换行空格 */
-    font-weight: 700;
-  }
-  #compose-body {
-    flex: 1 1 auto; min-height: 140px; height: auto;
-    overflow-y: auto;
-  }
+  #compose-body { min-height: 140px; }
   #thread-title, #thread-holder { display: none; }
   #thread-modal .modal-card { padding: 12px; }
 }
@@ -2005,28 +1984,23 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 
 /* Thread drawer v2 (superior 09-02 feedback): side drawer instead of a
    centered modal — the composer stays visible/psychologically "live" —
-   plus a circular icon refresh inside the drawer.
-   Superior 0.2.4: the slide-in broke because .hidden toggles display and
-   transitions never animate across a display change — replaced with a
-   keyframe animation on the open state, which replays on every unhide
-   (right → left again). */
+   plus a circular icon refresh inside the drawer. Overrides the earlier
+   top-button rule (#btn-thread-pane now sits in the button row). */
 @media (max-width: 800px) {
+  #btn-thread-pane { margin: 0; width: auto; }
   #thread-modal { justify-content: flex-end; align-items: stretch; padding: 0; }
   #thread-modal .modal-card {
     width: 84%; max-width: 360px; height: 100%; max-height: none;
     border-radius: 0; margin: 0;
+    transform: translateX(100%); transition: transform .22s ease;
   }
-  #thread-modal:not(.hidden) .modal-card { animation: tf-drawer-in .24s ease; }
+  #thread-modal:not(.hidden) .modal-card { transform: translateX(0); }
   #thread-modal-tools .row-action {
     width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 50%;
     font-size: 0; overflow: hidden;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 1 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: center; background-size: 14px 14px;
   }
-}
-@keyframes tf-drawer-in {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
 }
 
 /* 账户页 v3（boss 01M1FWBSM6）：注册钮改小（同写邮件钮尺寸、保留蓝底），
@@ -2051,14 +2025,15 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 }
 
 /* 写邮件抽屉 v2（boss 01M1G1GTK）：全高不露角；宽度≈2/3；刷新小圆钮与
-   标题同行；标题改「往来邮件」。0.2.4：transform/transition 遗留撤除
-   （display 切换不吃 transition，滑入由 tf-drawer-in keyframes 统一管） */
+   标题同行；标题改「往来邮件」 */
 @media (max-width: 800px) {
   #thread-modal { padding: 0; justify-content: flex-end; align-items: stretch; }
   #thread-modal .modal-card {
     width: 67%; max-width: none; height: 100dvh; max-height: none;
     border-radius: 0;
+    transform: translateX(100%); transition: transform .22s ease;
   }
+  #thread-modal:not(.hidden) .modal-card { transform: translateX(0); }
   #thread-modal .modal-head { display: flex; align-items: center; gap: 8px; }
   #thread-modal .modal-head h2 { flex: 1 1 auto; margin: 0; font-size: 16px; }
   #thread-modal-tools { margin: 0 !important; display: flex; align-items: center; order: 2; }

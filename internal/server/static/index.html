@@ -807,21 +807,22 @@
         <label>Subject
           <input type="text" id="compose-subject" placeholder="subject" data-i18n-ph="compose.subjectPh" />
         </label>
-<label id="compose-body-label"><span class="lbl-row"><span>Body</span><!-- Mobile 0.2.4 (superior): 往来邮件 rides on the Body label line,
-     right-aligned to the input column — reachable while typing. PC
-     never sees it (.m-only). --><button type="button" id="btn-thread-pane" class="row-action m-only" data-i18n="compose.recentConv">Recent conversation</button></span>
-<textarea id="compose-body" rows="10" placeholder="message body" data-i18n-ph="compose.bodyPh"></textarea>
-</label>
+        <label>Body
+          <textarea id="compose-body" rows="10" placeholder="message body" data-i18n-ph="compose.bodyPh"></textarea>
+        </label>
         <!-- Attachments (v0.5.1): pick files -> uploaded immediately, chips
              listed here, ids ride along with Send. 1MB per file (server cap). -->
         <div id="compose-attachments" class="attach-list"></div>
-<div class="row">
-<button id="btn-send" class="primary" data-i18n="compose.send">Send</button>
-<button id="btn-attach" class="row-action" data-i18n="compose.attach">📎 Attach</button>
-<input type="file" id="compose-file-input" multiple hidden />
-<!-- 往来邮件 button moved to the Body label line (superior 0.2.4):
-     same row as the Body text, right edge — visible while typing. -->
-<button id="btn-refresh-thread" class="row-action" data-i18n="compose.refreshThread">Refresh thread</button>
+        <div class="row">
+          <button id="btn-send" class="primary" data-i18n="compose.send">Send</button>
+          <button id="btn-attach" class="row-action" data-i18n="compose.attach">📎 Attach</button>
+          <input type="file" id="compose-file-input" multiple hidden />
+          <!-- Mobile one-screen plan: the recent-conversation thread folds
+               into a side drawer via this compact button (same size/placement
+               grammar as 刷新会话); the thread node and the refresh button
+               MOVE into the drawer while it is open. PC keeps both inline. -->
+          <button id="btn-thread-pane" class="row-action m-only" data-i18n="compose.recentConv">Recent conversation</button>
+          <button id="btn-refresh-thread" class="row-action" data-i18n="compose.refreshThread">Refresh thread</button>
           <!-- Public showcase opt-in (v0.4.4): also publish this letter on the
                guest portal. Default off; hidden when the admin disables
                showcase globally (showcase_enabled === false). Plain wording
