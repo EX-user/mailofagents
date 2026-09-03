@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -180,12 +182,41 @@ func ensureWorkdir(path string) error {
 // is off (not a TTY), summaries fall back to plain log lines. The full
 // stream still accumulates in the buffer for session-id extraction and
 // error diagnostics.
+//
+// events/lastEvent are atomic because the duty heartbeat goroutine reads
+// them while the wake writes (wake-heartbeat observability, 0.2.5.1 #7):
+// the counters tell "model is streaming" (events advancing) apart from
+// "no output for a while" (possible stall — suspicious, not confirmed).
 type lineTee struct {
 	tag      string
 	buf      bytes.Buffer
 	secret   string // account password: masked in anything shown on the board
 	lastText string // most recent spoken text; its tail anchors the next step_start
 	maxCtx   int64  // largest context-size report this wake (side requests report tiny usage and must not drag the readout down)
+
+	events    atomic.Int64 // summarized stdout events seen this wake
+	lastEvent atomic.Int64 // unix-nano timestamp of the last one (0 = none yet)
+}
+
+// wakeTees maps tag -> *lineTee for the currently running wake of that
+// account. Registered by runWake for the wake's duration; the duty-layer
+// heartbeat reads it to render its periodic line.
+var wakeTees sync.Map
+
+// wakeEventStats returns (event count, age of the last event, whether a
+// wake is running / a tee is registered) for the account's running wake.
+func wakeEventStats(tag string) (int64, time.Duration, bool) {
+	v, ok := wakeTees.Load(tag)
+	if !ok {
+		return 0, 0, false
+	}
+	t := v.(*lineTee)
+	n := t.events.Load()
+	age := time.Duration(0)
+	if last := t.lastEvent.Load(); last > 0 {
+		age = time.Since(time.Unix(0, last))
+	}
+	return n, age, true
 }
 
 func (w *lineTee) Write(p []byte) (int, error) {
@@ -199,6 +230,8 @@ func (w *lineTee) Write(p []byte) (int, error) {
 		line := append([]byte(nil), b[:i]...)
 		w.buf.Next(i + 1)
 		if s := w.summarize(line); s != "" {
+			w.events.Add(1)
+			w.lastEvent.Store(time.Now().UnixNano())
 			board.Set(w.tag, "", SprintDetail(redact(s, w.secret)))
 		}
 	}
@@ -477,6 +510,8 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 	}
 	var stdout, stderr bytes.Buffer
 	tee := &lineTee{tag: tag, secret: cfg.Password}
+	wakeTees.Store(tag, tee)
+	defer wakeTees.Delete(tag)
 	cmd.Stdout = io.MultiWriter(&stdout, tee)
 	cmd.Stderr = &stderr
 	if stdinPayload != "" {

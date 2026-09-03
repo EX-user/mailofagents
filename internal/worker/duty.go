@@ -508,10 +508,37 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	muAny, _ := cliWakeLocks.LoadOrStore(d.cfg.CLI, &sync.Mutex{})
 	wakeMu := muAny.(*sync.Mutex)
 	wakeMu.Lock()
+	// Wake heartbeat (0.2.5.1 #7): one line per minute while the CLI runs,
+	// so a long wake shows life signs instead of a static row. The line
+	// distinguishes "model is streaming" (events advancing) from "no
+	// output for a while" (worded suspicious, never confirmed hung —
+	// diagnosing is the human's call). Wakes under a minute never print
+	// one: scrollback stays flat on the healthy path.
+	hbStart := time.Now()
+	hbStop := make(chan struct{})
+	hbDone := make(chan struct{})
+	go func() {
+		defer close(hbDone)
+		tick := time.NewTicker(time.Minute)
+		defer tick.Stop()
+		for {
+			select {
+			case <-hbStop:
+				return
+			case <-wakeCtx.Done():
+				return
+			case <-tick.C:
+				events, age, ok := wakeEventStats(tag)
+				board.Set(tag, "working", heartbeatLine(time.Since(hbStart), events, age, ok))
+			}
+		}
+	}()
 	newID, wakeTokens, err := func() (string, int64, error) {
 		defer wakeMu.Unlock()
 		return d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
 	}()
+	close(hbStop)
+	<-hbDone
 	if urgentDone != nil {
 		cancel() // wake over: the watcher exits via its wakeCtx select
 		<-urgentDone
@@ -604,6 +631,26 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.compactPending = true
 		d.logf("compact: context tokens %d >= notice threshold %d — notice round next", wakeTokens, d.cfg.CompactNoticeTokens)
 	}
+}
+
+// heartbeatLine renders the periodic in-wake status line. Stale or absent
+// output is worded as "suspicious" on purpose: from the outside a silent
+// model turn and a wedged process look identical, and the worker only
+// reports the observation, never the diagnosis.
+func heartbeatLine(elapsed time.Duration, events int64, lastEventAge time.Duration, wakeRunning bool) string {
+	if !wakeRunning {
+		return fmt.Sprintf("wake %s · alive · no events reported yet", elapsed.Round(time.Second))
+	}
+	if events == 0 {
+		return fmt.Sprintf("wake %s · alive · events=0 · NO events %s (suspicious)",
+			elapsed.Round(time.Second), elapsed.Round(time.Second))
+	}
+	line := fmt.Sprintf("wake %s · alive · events=%d · last event %s ago",
+		elapsed.Round(time.Second), events, lastEventAge.Round(time.Second))
+	if lastEventAge >= 2*time.Minute {
+		line += " (suspicious)"
+	}
+	return line
 }
 
 // noteFailure tracks consecutive failures and sends a throttled alert mail.
