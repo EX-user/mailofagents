@@ -2468,19 +2468,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var over = document.documentElement.scrollHeight - window.innerHeight;
     if (over > 0) {
       var curAcc = parseInt(page.style.getPropertyValue("--acc-1s"), 10) || 0;
-      if (curAcc > 240) page.style.setProperty("--acc-1s", Math.max(240, curAcc - over) + "px");
+      if (curAcc > 300) page.style.setProperty("--acc-1s", Math.max(300, curAcc - over) + "px");
     }
   }
   window.addEventListener("resize", fitAccountsOneScreen);
-  // 输入法高优修（上级 0.2.5）：软键盘视口变化时账户页重算（与 manage.js
-  // 的 vv 重算同口径，各模块挂自家 fit，防抖 120ms）。
-  if (window.visualViewport) {
-    var accVvT = null;
-    window.visualViewport.addEventListener("resize", function () {
-      clearTimeout(accVvT);
-      accVvT = setTimeout(fitAccountsOneScreen, 120);
-    });
-  }
   document.addEventListener("accounts:refresh", function () {
     setTimeout(fitAccountsOneScreen, 50);
     setTimeout(fitAccountsOneScreen, 300); // second pass: late fonts/layout
