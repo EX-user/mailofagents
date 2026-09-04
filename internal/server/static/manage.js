@@ -1193,7 +1193,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         } catch (_) { /* sent endpoint unavailable: stay with inbox */ }
       }
       const unreadCount = data.unread_count || 0;
-      const total = (data.total_count || 0) + sentTotal;
+      // 模式感知总数（上级 09-04 bug 报告）：发件模式此前错加收件总数，
+       // 「发件」与「全部」两个视图的「共 X 封」显示成同一个数——
+       // 发件只取发件总数，收件只取收件总数，全部才相加。
+      const total = inboxMode === "sent"
+        ? sentTotal
+        : (data.total_count || 0) + sentTotal;
       const totalPages = Math.max(1, Math.ceil(total / INBOX_PAGE_SIZE));
       if (!msgs.length && inboxPage === 0) {
         list.textContent = t("mail.noMessages");
