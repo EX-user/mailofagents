@@ -850,6 +850,25 @@ nav .tab { flex: 0 0 auto; }
 @media (max-width: 800px) {
   #tab-mail .row label { flex: 1 1 100%; }
   #mail-account { width: 100%; max-width: 100%; }
+  /* Feedback 09-04: CJK label text must stay on one line - the span was
+     flex-shrunk to a single glyph column. Forbid span shrink+wrap. */
+  #tab-mail .row label > span { flex: none; white-space: nowrap; }
+  #tab-mail .row label > select,
+  #tab-mail .row label > input { flex: 1 1 0; min-width: 0; width: auto; }
+  /* Feedback 09-04: pager moved inside #inbox-grid for the PC floating
+     capsule; on phones that adds grid row-gap plus inherited margin.
+     Restore the original tight rhythm. */
+  #inbox-grid { row-gap: 0; }
+  #tab-inbox #inbox-grid > .inbox-pager { margin-top: 10px; }
+  /* Feedback 09-04: PDF reader fallback for devices without an inline
+     viewer (was a blank white iframe). */
+  .pdf-fallback { display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px; width: 100%; height: 100%;
+    padding: 24px; text-align: center; }
+  .pdf-fallback-ic { font-size: 44px; }
+  .pdf-fallback-name { font-weight: 600; word-break: break-all; }
+  .pdf-fallback-hint { color: var(--muted); font-size: 13px; max-width: 30em; }
+  .pdf-fallback-open { min-width: 96px; }
 }
 
 /* Accounts as cards on mobile (feedback): the 5-column table needs
@@ -924,6 +943,15 @@ nav .tab { flex: 0 0 auto; }
   }
   .sub-list .sub-card:last-child, #acc-m-contacts .ct-card:last-child { border-bottom: none; }
   .sub-list { overflow-y: auto; margin: 4px 0 2px; }
+  /* Feedback 09-04: subordinate entries merge into the contacts card
+     (subs on top, hairline group divider) and the register button becomes
+     its own bare card - so .sub-list is gone from the flow. */
+  #acc-m-contacts .sub-card {
+    border: none; border-bottom: 1px solid var(--border);
+    border-radius: 0; background: transparent; margin: 0;
+  }
+  #acc-m-contacts .sub-card:last-child { border-bottom: none; }
+  .ct-groups-sep { height: 1px; background: var(--border); margin: 6px 0; }
 }
 
 /* Agent-mailbox register zone (superior feedback round 3): on DESKTOP the

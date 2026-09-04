@@ -1229,17 +1229,53 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // openPdfLightbox (superior, point-to-point): module-local twin of
   // manage.js's — dimmed fullscreen, reader window one size smaller than
   // the viewport, octet-stream download MIME rebuilt to application/pdf.
+  // Feedback 09-04: phones (Android/iOS, coarse pointer / narrow shell)
+  // have no inline PDF viewer — iframes come up blank white.
+  function canInlinePdf() {
+    try {
+      const coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      const mobileUA = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || "");
+      return !(coarse || mobileUA);
+    } catch (_) { return true; }
+  }
   function openPdfLightbox(url, filename) {
     closePdfLightbox();
     const lb = document.createElement("div");
     lb.className = "pdf-lightbox";
     const frame = document.createElement("div");
     frame.className = "pdf-lightbox-frame";
-    const fr = document.createElement("iframe");
-    fr.src = url;
-    fr.type = "application/pdf";
-    fr.title = filename || "";
-    frame.appendChild(fr);
+    // Feedback 09-04: mobile browsers (Android/iOS) render no inline PDF
+    // in an iframe — the reader window shows as blank white. Offer an
+    // open-in-viewer + download card instead on those devices.
+    if (canInlinePdf()) {
+      const fr = document.createElement("iframe");
+      fr.src = url;
+      fr.type = "application/pdf";
+      fr.title = filename || "";
+      frame.appendChild(fr);
+    } else {
+      const fb = document.createElement("div");
+      fb.className = "pdf-fallback";
+      const ic = document.createElement("div");
+      ic.className = "pdf-fallback-ic";
+      ic.textContent = "📄";
+      const nm = document.createElement("div");
+      nm.className = "pdf-fallback-name";
+      nm.textContent = filename || "PDF";
+      const hint = document.createElement("div");
+      hint.className = "pdf-fallback-hint";
+      hint.textContent = t("attach.pdfHint");
+      const op = document.createElement("button");
+      op.className = "row-action pdf-fallback-open";
+      op.type = "button";
+      op.textContent = t("attach.open");
+      op.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        window.open(url, "_blank");
+      });
+      fb.appendChild(ic); fb.appendChild(nm); fb.appendChild(hint); fb.appendChild(op);
+      frame.appendChild(fb);
+    }
     const x = document.createElement("button");
     x.className = "pdf-lightbox-x";
     x.type = "button";

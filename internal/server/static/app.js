@@ -525,8 +525,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       '<div class="agentreg-card">' +
       '<button id="btn-subreg" class="primary">' + t("subs.registerBtn") + "</button>" +
       '<div class="muted" style="font-size:12px; margin-top:5px;">' + t("subs.registerNote") + "</div>" +
-      '<div class="sep-line" style="margin:8px 0;"></div>' +
-      (subZone ? '<div class="sub-list">' + subZone + "</div>" : '<div class="muted" style="font-size:12px;">' + t("subs.noneVisible") + "</div>") +
+      // Feedback 09-04 (mobile): the register button lives in its own card;
+      // subordinate entries merge into the contacts card below (subs on top).
       "</div></td>" +
       "</tr>"
     );
@@ -583,9 +583,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // contact rows (which hide via CSS); compose wiring included.
     var ctBox = $("#acc-m-contacts");
     if (ctBox) {
-      ctBox.innerHTML = ctZone;
+      ctBox.innerHTML = subZone + ctZone;
       $$("#acc-m-contacts [data-compose]").forEach(function (b) {
         b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:to", { detail: { address: b.dataset.compose } })); });
+      });
+      $$("#acc-m-contacts [data-remove-sub]").forEach(function (b) {
+        b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("subs:remove", { detail: { address: b.dataset.removeSub, role: "superior" } })); });
       });
     }
     var ownBox = $("#acc-m-own");
