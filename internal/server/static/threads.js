@@ -68,6 +68,11 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
 
   // ---- list rendering (root + latest leaf per row, per superior ruling) ----
 
+  // 行卡片异步落地会插到先建好的分页条前面——每次落地把分页条挪回末尾
+  function keepPagerLast(box) {
+    var pg = box.querySelector(".th-pager");
+    if (pg) box.appendChild(pg);
+  }
   function renderTopicRow(tp, comp) {
     var msgs = (comp && comp.messages) || [];
     var rootMsg = msgs.length ? msgs[0] : null;
@@ -93,9 +98,33 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
     return box;
   }
 
+
+  // PC 分栏开关（上级 09-04）：话题-列表态恒为左列表右详情，
+  // 未点话题时右侧给占位提示；森林态/移动端不分栏
+  function syncThreadSplit() {
+    var detail = $("#th-detail");
+    var wrap = $("#mgmt-threads");
+    var list = $("#th-list");
+    if (!detail || !wrap || !list) return;
+    var on = window.innerWidth > 800 &&
+      !wrap.classList.contains("hidden") && !list.classList.contains("hidden");
+    detail.classList.toggle("hidden", !on);
+    wrap.classList.toggle("th-split", on);
+    if (on && !detail.querySelector(".th-rail")) {
+      detail.innerHTML = '<p class="muted" style="padding:12px 4px;">' +
+        esc(t("threads.pickHint")) + "</p>";
+    }
+  }
   function loadThreadsList() {
     var box = $("#th-list");
     if (!box) return;
+    // 列表重载后旧详情失效：分栏保持，详情重置为占位
+    syncThreadSplit();
+    var thd = $("#th-detail");
+    if (thd && !thd.classList.contains("hidden")) {
+      thd.innerHTML = '<p class="muted" style="padding:12px 4px;">' +
+        esc(t("threads.pickHint")) + "</p>";
+    }
     box.textContent = t("common.loading");
     api("/api/threads?limit=" + PAGE + "&offset=" + listOffset + "&min_count=" + listMinCount, { keepSession: true })
       .then(function (d) {
@@ -141,10 +170,12 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
               var el = document.createElement("div");
               el.innerHTML = renderTopicRow(tp, comp);
               box.appendChild(el.firstChild);
+              keepPagerLast(box);
             }, function () {
               var el = document.createElement("div");
               el.innerHTML = renderTopicRow(tp, null);
               box.appendChild(el.firstChild);
+              keepPagerLast(box);
             });
         });
         // Pagination: prev / page indicator / next
@@ -152,33 +183,49 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
           var curPage = Math.floor(listOffset / PAGE) + 1;
           var totalPages = Math.ceil(listTotal / PAGE);
           var pag = document.createElement("div");
-          pag.className = "th-pag";
-          if (curPage > 1) {
-            var prevBtn = document.createElement("button");
-            prevBtn.type = "button";
-            prevBtn.className = "th-more";
-            prevBtn.textContent = "‹ " + t("threads.prev");
-            prevBtn.addEventListener("click", function () {
-              listOffset = Math.max(0, listOffset - PAGE);
-              loadThreadsList();
-            });
-            pag.appendChild(prevBtn);
-          }
+          // 收发件同款翻页控件组（上级 09-04）：胶囊 ◀ 页码 ▶，
+           // PC 悬浮列表右下、移动端整行
+          pag.className = "inbox-pager th-pager";
+          // 两钮恒在（与收发件一致）：首页/末页用 disabled 表达，
+          // 条件追加会让第一页少一颗钮、两页形态不对称
+          var prevBtn = document.createElement("button");
+          prevBtn.type = "button";
+          prevBtn.className = "row-action";
+          prevBtn.setAttribute("data-i18n", "pager.prev");
+          prevBtn.textContent = t("pager.prev");
+          prevBtn.disabled = curPage <= 1;
+          prevBtn.addEventListener("click", function () {
+            listOffset = Math.max(0, listOffset - PAGE);
+            loadThreadsList();
+          });
+          pag.appendChild(prevBtn);
+          // 收发件同款：胶囊内为页码输入（回车/步进跳页），总页数仅移动端显示
+          var pageInput = document.createElement("input");
+          pageInput.type = "number";
+          pageInput.className = "th-page-input";
+          pageInput.min = 1; pageInput.max = totalPages; pageInput.value = curPage;
+          pageInput.addEventListener("change", function () {
+            var v = parseInt(pageInput.value, 10);
+            if (isNaN(v)) return;
+            v = Math.max(1, Math.min(totalPages, v));
+            if ((v - 1) * PAGE !== listOffset) { listOffset = (v - 1) * PAGE; loadThreadsList(); }
+          });
+          pag.appendChild(pageInput);
           var indicator = document.createElement("span");
-          indicator.className = "th-page-info";
+          indicator.className = "th-page-info muted";
           indicator.textContent = t("threads.page", { a: curPage, b: totalPages });
           pag.appendChild(indicator);
-          if (curPage < totalPages) {
-            var nextBtn = document.createElement("button");
-            nextBtn.type = "button";
-            nextBtn.className = "th-more";
-            nextBtn.textContent = t("threads.next") + " ›";
-            nextBtn.addEventListener("click", function () {
-              listOffset += PAGE;
-              loadThreadsList();
-            });
-            pag.appendChild(nextBtn);
-          }
+          var nextBtn = document.createElement("button");
+          nextBtn.type = "button";
+          nextBtn.className = "row-action";
+          nextBtn.setAttribute("data-i18n", "pager.next");
+          nextBtn.textContent = t("pager.next");
+          nextBtn.disabled = curPage >= totalPages;
+          nextBtn.addEventListener("click", function () {
+            listOffset += PAGE;
+            loadThreadsList();
+          });
+          pag.appendChild(nextBtn);
           box.appendChild(pag);
         }
       }, function (e) {
@@ -246,15 +293,34 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
   }
 
   function openThread(rootId) {
-    var box = $("#th-list");
+    // PC 分栏（上级 09-04）：宽屏点话题不切屏——详情渲染进右侧
+    // #th-detail，与左侧列表并排；移动端保持原切屏行为。
+    var detail = $("#th-detail");
+    var split = window.innerWidth > 800 && !!detail;
+    var wrap = $("#mgmt-threads");
+    var box = split ? detail : $("#th-list");
     if (!box) return;
+    if (split) {
+      detail.classList.remove("hidden");
+      if (wrap) wrap.classList.add("th-split");
+      detail.scrollTop = 0;
+    } else if (detail) {
+      detail.classList.add("hidden");
+      if (wrap) wrap.classList.remove("th-split");
+    }
+    // （移动端/森林路径不经过 sync——恒分栏由 setTView/loadThreadsList 管）
     box.textContent = t("common.loading");
     api("/api/thread?root=" + encodeURIComponent(rootId), { keepSession: true })
       .then(function (comp) {
         var msgs = (comp && comp.messages) || [];
         box.innerHTML = renderThreadDetail(comp && comp.root || rootId, msgs);
         var back = $("#th-back");
-        if (back) back.addEventListener("click", function () { loadThreadsList(); });
+        if (back) back.addEventListener("click", function () {
+          if (split && detail) {
+            detail.classList.add("hidden");
+            if (wrap) wrap.classList.remove("th-split");
+          } else loadThreadsList();
+        });
         // Toggle fold/expand on each message — body fetched lazily on
         // first expand, then cached (compose-thread pattern per superior).
         $$(".th-msg", box).forEach(function (el) {
@@ -332,6 +398,11 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
   // 胶囊在话题页头部；森林卡片点击经 threads:open 回列表视图打开详情。
   function setTView(v) {
     var forest = v === "forest";
+    // 森林视图不分栏；回列表恢复常驻分栏（上级 09-04）
+    var thd = $("#th-detail");
+    if (thd) thd.classList.add("hidden");
+    var wrap2 = $("#mgmt-threads");
+    if (wrap2) wrap2.classList.remove("th-split");
     var segBtns = $("#tf-ctl");
     if (segBtns) segBtns.classList.toggle("hidden", !forest);
     var list = $("#th-list");
@@ -342,6 +413,7 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
       b.classList.toggle("on", b.dataset.tview === v);
     });
     document.dispatchEvent(new CustomEvent(forest ? "tf:on" : "tf:off"));
+    if (!forest) syncThreadSplit();
   }
   $$("#th-viewseg [data-tview]").forEach(function (b) {
     b.addEventListener("click", function () { setTView(b.dataset.tview); });

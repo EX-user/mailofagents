@@ -1943,6 +1943,75 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   /* 与收发件页 pill 行的下间距对齐（16px），两页「加载」行同位
      （上级 09-04 行对齐反馈；收发件页等效间距 16px，查信原 12px） */
   #tab-mail > .mgmt-seg { margin-bottom: 16px; }
+  /* 话题 PC 分栏（上级 09-04）：点开话题不切屏——左列表右详情并排；
+     返回钮只在移动端切屏形态下需要，PC 详情内隐藏 */
+  #mgmt-threads.th-split {
+    /* 分栏态放开话题视图的 640px 旧上限，右侧详情才有阅读宽度 */
+    max-width: none;
+    display: grid; grid-template-columns: minmax(0, 440px) minmax(320px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0 16px; align-items: start;
+  }
+  /* 视图切换胶囊独占首行，列表钉 2 行 1 列、详情 2 行 2 列
+     （否则胶囊占去第 1 列把列表挤到详情右边） */
+  #mgmt-threads.th-split #th-viewseg { grid-column: 1 / -1; grid-row: 1; }
+  #mgmt-threads.th-split #th-list { grid-column: 1; grid-row: 2; }
+  #mgmt-threads.th-split #th-detail { grid-column: 2; grid-row: 2; }
+  /* 列表/详情容器用收发件 .pane 同款卡片观感（白底+描边+圆角），
+   滑动容器边缘可见（上级 09-04） */
+  #mgmt-threads.th-split #th-list {
+    min-height: 0; overflow-y: auto; max-height: calc(100dvh - 260px);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; box-sizing: border-box;
+  }
+  #th-detail {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; box-sizing: border-box;
+  }
+  /* 详情卡片撑满本行（=左列表高度），内容不足也同底对齐；
+   内容过长时自身封顶内部滚动 */
+  #th-detail {
+    min-height: 0; align-self: stretch;
+    max-height: calc(100dvh - 260px); overflow-y: auto;
+  }
+  #th-detail .th-back { display: none; }
+  /* 话题列表翻页组：与收发件悬浮胶囊同款（sticky 右下），
+     移动端走 .inbox-pager 基础整行样式 */
+  #th-list { position: relative; }
+  #mgmt-threads.th-split .th-pager {
+    /* th-pager 不带 .row，需自带 flex 才能让箭头与页码垂直居中对齐 */
+    display: flex; align-items: center; gap: 0;
+    position: sticky; bottom: 10px; margin: 10px 0 0 auto; width: max-content;
+    /* 与收发件悬浮胶囊同款容器：面板底+描边+投影（此前只挂在
+       #inbox-grid 作用域下，话题胶囊边缘不显） */
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 6px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
+  }
+  .th-pager button {
+    width: 30px; height: 24px; min-height: 0; padding: 0;
+    border: none; border-radius: 999px; font-size: 0;
+    background: transparent; color: var(--muted);
+    background-repeat: no-repeat; background-position: center; background-size: 14px 14px;
+  }
+  .th-pager button:hover { background-color: rgba(100, 116, 139, 0.14); }
+  .th-pager button:disabled { opacity: 0.4; cursor: default; }
+  .th-pager button:disabled:hover { background-color: transparent; }
+  .th-pager button[data-i18n="pager.prev"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'/%3E%3C/svg%3E");
+  }
+  .th-pager button[data-i18n="pager.next"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'/%3E%3C/svg%3E");
+  }
+  .th-pager .th-page-input {
+    width: 40px; text-align: center; margin: 0 2px; padding: 3px 0; font-size: 12px;
+    background: transparent; border: none; color: var(--text);
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .th-pager .th-page-input:focus { outline: none; box-shadow: none; }
+  .th-pager .th-page-input::-webkit-outer-spin-button,
+  .th-pager .th-page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .th-pager .th-page-info { display: none; }
   /* 账户/收发/最多加载 三控件组两侧轻细分隔线（上级 09-04）：
      组首 label 左线、组尾 label 右线，1px 边框色不抢视觉 */
   #mgmt-browse > .row > label:first-of-type {
