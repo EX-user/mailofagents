@@ -400,7 +400,11 @@ td code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 
      without it the detail pane leaks through in List mode on phones
      (superior 0.1.9, live screenshot). */
   .mail-grid.mshow-detail > .pane:first-child { display: none !important; }
-  .mail-grid:not(.mshow-detail) > .pane:last-child { display: none !important; }
+  /* :last-child 会因 inbox 网格末尾新增的分页控件失效（09-04 悬浮化）——
+     改用显式 ID 钉死正文栏（PC 分页条入格后 list/message 双显回归 bug） */
+  .mail-grid:not(.mshow-detail) > .pane:last-child,
+  .mail-grid:not(.mshow-detail) > #inbox-detail,
+  .mail-grid:not(.mshow-detail) > #mail-detail { display: none !important; }
   .pane { min-height: 240px; max-height: none; }
 }
 @media (max-width: 800px) { .mail-grid { grid-template-columns: 1fr; } }
@@ -1406,7 +1410,10 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
 .inbox-nav .row-action + .row-action { border-left: 1px solid var(--border); }
 @media (max-width: 800px) {
   /* The pager belongs to the List tab; hide it while reading a message. */
-  #inbox-grid.mshow-detail ~ .inbox-pager { display: none; }
+  /* 分页控件 09-04 挪入网格后不再是网格兄弟节点——补子选择器，
+     Message 模式（列表隐藏）下分页条照旧隐藏 */
+  #inbox-grid.mshow-detail ~ .inbox-pager,
+  #inbox-grid.mshow-detail > .inbox-pager { display: none; }
 }
 
 /* Inbox unread badge (v0.5.5): pure red dot, absolutely positioned so it
@@ -2038,6 +2045,53 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #mgmt-browse > .row, #mgmt-browse > .mail-tabs { flex: 0 0 auto; }
   #mail-grid { flex: 1 1 auto; min-height: 0; }
   #mail-grid > .pane { height: 100%; min-height: 0; max-height: none; }
+  /* 分页控件悬浮化（上级 09-04）：胶囊悬浮于列表右下角，横向
+     「◀ 页码 ▶」左右切页按钮；列表与正文恢复同底对齐（同一网格行）。
+     移动端分页条照旧在 pane 下方。 */
+  #inbox-grid { grid-template-rows: minmax(0, 1fr); row-gap: 0; }
+  #inbox-grid > #inbox-list { grid-column: 1; grid-row: 1; min-height: 0; }
+  #inbox-grid > #inbox-detail { grid-column: 2; grid-row: 1; min-height: 0; }
+  #inbox-grid > .inbox-pager {
+    grid-column: 1; grid-row: 1;
+    align-self: end; justify-self: end;
+    margin: 0 10px 10px 0; z-index: 6;
+    /* 复用本页 seg-pill/mgmt-seg 胶囊分段语法：一体轨道 ◀|页码|▶ */
+    display: inline-flex; align-items: center; gap: 0;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px;
+  }
+  #inbox-grid > .inbox-pager .muted { display: none; }
+  #inbox-grid > .inbox-pager button {
+    width: 30px; height: 24px; min-height: 0; padding: 0;
+    border: none; border-radius: 999px; font-size: 0;
+    background: transparent; color: var(--muted);
+    background-repeat: no-repeat; background-position: center; background-size: 14px 14px;
+  }
+  #inbox-grid > .inbox-pager button:hover { background-color: rgba(100, 116, 139, 0.14); }
+  #inbox-grid > .inbox-pager button:disabled { opacity: 0.4; cursor: default; }
+  #inbox-grid > .inbox-pager button:disabled:hover { background-color: transparent; }
+  #inbox-grid > .inbox-pager button[data-i18n="pager.prev"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'/%3E%3C/svg%3E");
+  }
+  #inbox-grid > .inbox-pager button[data-i18n="pager.next"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'/%3E%3C/svg%3E");
+  }
+  #inbox-grid > .inbox-pager #inbox-page-input {
+    width: 36px; text-align: center; margin: 0 2px;
+    padding: 3px 0; font-size: 12px;
+    background: transparent; border: none; color: var(--text);
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  #inbox-grid > .inbox-pager #inbox-page-input:focus {
+    outline: none; box-shadow: none; border-color: transparent;
+  }
+  /* 原生上下步进箭头与左右圆钮语义重复，胶囊内隐藏（上级 09-04） */
+  #inbox-grid > .inbox-pager #inbox-page-input::-webkit-outer-spin-button,
+  #inbox-grid > .inbox-pager #inbox-page-input::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+}
+
 /* Superior 08-31 (inbox one-screen follow-up): compact controls on phones —
    page title out; Load/Mark-all become icon-only buttons (Material refresh /
    done_all double-check) sharing one row with the search box; the mode pill
