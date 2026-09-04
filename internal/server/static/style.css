@@ -1919,6 +1919,17 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
      上限 440px：紧凑一档，正文栏多让一截（上级 09-04 调整）*/
     grid-template-columns: clamp(0px, calc(50% - 8px), 440px) minmax(0, 1fr);
   }
+  /* 加载行诸控件统一高度（上级 09-04）：以查信页加载按钮 33px 为基准，
+   「加载/全部已读」按钮与两页的账户/收发/限额/搜索输入全部对齐；
+   移动端图标钮（36×26）不动 */
+  #btn-load-inbox, #btn-mark-all { height: 33px; padding-top: 6px; padding-bottom: 6px; }
+  #inbox-row-ctl .app-input,
+  #mgmt-browse .app-input,
+  #mgmt-browse .row select,
+  #mgmt-browse .row input[type="number"] {
+    height: 33px; padding-top: 0; padding-bottom: 0; box-sizing: border-box;
+  }
+  #mgmt-browse .row select { padding-top: 5px; padding-bottom: 5px; }
 /* Superior 08-31 (inbox one-screen follow-up): compact controls on phones —
    page title out; Load/Mark-all become icon-only buttons (Material refresh /
    done_all double-check) sharing one row with the search box; the mode pill
