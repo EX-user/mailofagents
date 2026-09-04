@@ -1054,6 +1054,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     return !!(a && a.filename && ATTACH_PDF_RE.test(a.filename));
   }
 
+  // Markdown attachments (superior, point-to-point): .md renders inline as
+  // formatted prose (vendored marked + DOMPurify; images/styles inside the
+  // markdown are stripped by the sanitizer). Falls back to plain <pre> when
+  // the vendor libs are missing (stale cached index.html).
+  const ATTACH_MD_RE = /\.(md|markdown)$/i;
+  function attachIsMd(a) {
+    return !!(a && a.filename && ATTACH_MD_RE.test(a.filename));
+  }
+
   // attachTTLBadge renders the remaining validity under the file TTL
   // (v0.5.3): "约 N 天后过期" / "已过期" once past. Absent expires_at
   // (older server) shows nothing.
@@ -1070,11 +1079,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const list = (m && m.attachments) || [];
     if (!list.length) return "";
     return '<div class="attach-list">' + list.map(function (a, i) {
-      const isImg = attachIsImage(a), isAud = attachIsAudio(a), isPdf = attachIsPdf(a);
-      const preview = (isImg || isAud) ? '<div class="attach-preview" data-pv="' + i + '"></div>' : "";
+      const isImg = attachIsImage(a), isAud = attachIsAudio(a), isPdf = attachIsPdf(a), isMd = attachIsMd(a);
+      const preview = (isImg || isAud || isMd) ? '<div class="attach-preview" data-pv="' + i + '"></div>' : "";
       const readBtn = isPdf ? '<button class="row-action" data-pdf="' + i + '">' + esc(t("attach.readPdf")) + "</button>" : "";
       const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button>" + readBtn + "</span>";
-      return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : isPdf ? "pdf" : "file") + '">' +
+      return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : isPdf ? "pdf" : isMd ? "md" : "file") + '">' +
         '<span class="attach-clip">📎</span>' +
         '<span class="attach-name">' + esc(a.filename) + "</span>" +
         '<span class="attach-size">' + esc(fmtBytes(a.size)) + "</span>" +
@@ -1280,6 +1289,31 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           headers: { Authorization: basicAuth() },
         });
         if (!res.ok) throw new Error(res.status);
+        // Markdown branch (superior): render inline as sanitized HTML —
+        // images/styles/audio/video are stripped by the sanitizer, so an
+        // .md attachment cannot pull remote assets or inject markup.
+        if (attachIsMd(a)) {
+          const text = await res.text();
+          let box = null;
+          if (window.marked && window.DOMPurify) {
+            try {
+              const html = DOMPurify.sanitize(marked.parse(text), {
+                FORBID_TAGS: ["img", "style", "audio", "video"],
+                FORBID_ATTR: ["style"],
+              });
+              box = document.createElement("div");
+              box.className = "md-body";
+              box.innerHTML = html;
+            } catch (_) { /* fall through to raw */ }
+          }
+          if (!box) {
+            box = document.createElement("pre");
+            box.className = "md-body md-body-raw";
+            box.textContent = text;
+          }
+          holder.appendChild(box);
+          return;
+        }
         // The download endpoint serves everything as octet-stream (correct
         // for downloads); an <img> refuses that MIME even via objectURL.
         // Rebuild the blob with the extension-mapped image type.
