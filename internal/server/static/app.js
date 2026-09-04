@@ -955,14 +955,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const scSave = $("#btn-sitecopy-save");
     const scHint = $("#sitecopy-hint");
     if (!scCard || !scSave) return;
-    const s = getSession();
-    if (!s || !s.is_admin) return; // admin-only card
-    scCard.hidden = false;
     const scKeys = [
       ["sc-tagline-zh", "portal_tagline_zh"], ["sc-tagline-en", "portal_tagline_en"],
       ["sc-ptitle-zh", "portal_title_zh"], ["sc-ptitle-en", "portal_title_en"],
       ["sc-ntitle-zh", "panel_title_zh"], ["sc-ntitle-en", "panel_title_en"],
     ];
+    let unlocked = false;
     function scPrefill() {
       api("/api/site-copy", { keepSession: true }).then(function (d) {
         scKeys.forEach(function (kv) {
@@ -971,6 +969,21 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         });
       }, function () { /* older server: keep placeholders */ });
     }
+    // Admin gate, idempotent. Module load covers the reload-while-logged-in
+    // case; the Settings-tab listener covers the fresh-login case where the
+    // session only appears AFTER module init (superior bug: the card never
+    // showed in the login session, only from the second visit / reload).
+    function unlock() {
+      if (unlocked) return;
+      const s = getSession();
+      if (!s || !s.is_admin) return;
+      unlocked = true;
+      scCard.hidden = false;
+      scPrefill();
+    }
+    unlock();
+    const settingsTab = document.querySelector('.tab[data-tab="settings"]');
+    if (settingsTab) settingsTab.addEventListener("click", unlock);
     scSave.addEventListener("click", async function () {
       scSave.disabled = true;
       scHint.textContent = "";
@@ -993,7 +1006,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       }
       scSave.disabled = false;
     });
-    scPrefill();
   })();
 
   // Theme: "light"/"dark" pin html[data-theme]; "system" removes the attr so
