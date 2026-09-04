@@ -27,6 +27,9 @@ func WhitelistEnv(benchRoot string, extra ...string) []string {
 	if term := os.Getenv("TERM"); term != "" {
 		env = append(env, "TERM="+term)
 	}
+	// temp files land inside the bench root too — /tmp would be the one
+	// remaining shared-path channel (acceptance review 2026-09-04).
+	env = append(env, "TMPDIR="+benchRoot+"/.tmp")
 	return append(env, extra...)
 }
 
