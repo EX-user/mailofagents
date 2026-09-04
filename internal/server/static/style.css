@@ -1390,6 +1390,42 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
    way while pinching. */
 .img-lightbox img { touch-action: none; cursor: zoom-in; will-change: transform; }
 
+/* PDF reader overlay (superior, point-to-point): dimmed fullscreen like
+   the image lightbox, with a reader window one size smaller than the
+   viewport. The iframe eats clicks, so closing goes through the × button,
+   the backdrop, or Esc; the download button mirrors the image lightbox. */
+.pdf-lightbox {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; cursor: zoom-out;
+}
+.pdf-lightbox-frame {
+  width: 92vw; height: 88vh;
+  background: #fff; border-radius: 8px;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden; cursor: default;
+}
+.pdf-lightbox-frame iframe { width: 100%; height: 100%; border: 0; }
+.pdf-lightbox-x {
+  position: absolute; top: 18px; right: 22px;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12); color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(6px); font-size: 20px; line-height: 1;
+  cursor: pointer;
+}
+.pdf-lightbox-x:hover { background: rgba(255, 255, 255, 0.22); }
+/* Phone layout (superior): × sits beside the download button in one
+   bottom-center bar (in-bar buttons go static); desktop keeps × top-right. */
+.pdf-lightbox-bar {
+  position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+}
+.pdf-lightbox-bar .pdf-lightbox-x { position: static; }
+.pdf-lightbox-bar .img-lightbox-dl { position: static; transform: none; }
+@media (prefers-reduced-motion: reduce) { .pdf-lightbox { animation: none; } }
+
 /* Attachment TTL badge (v0.5.3). */
 .attach-ttl { flex: 0 0 auto; font-size: 11px; color: var(--muted); }
 .attach-ttl-over { color: var(--error); }

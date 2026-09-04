@@ -1047,6 +1047,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     return !!(a && a.filename && ATTACH_AUDIO_RE.test(a.filename));
   }
 
+  // PDF attachments (superior, point-to-point): same lazy "Read PDF" button
+  // as the manage view — blob fetched on click, dimmed fullscreen reader.
+  const ATTACH_PDF_RE = /\.pdf$/i;
+  function attachIsPdf(a) {
+    return !!(a && a.filename && ATTACH_PDF_RE.test(a.filename));
+  }
+
   // attachTTLBadge renders the remaining validity under the file TTL
   // (v0.5.3): "约 N 天后过期" / "已过期" once past. Absent expires_at
   // (older server) shows nothing.
@@ -1063,10 +1070,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const list = (m && m.attachments) || [];
     if (!list.length) return "";
     return '<div class="attach-list">' + list.map(function (a, i) {
-      const isImg = attachIsImage(a), isAud = attachIsAudio(a);
+      const isImg = attachIsImage(a), isAud = attachIsAudio(a), isPdf = attachIsPdf(a);
       const preview = (isImg || isAud) ? '<div class="attach-preview" data-pv="' + i + '"></div>' : "";
-      const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button></span>";
-      return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : "file") + '">' +
+      const readBtn = isPdf ? '<button class="row-action" data-pdf="' + i + '">' + esc(t("attach.readPdf")) + "</button>" : "";
+      const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button>" + readBtn + "</span>";
+      return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : isPdf ? "pdf" : "file") + '">' +
         '<span class="attach-clip">📎</span>' +
         '<span class="attach-name">' + esc(a.filename) + "</span>" +
         '<span class="attach-size">' + esc(fmtBytes(a.size)) + "</span>" +
@@ -1116,6 +1124,64 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   function closeImageLightbox() {
     $$(".img-lightbox").forEach(function (el) { el.remove(); });
     document.removeEventListener("keydown", closeImageLightbox);
+  }
+
+  // openPdfLightbox (superior, point-to-point): module-local twin of
+  // manage.js's — dimmed fullscreen, reader window one size smaller than
+  // the viewport, octet-stream download MIME rebuilt to application/pdf.
+  function openPdfLightbox(url, filename) {
+    closePdfLightbox();
+    const lb = document.createElement("div");
+    lb.className = "pdf-lightbox";
+    const frame = document.createElement("div");
+    frame.className = "pdf-lightbox-frame";
+    const fr = document.createElement("iframe");
+    fr.src = url;
+    fr.type = "application/pdf";
+    fr.title = filename || "";
+    frame.appendChild(fr);
+    const x = document.createElement("button");
+    x.className = "pdf-lightbox-x";
+    x.type = "button";
+    x.textContent = "×";
+    x.setAttribute("aria-label", "close");
+    x.addEventListener("click", function (ev) { ev.stopPropagation(); closePdfLightbox(); });
+    const dl = document.createElement("button");
+    dl.className = "img-lightbox-dl";
+    dl.type = "button";
+    dl.textContent = t("attach.download");
+    dl.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "attachment.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+    lb.appendChild(frame);
+    // On phones (same 800px breakpoint as the tab layout) the top-right ×
+    // is out of thumb reach — group it with the download button in a
+    // bottom-center bar instead. Desktop keeps × top-right, download bottom.
+    if (window.innerWidth <= 800) {
+      const bar = document.createElement("div");
+      bar.className = "pdf-lightbox-bar";
+      bar.appendChild(x);
+      bar.appendChild(dl);
+      lb.appendChild(bar);
+    } else {
+      lb.appendChild(x);
+      lb.appendChild(dl);
+    }
+    lb.addEventListener("click", function (ev) {
+      if (ev.target === lb) closePdfLightbox();
+    });
+    document.addEventListener("keydown", closePdfLightbox);
+    document.body.appendChild(lb);
+  }
+  function closePdfLightbox() {
+    $$(".pdf-lightbox").forEach(function (el) { el.remove(); });
+    document.removeEventListener("keydown", closePdfLightbox);
   }
 
   // Audio players on the page form a sequential queue (feedback): starting
@@ -1183,6 +1249,26 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // Plan ordered autoplay: only start once every audio attachment has a
     // player (fetches resolve out of order — see registerAudioPlayer).
     planAudioAutostart(list.filter(function (a) { return attachIsAudio(a); }).length);
+    // PDF reader buttons are lazy: the blob is fetched on the first click,
+    // so a big PDF costs nothing until it is actually opened.
+    $$("[data-pdf]", root).forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const a = list[+btn.dataset.pdf];
+        if (!a) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/files/" + encodeURIComponent(a.id) + "/download?code=" + encodeURIComponent(a.access_code), {
+            headers: { Authorization: basicAuth() },
+          });
+          if (!res.ok) throw new Error(res.status);
+          const blob = new Blob([await res.arrayBuffer()], { type: "application/pdf" });
+          openPdfLightbox(URL.createObjectURL(blob), a.filename);
+        } catch (e) {
+          toast(t("attach.dlFailed") + e.message, "error");
+        }
+        btn.disabled = false;
+      });
+    });
     $$(".attach-preview", root).forEach(async function (holder) {
       const a = list[+holder.dataset.pv];
       if (!a) return;
