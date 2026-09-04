@@ -1940,6 +1940,28 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     min-height: 0;
   }
   #tab-mail > h2, #tab-mail > .mgmt-seg { flex: 0 0 auto; }
+  /* 与收发件页 pill 行的下间距对齐（16px），两页「加载」行同位
+     （上级 09-04 行对齐反馈；收发件页等效间距 16px，查信原 12px） */
+  #tab-mail > .mgmt-seg { margin-bottom: 16px; }
+  /* 账户/收发/最多加载 三控件组两侧轻细分隔线（上级 09-04）：
+     组首 label 左线、组尾 label 右线，1px 边框色不抢视觉 */
+  #mgmt-browse > .row > label:first-of-type {
+    border-left: 1px solid var(--border); padding-left: 10px;
+  }
+  #mgmt-browse .m-pair-fl > label:last-of-type {
+    border-right: 1px solid var(--border); padding-right: 10px;
+  }
+  /* 收发件搜索框左侧同款轻细线（上级 09-04）：直接描在输入框上会与
+     其自带边框重合看不出分隔——包一层带左线的壳（.search-sep），
+     线与搜索框之间留 8px 呼吸位，观感与查信页组尾右线一致 */
+  #inbox-row-ctl .search-sep {
+    display: flex; flex: 1 1 auto; min-width: 0;
+    border-left: 1px solid var(--border); padding-left: 10px;
+  }
+  #inbox-row-ctl .search-sep .app-input { flex: 0 1 auto; }
+  /* flex column 子项默认 stretch——把内容自适应宽的切换 pill 拉满了整行，
+     收回 flex-start 只包住三颗按钮（上级 09-04 bug 报告） */
+  #tab-mail > .mgmt-seg { align-self: flex-start; }
   #mgmt-browse:not(.hidden) {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column;
@@ -1966,7 +1988,11 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #btn-mark-all {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41 6 19l1.41-1.41L1.83 12 .41 13.41z'/%3E%3C/svg%3E");
   }
-  #inbox-row-ctl #inbox-search { flex: 1 1 auto; min-width: 0; max-width: none; }
+  /* !important：压过元素行内 style 的 max-width:420px，移动端搜索框向右
+     占尽一行（与查信页 #mail-search 同款处理）（上级 09-04） */
+  #inbox-row-ctl .search-sep { display: flex; flex: 1 1 auto; min-width: 0; }
+#inbox-row-ctl .search-sep .app-input { width: 100%; }
+#inbox-row-ctl #inbox-search { flex: 1 1 auto; min-width: 0; max-width: none !important; width: 100%; }
 }
 
 /* Base rule (defect report, desktop leak): wireOvwSplit() inserts the
