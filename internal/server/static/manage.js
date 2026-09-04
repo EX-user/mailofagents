@@ -190,7 +190,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         msgs = dedup;
       }
 
-      if (!msgs.length) { list.textContent = t("mail.noMessages"); return; }
+      if (!msgs.length) { list.textContent = t("mail.noMessages"); fitMailPcOneScreen(); return; }
       list.innerHTML = "";
       // Aggregated view banner (feedback): a proper title instead of the
       // internal pseudo-account; each message still shows its owner in the
@@ -239,6 +239,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       }
       mailSearchSrv = false;
       applyMailSearch();
+      fitMailPcOneScreen();
     } catch (e) {
       list.textContent = t("common.error", { msg: e.message });
     }
@@ -1786,6 +1787,20 @@ function fitInboxPcOneScreen() {
   if (over > 0) tab.style.setProperty("--inbox-pc-1s", Math.max(h - over, 360) + "px");
 }
 window.addEventListener("resize", fitInboxOneScreen);
+// 查信页 PC 一屏（上级 09-04）：fitInboxPcOneScreen 的量高孪生——容器
+// 高度=视口减头部；CSS 侧 grid 撑满、双栏内部滚动，pager 留在视口内。
+function fitMailPcOneScreen() {
+  var tab = document.getElementById("tab-mail");
+  if (!tab || tab.classList.contains("hidden")) return;
+  if (window.innerWidth <= 800) return;
+  var top = tab.getBoundingClientRect().top;
+  var h = mgKbVh() - Math.max(top, 0) - 10;
+  if (h < 360) h = 360;
+  tab.style.setProperty("--mail-pc-1s", h + "px");
+  var over = document.documentElement.scrollHeight - window.innerHeight;
+  if (over > 0) tab.style.setProperty("--mail-pc-1s", Math.max(h - over, 360) + "px");
+}
+window.addEventListener("resize", fitMailPcOneScreen);
 
 // 输入法弹出/收起高优修（上级 0.2.5，01M1JG5D）：软键盘改变视口时一屏
 // 量测高度还是键盘前的旧值——底部控件停在旧位盖住输入栏。visualViewport

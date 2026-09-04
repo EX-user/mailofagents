@@ -1930,6 +1930,23 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     height: 33px; padding-top: 0; padding-bottom: 0; box-sizing: border-box;
   }
   #mgmt-browse .row select { padding-top: 5px; padding-bottom: 5px; }
+  /* 查信页同款一屏（上级 09-04）：与收发件页同构——容器量高
+     （--mail-pc-1s 由 manage.js fitMailPcOneScreen 写入），标题/切换 pill/
+     账户控制行固定，grid 撑满剩余高，双栏内部滚动。只挂 browse 视图，
+     话题/概览两视图布局不动。 */
+  #tab-mail:not(.hidden) {
+    display: flex; flex-direction: column;
+    height: var(--mail-pc-1s, auto);
+    min-height: 0;
+  }
+  #tab-mail > h2, #tab-mail > .mgmt-seg { flex: 0 0 auto; }
+  #mgmt-browse:not(.hidden) {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column;
+  }
+  #mgmt-browse > .row, #mgmt-browse > .mail-tabs { flex: 0 0 auto; }
+  #mail-grid { flex: 1 1 auto; min-height: 0; }
+  #mail-grid > .pane { height: 100%; min-height: 0; max-height: none; }
 /* Superior 08-31 (inbox one-screen follow-up): compact controls on phones —
    page title out; Load/Mark-all become icon-only buttons (Material refresh /
    done_all double-check) sharing one row with the search box; the mode pill
