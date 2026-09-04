@@ -1065,12 +1065,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     return '<div class="attach-list">' + list.map(function (a, i) {
       const isImg = attachIsImage(a), isAud = attachIsAudio(a);
       const preview = (isImg || isAud) ? '<div class="attach-preview" data-pv="' + i + '"></div>' : "";
+      const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button></span>";
       return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : "file") + '">' +
         '<span class="attach-clip">📎</span>' +
         '<span class="attach-name">' + esc(a.filename) + "</span>" +
         '<span class="attach-size">' + esc(fmtBytes(a.size)) + "</span>" +
         attachTTLBadge(a) +
-        '<button class="row-action" data-dl="' + i + '">Download</button>' +
+        actions +
         preview +
         "</div>";
     }).join("") + "</div>";

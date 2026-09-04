@@ -1248,14 +1248,27 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
 .attach-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
 .attach-card {
   display: inline-flex; align-items: center; gap: 10px;
+  /* Narrow-screen squeeze (superior): without wrapping, the flex row
+     over-constrains and the filename collapses to a one-char column.
+     Wrapping lets size/TTL/buttons drop to a second line instead, and the
+     name keeps a sane horizontal box (flex-basis holds it above min-content). */
+  flex-wrap: wrap;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
   padding: 6px 10px; font-size: 13px; max-width: 100%;
 }
 .attach-card.attach-error { border-color: var(--error); }
 .attach-clip { flex: 0 0 auto; }
-.attach-name { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px;
+.attach-name { flex: 1 1 14em; min-width: 0;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px;
   overflow-wrap: anywhere; }
 .attach-size { color: var(--muted); font-size: 11px; flex: 0 0 auto; }
+/* Compact actions on attachment cards (superior): the generic row-action
+   padding dominates narrow cards — scope a tighter variant here, other
+   .row-action surfaces are untouched. The buttons live in one unbreakable
+   group so a narrow card wraps the PAIR to the next line together, never
+   splitting Download from Read PDF across lines. */
+.attach-card .row-action { padding: 3px 9px; font-size: 12px; min-height: 0; }
+.attach-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .attach-x {
   background: transparent; border: none; color: var(--muted); cursor: pointer;
   font-size: 15px; line-height: 1; padding: 0 2px;
