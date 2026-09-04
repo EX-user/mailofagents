@@ -1816,7 +1816,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     gap: 0 8px; align-items: center;
   }
   #mgmt-browse > .row { display: contents; }
-  #mgmt-browse > .row > label:first-child { grid-column: 1 / -1; order: 1; margin-bottom: 8px; }
+  #mgmt-browse > .row > label:first-of-type { grid-column: 1 / -1; order: 1; margin-bottom: 8px; }
   #tab-mail .m-pair-fl { order: 2; display: flex !important; gap: 8px; margin-bottom: 8px; grid-column: 1 / -1; }
   #tab-mail .m-pair-fl > label { flex: 1 1 0; min-width: 0; }
   /* Superior follow-up: the control itself must fill its label — the pair

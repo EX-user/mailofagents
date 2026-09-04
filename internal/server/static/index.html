@@ -409,25 +409,24 @@
         <button type="button" data-mview="overview" data-i18n="mgmt.tabOverview">Overview</button>
       </div>
       <div id="mgmt-browse">
-        <div class="row">
-          <label>Account:
+        <!-- 控件一行（上级 09-04）：加载 → 账户 → 收发 → 限额 → 搜索 -->
+        <div class="row" style="align-items:center; gap:8px; flex-wrap:wrap;">
+          <button id="btn-load-mail" class="primary" data-i18n="mail.load">Load</button>
+          <label><span data-i18n="mail.account">Account:</span>
             <select id="mail-account"><option value="">Loading…</option></select>
           </label>
-          <span class="m-pair-fl" style="display:contents"><label>Folder:
+          <span class="m-pair-fl" style="display:contents"><label><span data-i18n="mail.folder">Folder:</span>
             <select id="mail-folder">
-              <option value="inbox">Inbox</option>
-              <option value="sent">Sent</option>
-              <option value="all">All (mixed)</option>
+              <option value="inbox" data-i18n="mail.optInbox">Inbox</option>
+              <option value="sent" data-i18n="mail.optSent">Sent</option>
+              <option value="all" data-i18n="mail.optAll">All (mixed)</option>
             </select>
           </label>
-          <label>Limit:
+          <label><span data-i18n="mail.limit">Limit:</span>
             <input type="number" id="mail-limit" value="100" min="1" max="500" />
           </label></span>
-          <button id="btn-load-mail" class="primary" data-i18n="mail.load">Load</button>
-        </div>
-        <!-- Instant filter over the loaded list (from / subject / preview).
-             Server-side full-text search would be a separate contract. -->
-        <div class="row" style="margin-bottom:8px;">
+          <!-- Instant filter over the loaded list (from / subject / preview).
+               Server-side full-text search would be a separate contract. -->
           <input type="search" id="mail-search" class="app-input" style="flex:1;max-width:420px;"
                  placeholder="Filter loaded list (from / subject…)" data-i18n-ph="mail.searchPh" />
           <span id="mail-search-status" class="muted" style="font-size:12px;"></span>
