@@ -61,6 +61,12 @@ type Server struct {
 	// regLimit throttles registration attempts per client IP (the threshold
 	// itself lives in the store so admins can tune it live).
 	regLimit *regLimiter
+	// Board append windows (v1.2 point 6): per-account 10/min applies only
+	// when the request carries a valid account credential; the per-code and
+	// per-board ceilings always apply.
+	boardAcctRate  *regLimiter
+	boardCodeRate  *regLimiter
+	boardBoardRate *regLimiter
 	// pushSubsRate limits push subscription mutations per account;
 	// pushIPLimit throttles the same per client IP (v0.6.30 abuse guard).
 	pushRates   map[string]*rateWindow
@@ -85,6 +91,10 @@ func New(s *store.Store, a *audit.Store, cfg *config.Config) *Server {
 		pushIPLimit:  newRegLimiter(time.Hour),
 		pd:           newPushDelivery(),
 		regLimit:     newRegLimiter(time.Hour),
+
+		boardAcctRate:  newRegLimiter(time.Minute),
+		boardCodeRate:  newRegLimiter(time.Minute),
+		boardBoardRate: newRegLimiter(time.Minute),
 	}
 }
 
@@ -210,6 +220,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/subs/", s.requireInitialized(s.requireAccount(s.handleSubsMessages)))
 	mux.HandleFunc("/api/mgmt/subs-overview", s.requireInitialized(s.requireAccount(s.handleMgmtSubsOverview)))
 	mux.HandleFunc("/api/register-subordinate", s.requireInitialized(s.requireAccount(s.handleRegisterSubordinate)))
+
+	// Boards (kanban) API — /api/boards/info and /api/boards/mine are
+	// exact-pattern and win over the /api/boards/ subtree dispatcher.
+	mux.HandleFunc("/api/boards", s.requireInitialized(s.requireAccount(s.handleBoardCreate)))
+	mux.HandleFunc("/api/boards/info", s.requireInitialized(s.handleBoardsInfo))
+	mux.HandleFunc("/api/boards/mine", s.requireInitialized(s.requireAccount(s.handleBoardsMine)))
+	mux.HandleFunc("/api/boards/", s.requireInitialized(s.handleBoardCode))
+	mux.HandleFunc("/api/admin/boards", s.requireInitialized(s.requireAdmin(s.handleAdminBoards)))
 
 	// Admin API (admin Basic auth) — requires initialization.
 	mux.HandleFunc("/admin/messages", s.requireInitialized(s.requireAdmin(s.handleAdminMessages)))
