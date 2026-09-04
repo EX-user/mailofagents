@@ -546,6 +546,7 @@ func (s *Server) handleProfileSelf(w http.ResponseWriter, r *http.Request) {
 		typeSpec := map[string]string{
 			"audio_autoplay":       "bool",
 			"image_preview":        "bool",
+			"body_markdown":        "bool",
 			"liveness.weakHours":   "number",
 			"liveness.strongHours": "number",
 		}

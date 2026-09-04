@@ -810,7 +810,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // ---- user preferences (v0.6) ----
   // Read order: server account.prefs > localStorage fallback > defaults.
   // Cached in memory: message rendering consults it without a request.
-  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, livenessWeakHours: 48, livenessStrongHours: 24 };
+  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24 };
   let userPrefs = null;
   const PREFS_LS_KEY = "agentmail_prefs";
 
@@ -831,6 +831,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         : (typeof local.audio_autoplay === "boolean" ? local.audio_autoplay : PREFS_DEFAULTS.audio_autoplay),
       image_preview: typeof src.image_preview === "boolean" ? src.image_preview
         : (typeof local.image_preview === "boolean" ? local.image_preview : PREFS_DEFAULTS.image_preview),
+      body_markdown: typeof src.body_markdown === "boolean" ? src.body_markdown
+        : (typeof local.body_markdown === "boolean" ? local.body_markdown : PREFS_DEFAULTS.body_markdown),
       livenessStrongHours: numHours(src["liveness.strongHours"],
         numHours(local["liveness.strongHours"], PREFS_DEFAULTS.livenessStrongHours)),
       livenessWeakHours: numHours(src["liveness.weakHours"],
@@ -852,6 +854,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const prefs = {
       audio_autoplay: !!$("#pref-audio-autoplay").checked,
       image_preview: !!$("#pref-image-preview").checked,
+      body_markdown: !!$("#pref-body-markdown").checked,
       "liveness.strongHours": strong,
       "liveness.weakHours": weak,
     };
@@ -1078,6 +1081,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       mergePrefs(p.prefs);
       $("#pref-audio-autoplay").checked = userPrefs.audio_autoplay;
       $("#pref-image-preview").checked = userPrefs.image_preview;
+      $("#pref-body-markdown").checked = userPrefs.body_markdown === true;
       const lvS = $("#pref-liveness-strong"), lvW = $("#pref-liveness-weak");
       if (lvS) lvS.value = userPrefs.livenessStrongHours;
       if (lvW) lvW.value = userPrefs.livenessWeakHours;

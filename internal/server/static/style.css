@@ -1388,6 +1388,7 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
 .md-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .md-body a { color: var(--accent); }
 .md-body-raw { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.md-body-letter { margin-top: 6px; }
 
 /* Markdown lightbox (superior): same dimmed shell as the PDF reader; the
    document fills the frame and scrolls, free of the inline 25vh cap. */

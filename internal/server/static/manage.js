@@ -413,20 +413,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     return !!(a && a.filename && ATTACH_TXT_RE.test(a.filename));
   }
 
+  // mdSanitizedHtml: shared sanitizer config — img/style/audio/video are
+  // stripped everywhere markdown renders (attachments AND letter bodies).
+  function mdSanitizedHtml(text) {
+    return DOMPurify.sanitize(marked.parse(text), {
+      FORBID_TAGS: ["img", "style", "audio", "video"],
+      FORBID_ATTR: ["style"],
+    });
+  }
+
   // renderMd: markdown text -> sanitized .md-body element (marked +
-  // DOMPurify, img/style/audio/video stripped). Plain-<pre> fallback when
-  // the vendor libs are missing. Shared by the inline preview and the
-  // fullscreen lightbox.
+  // DOMPurify). Plain-<pre> fallback when the vendor libs are missing.
+  // Shared by the inline preview and the fullscreen lightbox.
   function renderMd(text) {
     if (window.marked && window.DOMPurify) {
       try {
-        const html = DOMPurify.sanitize(marked.parse(text), {
-          FORBID_TAGS: ["img", "style", "audio", "video"],
-          FORBID_ATTR: ["style"],
-        });
         const box = document.createElement("div");
         box.className = "md-body";
-        box.innerHTML = html;
+        box.innerHTML = mdSanitizedHtml(text);
         return box;
       } catch (_) { /* fall through to raw */ }
     }
@@ -434,6 +438,19 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     pre.className = "md-body md-body-raw";
     pre.textContent = text;
     return pre;
+  }
+
+  // letterBodyHtml (superior): the message body renders as markdown ONLY
+  // when the body_markdown preference is on (default off — letters stay
+  // plain text until the user opts in). Same sanitizer rules as md
+  // attachments (img/style stripped). compose.js is untouched by design.
+  function letterBodyHtml(text) {
+    if (mgmtPrefs && mgmtPrefs.body_markdown === true && window.marked && window.DOMPurify) {
+      try {
+        return '<div class="md-body md-body-letter">' + mdSanitizedHtml(text || "") + "</div>";
+      } catch (_) { /* fall through to raw */ }
+    }
+    return '<pre class="body">' + esc(text || "") + "</pre>";
   }
 
   // openMdLightbox (superior): fullscreen dimmed reader for markdown —
@@ -1005,7 +1022,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         '<div class="row" style="margin:8px 0;">' +
         '<button class="row-action" id="btn-mail-reply" data-reply-to="' + esc(m.from) + '" data-reply-subject="' + esc(m.subject || "") + '" data-reply-id="' + esc(m.id || m.message_id || "") + '">' + t("act.reply") + "</button>" +
         '<button class="row-action" id="btn-mail-forward" style="margin-left:8px;">' + t("act.forward") + "</button></div>" +
-        "<hr><pre class=\"body\">" + esc(m.body || "") + "</pre>" + attachmentCards(m));
+        "<hr>" + letterBodyHtml(m.body) + attachmentCards(m));
       wireMailNav(detail, item);
       wireReplyRef(detail, m, function (pid) { showDetail(pid, item); });
       wireAttachmentDownloads(detail, m);
@@ -1177,7 +1194,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
               '<span class="muted">' + t("subs.attachNoDl") + "</span></div>";
           }).join("") + "</div>"
         : (m.files ? '<div class="detail-row">📎 ' + m.files + t("subs.attachMeta") + "</div>" : "")) +
-      "<hr><pre class=\"body\">" + esc(msg.body != null ? msg.body : (msg.preview || "")) + "</pre>" +
+      "<hr>" + letterBodyHtml(msg.body != null ? msg.body : (msg.preview || "")) +
       (canReply || sentToMe
         ? '<div class="row" style="margin-top:12px;">' +
           (canReply ? '<button class="primary" id="btn-reply-as-self">' + t("subs.replyAsSelf") + "</button>" : "") +
@@ -1738,7 +1755,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
             '<button class="row-action" id="btn-inbox-followup" data-follow-to="' + esc((m.to || []).join(", ")) + '" data-follow-subject="' + esc(m.subject || "") + '" data-follow-id="' + esc(m.id || m.message_id || "") + '">' + t("act.followUp") + "</button>"
           : '<button class="row-action" id="btn-inbox-reply" data-reply-to="' + esc(m.from) + '" data-reply-subject="' + esc(m.subject || "") + '" data-reply-id="' + esc(m.id || m.message_id || "") + '">' + t("act.reply") + "</button>") +
         '<button class="row-action" id="btn-inbox-forward" style="margin-left:8px;">' + t("act.forward") + "</button></div>" +
-        "<hr><pre class=\"body\">" + esc(m.body || "") + "</pre>" + attachmentCards(m));
+        "<hr>" + letterBodyHtml(m.body) + attachmentCards(m));
       wireAttachmentDownloads(detail, m);
       hydrateAttachmentPreviews(detail, m);
       wireReplyRef(detail, m, function (pid) {
@@ -1919,6 +1936,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   // userPrefs closure — modules cannot see it. Self-fetch once per login
   // (same source of truth: the account profile), reset with the session.
   let mgmtPrefs = null;
+  // app.js savePrefs dispatches this after a successful profile save —
+  // drop the cache so the next detail render sees the new toggles
+  // (body_markdown takes effect without a re-login).
+  document.addEventListener("manage:refresh", function () { mgmtPrefs = null; });
   function ensureMgmtPrefs() {
     if (mgmtPrefs) return Promise.resolve(mgmtPrefs);
     return api("/api/profile/self", { keepSession: true }).then(function (p) {
