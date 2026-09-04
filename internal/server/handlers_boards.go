@@ -409,7 +409,7 @@ func (s *Server) handleBoardAppend(w http.ResponseWriter, r *http.Request, code 
 	}
 	body := strings.TrimRight(req.Body, "\n")
 	if strings.ContainsAny(body, "\n\r") {
-		badRequest(w, "body must be a single line")
+		badRequest(w, "body must be a single line (a single trailing \n is trimmed; embedded newlines and \r are rejected)")
 		return
 	}
 	if utf8.RuneCountInString(body) == 0 {

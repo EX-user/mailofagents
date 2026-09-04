@@ -122,17 +122,30 @@ func boardLineKey(seq int64) []byte {
 	return b[:]
 }
 
-// randomCode returns n random base62 characters. crypto/rand failure is
-// catastrophic for code uniqueness, so it panics — same call as newULID.
+// randomCode returns n random base62 characters via rejection sampling —
+// 256 % 62 != 0, so plain modulo would weight the first eight alphabet
+// characters ~1.3x (review polish; harmless at 62^10, textbook now).
+// crypto/rand failure is catastrophic for code uniqueness, so it panics —
+// same call as newULID.
 func randomCode(n int) string {
 	const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	raw := make([]byte, n)
-	if _, err := rand.Read(raw); err != nil {
-		panic("store: crypto/rand failed during board code generation: " + err.Error())
-	}
+	const max = 256 - 256%len(alphabet) // 248: largest multiple ≤ 256
 	out := make([]byte, n)
-	for i, v := range raw {
-		out[i] = alphabet[int(v)%len(alphabet)]
+	for i := 0; i < n; {
+		raw := make([]byte, n-i)
+		if _, err := rand.Read(raw); err != nil {
+			panic("store: crypto/rand failed during board code generation: " + err.Error())
+		}
+		for _, v := range raw {
+			if int(v) >= max {
+				continue // redraw biased tail
+			}
+			out[i] = alphabet[int(v)%len(alphabet)]
+			i++
+			if i == n {
+				break
+			}
+		}
 	}
 	return string(out)
 }
