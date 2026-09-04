@@ -1899,6 +1899,26 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #tab-inbox .inbox-pager { flex: 0 0 auto; margin-bottom: 0; }
 }
 
+/* 收发件/查信 PC 宽屏双栏撑满（上级 09-04 点对点）：两页原本被 main 的
+   1100px 上限卡住，宽屏下左右都占不满。页签容器（头部标题/pill 行/控制行
+   连同 grid）整体负 margin 出血突破容器，两侧保留与旧版一致的 20px 边距
+   ——头部与栏左缘天然对齐；左栏（列表）保持原内容宽度上限 ≈534px
+   （原 1100 容器的一半），右栏（正文）吃掉其余全部宽度。overflow-x:
+   clip 兜住 100vw 与视口 clientWidth 的滚动条差值，避免出横向滚动条。 */
+@media (min-width: 801px) {
+  body { overflow-x: clip; }
+  #tab-inbox:not(.hidden),
+  #tab-mail:not(.hidden) {
+    margin-left: calc(50% - 50vw + 20px);
+    margin-right: calc(50% - 50vw + 20px);
+  }
+  #inbox-grid,
+  #mgmt-browse > .mail-grid {
+    /* 左栏 clamp：宽屏取 534px 上限；容器不足时退为「一半减半 gap」，
+       与右栏 1fr 等分——任何宽度下左栏都不会宽于右栏（上级 09-04）；
+     上限 440px：紧凑一档，正文栏多让一截（上级 09-04 调整）*/
+    grid-template-columns: clamp(0px, calc(50% - 8px), 440px) minmax(0, 1fr);
+  }
 /* Superior 08-31 (inbox one-screen follow-up): compact controls on phones —
    page title out; Load/Mark-all become icon-only buttons (Material refresh /
    done_all double-check) sharing one row with the search box; the mode pill
