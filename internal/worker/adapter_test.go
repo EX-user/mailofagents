@@ -132,3 +132,24 @@ func hasAdjacent(args []string, a, b string) bool {
 	}
 	return false
 }
+
+func TestDigestStripsControlBytes(t *testing.T) {
+	// luowudi case (2026-09-04): a NUL riding the digest poisons opencode's
+	// argv channel — fork/exec fails EINVAL before the CLI starts. Every
+	// mail-sourced field must come out control-free.
+	cfg := &Config{Prompt: "wake", Address: "a@x", Password: "p", Server: "https://s", Workdir: "/w"}
+	mails := []MailSummary{
+		{From: "peer@x", Subject: "PE/MZ 判定\x00 结果", Preview: "分片\x01补发中\x7f…", ReceivedAt: 1757000000},
+		{From: "ot\x00her@x", Subject: "plain", Preview: "body", ReceivedAt: 1757000001},
+	}
+	d := Digest(cfg, mails, true, "", "", MailStats{}, false)
+	if strings.ContainsAny(d, "\x00\x01\x7f") {
+		t.Fatalf("digest carries control bytes: %q", d)
+	}
+	if !strings.Contains(d, "PE/MZ 判定 结果") || !strings.Contains(d, "分片补发中…") {
+		t.Fatalf("visible content damaged: %q", d)
+	}
+	if !strings.Contains(d, "other@x") {
+		t.Fatalf("from field not sanitized: %q", d)
+	}
+}

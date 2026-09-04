@@ -138,7 +138,7 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 			// indistinguishable from each other. Previews clamp at 60
 			// runes on top of the server-side 100.
 			fmt.Fprintf(&b, "[未读 %d/%d]\n  发件人: %s\n  主题: %s（%s）\n  预览: %s\n",
-				i+1, len(mails), m.From, oneLine(m.Subject),
+				i+1, len(mails), oneLine(m.From), oneLine(m.Subject),
 				time.Unix(m.ReceivedAt, 0).Format("01-02 15:04"),
 				oneLine(clampRunes(m.Preview, 60)))
 		}
@@ -147,9 +147,32 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 }
 
 // oneLine collapses every whitespace run (newlines, tabs, multi-spaces) in
-// s to a single space — digest entries must never span visual lines.
+// s to a single space and strips remaining C0 control runes (and DEL) —
+// digest entries must never span visual lines, and mail-sourced text must
+// never carry control bytes downstream: opencode's only digest channel is
+// ARGV (stdin is structurally unusable for it), and a NUL byte in any argv
+// element makes fork/exec fail with EINVAL before the CLI even starts
+// (field report 2026-09-04: binary-format workflows mail NUL-bearing
+// bodies; the same CLI run by hand with a typed prompt worked fine).
 func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
+	return stripControls(strings.Join(strings.Fields(s), " "))
+}
+
+// stripControls removes C0 control runes and DEL. They carry no information
+// in a text digest; NUL specifically is fatal in argv and meaningless in
+// stdin-riding digests alike.
+func stripControls(s string) string {
+	if !strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7F }) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r >= 0x20 && r != 0x7F {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // clampRunes truncates s to at most n runes, appending an ellipsis when cut.
