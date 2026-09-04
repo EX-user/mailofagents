@@ -1388,7 +1388,13 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
 .md-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .md-body a { color: var(--accent); }
 .md-body-raw { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
-.md-body-letter { margin-top: 6px; }
+.md-body-letter {
+  margin-top: 6px;
+  /* Letter body is a reading surface (superior 09-04): it must NOT inherit
+     the attachment-preview 25vh cap — it flows full-length; the enclosing
+     detail pane owns scrolling. */
+  max-height: none; height: auto; overflow: visible;
+}
 
 /* Markdown lightbox (superior): same dimmed shell as the PDF reader; the
    document fills the frame and scrolls, free of the inline 25vh cap. */

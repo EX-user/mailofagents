@@ -843,8 +843,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   async function savePrefs() {
     const strongEl = $("#pref-liveness-strong"), weakEl = $("#pref-liveness-weak");
-    const strong = strongEl ? parseInt(strongEl.value, 10) : NaN;
-    const weak = weakEl ? parseInt(weakEl.value, 10) : NaN;
+    // Empty inputs (settings panel not yet populated) fall back to the
+    // defaults instead of aborting the whole save — superior staging repro:
+    // the body_markdown toggle silently never saved on a fresh panel.
+    const strong = strongEl ? (strongEl.value === "" ? PREFS_DEFAULTS.livenessStrongHours : parseInt(strongEl.value, 10)) : NaN;
+    const weak = weakEl ? (weakEl.value === "" ? PREFS_DEFAULTS.livenessWeakHours : parseInt(weakEl.value, 10)) : NaN;
     const status = $("#prefs-status");
     if (strongEl && (!isFinite(strong) || strong < 1 || strong > 8760) ||
         weakEl && (!isFinite(weak) || weak < 1 || weak > 8760)) {

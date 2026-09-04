@@ -445,12 +445,37 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
   // plain text until the user opts in). Same sanitizer rules as md
   // attachments (img/style stripped). compose.js is untouched by design.
   function letterBodyHtml(text) {
-    if (mgmtPrefs && mgmtPrefs.body_markdown === true && window.marked && window.DOMPurify) {
+    // Prefs not loaded yet (fresh session race — superior repro 09-04):
+    // render raw but flag the <pre>; upgradeLetterBody swaps it once the
+    // prefs fetch resolves. Known-off renders plain with no flag.
+    if (mgmtPrefs == null) {
+      return '<pre class="body" data-pref-pending="1">' + esc(text || "") + "</pre>";
+    }
+    if (mgmtPrefs.body_markdown === true && window.marked && window.DOMPurify) {
       try {
         return '<div class="md-body md-body-letter">' + mdSanitizedHtml(text || "") + "</div>";
       } catch (_) { /* fall through to raw */ }
     }
     return '<pre class="body">' + esc(text || "") + "</pre>";
+  }
+
+  // upgradeLetterBody: called right after a detail render — once the prefs
+  // fetch resolves, swap a pending raw body for rendered markdown. Entering
+  // the inbox directly no longer depends on the fetch winning the race.
+  function upgradeLetterBody(detail, m) {
+    ensureMgmtPrefs().then(function (p) {
+      if (!detail.isConnected) return;
+      const pre = detail.querySelector('pre.body[data-pref-pending]');
+      if (!pre) return;
+      pre.removeAttribute("data-pref-pending");
+      if (!(p && p.body_markdown === true)) return;
+      try {
+        const div = document.createElement("div");
+        div.className = "md-body md-body-letter";
+        div.innerHTML = mdSanitizedHtml(m.body || "");
+        pre.replaceWith(div);
+      } catch (_) { /* keep raw on any failure */ }
+    });
   }
 
   // openMdLightbox (superior): fullscreen dimmed reader for markdown —
@@ -1023,6 +1048,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         '<button class="row-action" id="btn-mail-reply" data-reply-to="' + esc(m.from) + '" data-reply-subject="' + esc(m.subject || "") + '" data-reply-id="' + esc(m.id || m.message_id || "") + '">' + t("act.reply") + "</button>" +
         '<button class="row-action" id="btn-mail-forward" style="margin-left:8px;">' + t("act.forward") + "</button></div>" +
         "<hr>" + letterBodyHtml(m.body) + attachmentCards(m));
+      upgradeLetterBody(detail, m);
       wireMailNav(detail, item);
       wireReplyRef(detail, m, function (pid) { showDetail(pid, item); });
       wireAttachmentDownloads(detail, m);
@@ -1201,6 +1227,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           (sentToMe ? '<button class="primary" id="btn-reply-to-sub"' + (canReply ? ' style="margin-left:8px;"' : "") + '>' + t("act.reply") + "</button>" : "") +
           "</div>"
         : ""));
+    upgradeLetterBody(detail, msg);
     wireMailNav(detail, item);
     wireReplyRef(detail, msg, function (pid) { showSubDetail(subAddr, { id: pid }, item); });
     const rbtn = $("#btn-reply-as-self");
@@ -1756,6 +1783,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           : '<button class="row-action" id="btn-inbox-reply" data-reply-to="' + esc(m.from) + '" data-reply-subject="' + esc(m.subject || "") + '" data-reply-id="' + esc(m.id || m.message_id || "") + '">' + t("act.reply") + "</button>") +
         '<button class="row-action" id="btn-inbox-forward" style="margin-left:8px;">' + t("act.forward") + "</button></div>" +
         "<hr>" + letterBodyHtml(m.body) + attachmentCards(m));
+      upgradeLetterBody(detail, m);
       wireAttachmentDownloads(detail, m);
       hydrateAttachmentPreviews(detail, m);
       wireReplyRef(detail, m, function (pid) {
