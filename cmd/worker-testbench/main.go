@@ -24,11 +24,12 @@ func main() {
 	addr := flag.String("address", os.Getenv("TESTBENCH_ADDRESS"), "observed test account address (empty = public endpoints only)")
 	pass := flag.String("password", os.Getenv("TESTBENCH_PASSWORD"), "observed test account password")
 	runsRoot := flag.String("runs-dir", defaultRunsDir(), "root directory for run artifacts (host isolation: everything lands under here)")
+	workerBin := flag.String("worker-bin", os.Getenv("TESTBENCH_WORKER_BIN"), "worker binary under test (spawn scenarios)")
 	scenarios := flag.String("scenarios", "selfcheck", "comma-separated scenario names, or \"all\"")
 	timeout := flag.Duration("timeout", 2*time.Hour, "whole-bench budget")
 	flag.Parse()
 
-	os.Exit(run(*server, *addr, *pass, *runsRoot, *scenarios, *timeout))
+	os.Exit(run(*server, *addr, *pass, *runsRoot, *workerBin, *scenarios, *timeout))
 }
 
 func defaultRunsDir() string {
@@ -39,7 +40,7 @@ func defaultRunsDir() string {
 	return filepath.Join(home, "worker-testbench", "runs")
 }
 
-func run(server, addr, pass, runsRoot, scenarioSel string, budget time.Duration) int {
+func run(server, addr, pass, runsRoot, workerBin, scenarioSel string, budget time.Duration) int {
 	runDir := filepath.Join(runsRoot, time.Now().Format("20060102-150405"))
 	tl, err := testbench.OpenTimeline(filepath.Join(runDir, "bench.jsonl"))
 	if err != nil {
@@ -49,7 +50,7 @@ func run(server, addr, pass, runsRoot, scenarioSel string, budget time.Duration)
 	defer tl.Close()
 
 	obs := testbench.NewObs(server, addr, pass, tl)
-	env := &testbench.Env{Obs: obs, RunDir: runDir}
+	env := &testbench.Env{Obs: obs, RunDir: runDir, BenchRoot: filepath.Dir(runsRoot), WorkerBin: workerBin}
 
 	names := testbench.All()
 	if scenarioSel != "all" {

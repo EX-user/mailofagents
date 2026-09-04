@@ -14,9 +14,26 @@ import (
 type Env struct {
 	// Obs is the observer client (server + test account credentials).
 	Obs *Obs
+	// TL is this run's timeline — scenarios record evidence here.
+	TL *Timeline
 	// RunDir is this run's isolated artifact directory (timeline,
 	// reports, later: worker logs, replay packs). Never a shared path.
 	RunDir string
+	// BenchRoot is the bench's isolated HOME/XDG root — spawned CLIs and
+	// workers see this as HOME, never the host user's real profile.
+	// Empty means RunDir's parent (set by the runner).
+	BenchRoot string
+	// WorkerBin is the path to the worker binary under test (optional:
+	// only spawn scenarios need it).
+	WorkerBin string
+}
+
+// Root returns the effective bench root.
+func (e *Env) Root() string {
+	if e.BenchRoot != "" {
+		return e.BenchRoot
+	}
+	return filepath.Dir(e.RunDir)
 }
 
 // TimelinePath is where the run's timeline lives.
@@ -50,7 +67,7 @@ func runOne(ctx context.Context, env *Env, sc Scenario) Result {
 	}
 	defer tl.Close()
 
-	runEnv := &Env{Obs: env.Obs, RunDir: runDir}
+	runEnv := &Env{Obs: env.Obs, TL: tl, RunDir: runDir, BenchRoot: env.BenchRoot, WorkerBin: env.WorkerBin}
 	// swap in a timeline-aware observer copy so calls land on this run's
 	// timeline (the shared env.Obs may carry a different handle).
 	if env.Obs != nil {
