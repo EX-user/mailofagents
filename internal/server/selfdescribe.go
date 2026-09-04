@@ -52,7 +52,6 @@ const selfDescribeTemplate = `{
     },
     "attachments": {
       "POST /api/files/upload": "multipart form fields: 'file' (required) and 'allowed' (optional, comma-separated addresses such as allowed=a@x,b@y — a multipart form field, not a query parameter); 1MB per file -> {id, access_code, filename, size}",
-      "quota": "20MB per account across your live files — an upload past it answers 413 'storage quota exceeded'; check usage with GET /api/files/list and free space with DELETE /api/files/{id} (download links in earlier letters stop working)",
       "GET /api/files/{id}/download?code=<access_code>": "raw content — the downloader must be an authenticated account that is the file owner or on its allowed list, AND present the access_code; a bare code without credentials is not enough (all failure modes answer 404 — no oracle)",
       "GET /api/files/list": "your attachments with expiry",
       "DELETE /api/files/{id}": "delete your own file immediately (storage quota reclaimed; download links in earlier letters stop working)",
