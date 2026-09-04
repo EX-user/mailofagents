@@ -589,7 +589,11 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 			name, err, exitInfo, stdinInfo, strings.Join(argParts, " "),
 			len(stderr.String()), truncate(stderrStr, 2000), head, truncate(stdoutStr, 800))
 	}
-	return stdout.Bytes(), 0, nil
+	// wakeTokens = the tee's high-water context report; 0 when the CLI
+	// never reported usage. This is what powers the compact-notice
+	// threshold in the duty loop — returning a constant 0 here kept
+	// compact_notice_tokens dead (bench S6 caught it, 2026-09-04).
+	return stdout.Bytes(), tee.maxCtx, nil
 }
 
 // redact masks the watched account's password in CLI output that ends up on
