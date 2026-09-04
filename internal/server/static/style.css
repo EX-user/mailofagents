@@ -1389,6 +1389,14 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
 .md-body a { color: var(--accent); }
 .md-body-raw { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 
+/* Markdown lightbox (superior): same dimmed shell as the PDF reader; the
+   document fills the frame and scrolls, free of the inline 25vh cap. */
+.md-lightbox-frame { background: var(--panel); }
+.md-lightbox-frame .md-body {
+  max-height: none; height: 100%;
+  border: none; border-radius: 8px; background: transparent;
+}
+
 /* Image fullscreen overlay (feedback): click a preview to view it
    full-screen; click anywhere or press Esc to close. */
 .img-lightbox {

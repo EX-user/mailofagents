@@ -1063,6 +1063,81 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     return !!(a && a.filename && ATTACH_MD_RE.test(a.filename));
   }
 
+  // renderMd: markdown text -> sanitized .md-body element (marked +
+  // DOMPurify, img/style/audio/video stripped). Plain-<pre> fallback when
+  // the vendor libs are missing. Shared by the inline preview and the
+  // fullscreen lightbox.
+  function renderMd(text) {
+    if (window.marked && window.DOMPurify) {
+      try {
+        const html = DOMPurify.sanitize(marked.parse(text), {
+          FORBID_TAGS: ["img", "style", "audio", "video"],
+          FORBID_ATTR: ["style"],
+        });
+        const box = document.createElement("div");
+        box.className = "md-body";
+        box.innerHTML = html;
+        return box;
+      } catch (_) { /* fall through to raw */ }
+    }
+    const pre = document.createElement("pre");
+    pre.className = "md-body md-body-raw";
+    pre.textContent = text;
+    return pre;
+  }
+
+  // openMdLightbox (superior): fullscreen dimmed reader for markdown —
+  // same shell as the PDF lightbox (mobile gets the bottom ×/download bar).
+  function openMdLightbox(text, filename) {
+    closeMdLightbox();
+    const lb = document.createElement("div");
+    lb.className = "pdf-lightbox md-lightbox";
+    const frame = document.createElement("div");
+    frame.className = "pdf-lightbox-frame md-lightbox-frame";
+    frame.appendChild(renderMd(text));
+    const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+    const x = document.createElement("button");
+    x.className = "pdf-lightbox-x";
+    x.type = "button";
+    x.textContent = "×";
+    x.setAttribute("aria-label", "close");
+    x.addEventListener("click", function (ev) { ev.stopPropagation(); closeMdLightbox(); });
+    const dl = document.createElement("button");
+    dl.className = "img-lightbox-dl";
+    dl.type = "button";
+    dl.textContent = t("attach.download");
+    dl.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "attachment.md";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+    lb.appendChild(frame);
+    if (window.innerWidth <= 800) {
+      const bar = document.createElement("div");
+      bar.className = "pdf-lightbox-bar";
+      bar.appendChild(x);
+      bar.appendChild(dl);
+      lb.appendChild(bar);
+    } else {
+      lb.appendChild(x);
+      lb.appendChild(dl);
+    }
+    lb.addEventListener("click", function (ev) {
+      if (ev.target === lb) closeMdLightbox();
+    });
+    document.addEventListener("keydown", closeMdLightbox);
+    document.body.appendChild(lb);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10 * 60 * 1000);
+  }
+  function closeMdLightbox() {
+    $$(".md-lightbox").forEach(function (el) { el.remove(); });
+    document.removeEventListener("keydown", closeMdLightbox);
+  }
+
   // attachTTLBadge renders the remaining validity under the file TTL
   // (v0.5.3): "约 N 天后过期" / "已过期" once past. Absent expires_at
   // (older server) shows nothing.
@@ -1082,7 +1157,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       const isImg = attachIsImage(a), isAud = attachIsAudio(a), isPdf = attachIsPdf(a), isMd = attachIsMd(a);
       const preview = (isImg || isAud || isMd) ? '<div class="attach-preview" data-pv="' + i + '"></div>' : "";
       const readBtn = isPdf ? '<button class="row-action" data-pdf="' + i + '">' + esc(t("attach.readPdf")) + "</button>" : "";
-      const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button>" + readBtn + "</span>";
+      const mdBtn = isMd ? '<button class="row-action" data-md="' + i + '" title="' + esc(t("attach.expandMd")) + '" aria-label="' + esc(t("attach.expandMd")) + '">⛶</button>' : "";
+      const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button>" + readBtn + mdBtn + "</span>";
       return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : isPdf ? "pdf" : isMd ? "md" : "file") + '">' +
         '<span class="attach-clip">📎</span>' +
         '<span class="attach-name">' + esc(a.filename) + "</span>" +
@@ -1278,6 +1354,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         btn.disabled = false;
       });
     });
+    // ⛶: fetch the md text and open it in the lightbox.
+    $$("[data-md]", root).forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const a = list[+btn.dataset.md];
+        if (!a) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/files/" + encodeURIComponent(a.id) + "/download?code=" + encodeURIComponent(a.access_code), {
+            headers: { Authorization: basicAuth() },
+          });
+          if (!res.ok) throw new Error(res.status);
+          openMdLightbox(await res.text(), a.filename);
+        } catch (e) {
+          toast(t("attach.dlFailed") + e.message, "error");
+        }
+        btn.disabled = false;
+      });
+    });
     $$(".attach-preview", root).forEach(async function (holder) {
       const a = list[+holder.dataset.pv];
       if (!a) return;
@@ -1293,25 +1387,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         // images/styles/audio/video are stripped by the sanitizer, so an
         // .md attachment cannot pull remote assets or inject markup.
         if (attachIsMd(a)) {
-          const text = await res.text();
-          let box = null;
-          if (window.marked && window.DOMPurify) {
-            try {
-              const html = DOMPurify.sanitize(marked.parse(text), {
-                FORBID_TAGS: ["img", "style", "audio", "video"],
-                FORBID_ATTR: ["style"],
-              });
-              box = document.createElement("div");
-              box.className = "md-body";
-              box.innerHTML = html;
-            } catch (_) { /* fall through to raw */ }
-          }
-          if (!box) {
-            box = document.createElement("pre");
-            box.className = "md-body md-body-raw";
-            box.textContent = text;
-          }
-          holder.appendChild(box);
+          // Mobile skip is SCOPED to this thread capsule (superior): the
+          // pane is too narrow on phones for the inline md window to be
+          // readable — the card's ⛶ lightbox is the reader there. Other
+          // surfaces (manage view etc.) keep the inline preview on mobile.
+          if (window.innerWidth <= 800) { holder.remove(); return; }
+          holder.appendChild(renderMd(await res.text()));
           return;
         }
         // The download endpoint serves everything as octet-stream (correct
