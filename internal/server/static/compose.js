@@ -1063,6 +1063,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     return !!(a && a.filename && ATTACH_MD_RE.test(a.filename));
   }
 
+  // Text attachments (superior, point-to-point): lightbox-only preview —
+  // no inline window, the ⛶ button opens the plain-text reader.
+  const ATTACH_TXT_RE = /\.(txt|text)$/i;
+  function attachIsTxt(a) {
+    return !!(a && a.filename && ATTACH_TXT_RE.test(a.filename));
+  }
+
   // renderMd: markdown text -> sanitized .md-body element (marked +
   // DOMPurify, img/style/audio/video stripped). Plain-<pre> fallback when
   // the vendor libs are missing. Shared by the inline preview and the
@@ -1088,13 +1095,20 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
 
   // openMdLightbox (superior): fullscreen dimmed reader for markdown —
   // same shell as the PDF lightbox (mobile gets the bottom ×/download bar).
-  function openMdLightbox(text, filename) {
+  function openMdLightbox(text, filename, raw) {
     closeMdLightbox();
     const lb = document.createElement("div");
     lb.className = "pdf-lightbox md-lightbox";
     const frame = document.createElement("div");
     frame.className = "pdf-lightbox-frame md-lightbox-frame";
-    frame.appendChild(renderMd(text));
+    if (raw) {
+      const pre = document.createElement("pre");
+      pre.className = "md-body md-body-raw";
+      pre.textContent = text;
+      frame.appendChild(pre);
+    } else {
+      frame.appendChild(renderMd(text));
+    }
     const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
     const x = document.createElement("button");
     x.className = "pdf-lightbox-x";
@@ -1154,12 +1168,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const list = (m && m.attachments) || [];
     if (!list.length) return "";
     return '<div class="attach-list">' + list.map(function (a, i) {
-      const isImg = attachIsImage(a), isAud = attachIsAudio(a), isPdf = attachIsPdf(a), isMd = attachIsMd(a);
+      const isImg = attachIsImage(a), isAud = attachIsAudio(a), isPdf = attachIsPdf(a), isMd = attachIsMd(a), isTxt = attachIsTxt(a);
       const preview = (isImg || isAud || isMd) ? '<div class="attach-preview" data-pv="' + i + '"></div>' : "";
       const readBtn = isPdf ? '<button class="row-action" data-pdf="' + i + '">' + esc(t("attach.readPdf")) + "</button>" : "";
       const mdBtn = isMd ? '<button class="row-action" data-md="' + i + '" title="' + esc(t("attach.expandMd")) + '" aria-label="' + esc(t("attach.expandMd")) + '">⛶</button>' : "";
-      const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button>" + readBtn + mdBtn + "</span>";
-      return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : isPdf ? "pdf" : isMd ? "md" : "file") + '">' +
+      const txtBtn = isTxt ? '<button class="row-action" data-txt="' + i + '">' + esc(t("attach.previewTxt")) + "</button>" : "";
+      const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button>" + readBtn + mdBtn + txtBtn + "</span>";
+      return '<div class="attach-card attach-card-' + (isImg ? "img" : isAud ? "audio" : isPdf ? "pdf" : isMd ? "md" : isTxt ? "txt" : "file") + '">' +
         '<span class="attach-clip">📎</span>' +
         '<span class="attach-name">' + esc(a.filename) + "</span>" +
         '<span class="attach-size">' + esc(fmtBytes(a.size)) + "</span>" +
@@ -1366,6 +1381,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           });
           if (!res.ok) throw new Error(res.status);
           openMdLightbox(await res.text(), a.filename);
+        } catch (e) {
+          toast(t("attach.dlFailed") + e.message, "error");
+        }
+        btn.disabled = false;
+      });
+    });
+    // ⛶ (txt): fetch the text and open it in the plain-text lightbox.
+    $$("[data-txt]", root).forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const a = list[+btn.dataset.txt];
+        if (!a) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/files/" + encodeURIComponent(a.id) + "/download?code=" + encodeURIComponent(a.access_code), {
+            headers: { Authorization: basicAuth() },
+          });
+          if (!res.ok) throw new Error(res.status);
+          openMdLightbox(await res.text(), a.filename, true);
         } catch (e) {
           toast(t("attach.dlFailed") + e.message, "error");
         }
