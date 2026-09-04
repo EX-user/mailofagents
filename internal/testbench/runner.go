@@ -110,8 +110,9 @@ func sanitize(name string) string {
 	return string(out)
 }
 
-// Summary renders the console one-pager for a batch of results.
-func Summary(results []Result) string {
+// Summary renders the console one-pager for a batch of results. batch
+// (optional) adds the three-axis rubric line per scenario.
+func Summary(results []Result, batch *BatchScore) string {
 	sort.Slice(results, func(i, j int) bool { return results[i].Scenario < results[j].Scenario })
 	s := ""
 	for _, r := range results {
@@ -119,12 +120,23 @@ func Summary(results []Result) string {
 		if !r.OK {
 			mark = "FAIL"
 		}
-		s += fmt.Sprintf("%s  %-12s %d assertions, %s\n", mark, r.Scenario, len(r.Assertions), r.Duration.Round(time.Millisecond))
+		axes := ""
+		if batch != nil {
+			if ax := batch.PerScenario[r.Scenario]; len(ax) == 3 {
+				axes = fmt.Sprintf("  [chain %d timing %d semantic %d]", ax[0].Score, ax[1].Score, ax[2].Score)
+			}
+		}
+		s += fmt.Sprintf("%s  %-12s %d assertions, %s%s\n", mark, r.Scenario, len(r.Assertions), r.Duration.Round(time.Millisecond), axes)
 		for _, a := range r.Assertions {
 			if !a.OK {
 				s += fmt.Sprintf("       ✗ %s: %s\n", a.Name, a.Detail)
 			}
 		}
+	}
+	if batch != nil && len(batch.AxisAverages) == 3 {
+		s += fmt.Sprintf("batch axes: chain %d / timing %d / semantic %d (min %d/%d/%d)\n",
+			batch.AxisAverages[0], batch.AxisAverages[1], batch.AxisAverages[2],
+			batch.AxisMins[0], batch.AxisMins[1], batch.AxisMins[2])
 	}
 	return s
 }
