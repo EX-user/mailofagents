@@ -28,6 +28,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,6 +57,7 @@ func (s *Server) handleBoardsInfo(w http.ResponseWriter, r *http.Request) {
 		"feature": "boards",
 		"codes": map[string]any{
 			"default":     "one full-power code (read+write)",
+			"seed":        "optional header_row/content fields on create — creator seeds preamble+first lines with their own write power",
 			"split_codes": "POST create with split_codes=true for a read/write pair",
 			"auth_model":  "the code in the URL path is the credential; no Basic auth for reads/appends",
 		},
@@ -91,9 +93,11 @@ func (s *Server) handleBoardCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name       string `json:"name"`
-		LineCount  int    `json:"line_count"`
-		SplitCodes bool   `json:"split_codes"`
+		Name       string   `json:"name"`
+		LineCount  int      `json:"line_count"`
+		SplitCodes bool     `json:"split_codes"`
+		HeaderRow  string   `json:"header_row"`
+		Content    []string `json:"content"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	if err := decodeJSON(r, &req); err != nil {
@@ -117,6 +121,48 @@ func (s *Server) handleBoardCreate(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "line_count out of range")
 		return
 	}
+	// Optional initial seeding (owner-approved): header_row/content let the
+	// creator use their own write power at create time — semantically one
+	// preamble write plus one append per line. Everything is validated
+	// BEFORE the board exists so the seed either happens whole or the
+	// create fails with a 400 and no board lingers.
+	var preamble string
+	var seed []string
+	if req.HeaderRow != "" {
+		if strings.ContainsAny(req.HeaderRow, "\n\r") {
+			badRequest(w, "header_row must be a single line")
+			return
+		}
+		if utf8.RuneCountInString(req.HeaderRow) > store.BoardPreambleMaxRunes {
+			badRequest(w, "header_row too long")
+			return
+		}
+		preamble = req.HeaderRow
+	}
+	if len(req.Content) > 0 {
+		total := 0
+		for i, line := range req.Content {
+			if strings.ContainsAny(line, "\n\r") {
+				badRequest(w, fmt.Sprintf("content[%d] must be a single line", i))
+				return
+			}
+			n := utf8.RuneCountInString(line)
+			if n == 0 {
+				badRequest(w, fmt.Sprintf("content[%d] is empty", i))
+				return
+			}
+			if n > store.BoardLineMaxRunes {
+				badRequest(w, fmt.Sprintf("content[%d] too long", i))
+				return
+			}
+			total += len(line)
+		}
+		if int64(total) > store.BoardBytesMax {
+			badRequest(w, "content exceeds the board quota")
+			return
+		}
+		seed = req.Content
+	}
 	board, err := s.store.CreateBoard(accountFrom(r.Context()), name, lineCount, req.SplitCodes)
 	if err != nil {
 		if errors.Is(err, store.ErrBoardQuota) {
@@ -126,11 +172,32 @@ func (s *Server) handleBoardCreate(w http.ResponseWriter, r *http.Request) {
 		internalError(w, "create board: "+err.Error())
 		return
 	}
+	// Seeding cannot fail here: shapes and the byte budget were checked
+	// above, and rolling absorbs over-cap line counts by design.
+	if preamble != "" {
+		if err := s.store.SetBoardPreamble(board.ID, preamble); err != nil {
+			internalError(w, "seed preamble: "+err.Error())
+			return
+		}
+	}
+	now := time.Now()
+	for _, line := range seed {
+		if err := s.store.AppendBoardLine(board.ID, line, now); err != nil {
+			internalError(w, "seed content: "+err.Error())
+			return
+		}
+	}
 	resp := map[string]any{
 		"mode":       map[bool]string{true: "single", false: "split"}[board.SingleCode],
 		"name":       board.Name,
 		"line_count": board.LineCount,
 		"created":    board.CreatedAt,
+	}
+	if preamble != "" {
+		resp["header_row"] = true
+	}
+	if len(seed) > 0 {
+		resp["seeded"] = len(seed)
 	}
 	if board.SingleCode {
 		resp["code"] = board.ReadCode

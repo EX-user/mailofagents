@@ -9,6 +9,69 @@ import (
 	"github.com/agentmail/agentmail/internal/store"
 )
 
+// TestBoardCreateSeeding pins the optional header_row/content create-time
+// seed: whole-or-nothing validation, seed order preserved, rolling absorbs
+// an over-cap seed, and a rejected seed leaves no board behind.
+func TestBoardCreateSeeding(t *testing.T) {
+	ts, st := newRegisterTestServer(t)
+	addr, pw := mkAccount(t, st, "seeder")
+
+	var board map[string]any
+	body := `{"name":"seeded","header_row":"rules","content":["one","two","three"]}`
+	if code := apiCall(t, "POST", ts.URL, "/api/boards", addr, pw, body, &board); code != 201 {
+		t.Fatalf("seeded create = %d, want 201", code)
+	}
+	if board["header_row"] == nil || board["seeded"] != float64(3) {
+		t.Fatalf("seed response wrong: %v", board)
+	}
+	code, _ := board["code"].(string)
+	var read struct {
+		Preamble string `json:"preamble"`
+		Content  []struct {
+			Body string `json:"body"`
+		} `json:"content"`
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+code+"?part=full", "", "", "", &read); c != 200 {
+		t.Fatalf("read = %d", c)
+	}
+	if read.Preamble != "rules" || len(read.Content) != 3 || read.Content[0].Body != "one" {
+		t.Fatalf("seed wrong: preamble=%q content=%v", read.Preamble, read.Content)
+	}
+
+	// Rolling applies to the seed too: cap 3, five content lines.
+	var rolled map[string]any
+	if code := apiCall(t, "POST", ts.URL, "/api/boards", addr, pw,
+		`{"name":"rollseed","line_count":3,"content":["a","b","c","d","e"]}`, &rolled); code != 201 {
+		t.Fatalf("rolled create = %d", code)
+	}
+	rc, _ := rolled["code"].(string)
+	var rread struct {
+		Lines   int `json:"lines"`
+		Content []struct {
+			Body string `json:"body"`
+		} `json:"content"`
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+rc+"?part=full", "", "", "", &rread); c != 200 {
+		t.Fatalf("rolled read = %d", c)
+	}
+	if rread.Lines != 3 || rread.Content[0].Body != "c" {
+		t.Fatalf("rolled seed wrong: lines=%d first=%v", rread.Lines, rread.Content[0])
+	}
+
+	// Invalid seed -> 400 and NO board created (whole-or-nothing).
+	if code := apiCall(t, "POST", ts.URL, "/api/boards", addr, pw,
+		`{"name":"broken","content":["ok","bad
+line"]}`, nil); code != 400 {
+		t.Fatalf("multiline seed = %d, want 400", code)
+	}
+	var mine struct {
+		Used int `json:"used"`
+	}
+	if code := apiCall(t, "GET", ts.URL, "/api/boards/mine", addr, pw, "", &mine); code != 200 || mine.Used != 2 {
+		t.Fatalf("after failed seed used=%d, want 2 (no phantom board)", mine.Used)
+	}
+}
+
 // mkAccount registers a fresh account (name auto-suffixed to dodge
 // conflicts across tests sharing a server) and returns address+password.
 func mkAccount(t *testing.T, st *store.Store, name string) (string, string) {
