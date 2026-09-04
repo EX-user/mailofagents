@@ -170,14 +170,73 @@ func TestBoardOperators(t *testing.T) {
 		t.Fatalf("match miss = %d len=%d, want 200/0", c, len(matched.Content))
 	}
 
-	// after: frozen pending the owner's ruling — explicit 501 stub.
-	var stub map[string]any
-	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+code+"?after=alpha", "", "", "", &stub); c != http.StatusNotImplemented {
-		t.Fatalf("after stub = %d, want 501", c)
+	// after: multiple hits take the LAST matching line; content follows it.
+	var after1 struct {
+		Anchor  string `json:"anchor"`
+		Content []struct {
+			Body string `json:"body"`
+		} `json:"content"`
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+code+"?after=beta", "", "", "", &after1); c != 200 {
+		t.Fatalf("after read = %d", c)
+	}
+	if after1.Anchor != "found" || len(after1.Content) != 1 || after1.Content[0].Body != "omega" {
+		t.Fatalf("after=beta wrong: anchor=%q content=%v", after1.Anchor, after1.Content)
+	}
+	// after stacks with latest (tail of the after-set).
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+code+"?after=alpha&latest=2", "", "", "", &after1); c != 200 {
+		t.Fatalf("after+latest read = %d", c)
+	}
+	if after1.Anchor != "found" || len(after1.Content) != 2 || after1.Content[0].Body != "beta end" || after1.Content[1].Body != "omega" {
+		t.Fatalf("after=alpha&latest=2 wrong: %v", after1.Content)
+	}
+	// Miss on an intact board (nothing ever rolled): empty + not_found.
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+code+"?after=zzz", "", "", "", &after1); c != 200 {
+		t.Fatalf("after miss read = %d", c)
+	}
+	if after1.Anchor != "not_found" || len(after1.Content) != 0 {
+		t.Fatalf("after miss wrong: anchor=%q len=%d", after1.Anchor, len(after1.Content))
 	}
 	// latest=0 or negative: 400, never a silent full read.
 	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+code+"?latest=0", "", "", "", nil); c != 400 {
 		t.Fatalf("latest=0 = %d, want 400", c)
+	}
+}
+
+// TestBoardAfterRolledPast pins the anchor-vs-rolling boundary: a miss on a
+// board that HAS rolled content off reads as rolled_past and returns the
+// full retained content (the anchor may have scrolled away — spec rules
+// that beats the typo case).
+func TestBoardAfterRolledPast(t *testing.T) {
+	ts, st := newRegisterTestServer(t)
+	addr, pw := mkAccount(t, st, "anchor")
+
+	var board map[string]any
+	if code := apiCall(t, "POST", ts.URL, "/api/boards", addr, pw,
+		`{"name":"roll","line_count":3}`, &board); code != 201 {
+		t.Fatalf("create = %d", code)
+	}
+	code, _ := board["code"].(string)
+	for _, b := range []string{"old-anchor", "a", "b", "c", "d"} {
+		if c := apiCall(t, "POST", ts.URL, "/api/boards/"+code+"/lines", "", "",
+			fmt.Sprintf(`{"body":%q}`, b), nil); c != 200 {
+			t.Fatalf("append %q = %d", b, c)
+		}
+	}
+	var read struct {
+		Anchor  string `json:"anchor"`
+		Content []struct {
+			Body string `json:"body"`
+		} `json:"content"`
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+code+"?after=old-anchor", "", "", "", &read); c != 200 {
+		t.Fatalf("after rolled read = %d", c)
+	}
+	if read.Anchor != "rolled_past" {
+		t.Fatalf("anchor = %q, want rolled_past", read.Anchor)
+	}
+	if len(read.Content) != 3 || read.Content[0].Body != "b" || read.Content[2].Body != "d" {
+		t.Fatalf("rolled_past content wrong: %v", read.Content)
 	}
 }
 

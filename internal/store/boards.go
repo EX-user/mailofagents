@@ -72,6 +72,12 @@ type Board struct {
 	// across rolling (never reset, never exposed to clients) so the
 	// lines-bucket ordering stays stable.
 	Seq int64 `json:"seq"`
+	// RolledThrough is the highest seq dropped by rolling so far (0 =
+	// nothing ever dropped). It lets the ?after anchor operator tell
+	// "anchor never existed" (board intact → definitive) apart from
+	// "anchor scrolled away" (indistinguishable from a typo once the line
+	// is gone → spec says return the full retained content).
+	RolledThrough int64 `json:"rolled_through"`
 	// LineCount is this board's rolling cap (default 200, max 500).
 	LineCount int `json:"line_count"`
 	// Lines/Bytes are the current retained content-line count and body
@@ -275,15 +281,44 @@ func (s *Store) AdminBoardPage(page, size int) ([]Board, int, error) {
 	return out, total, err
 }
 
+// AnchorStatus classifies the ?after anchor resolution for the response's
+// meta hint.
+type AnchorStatus string
+
+const (
+	// AnchorFound: the anchor matched a retained line; content starts after it.
+	AnchorFound AnchorStatus = "found"
+	// AnchorNotFound: no retained line matches AND nothing has ever been
+	// rolled off, so the anchor definitively never existed on this board —
+	// empty content plus the meta hint.
+	AnchorNotFound AnchorStatus = "not_found"
+	// AnchorRolledPast: no retained line matches but the board has rolled
+	// lines off, so the anchor may have scrolled away — spec says treat
+	// every retained line as later than the anchor and return the full
+	// content.
+	AnchorRolledPast AnchorStatus = "rolled_past"
+)
+
 // BoardLines reads retained content lines in seq-ascending order.
-//   - latestN > 0: only the most recent latestN lines (still ascending).
+//   - after != "": the anchor operator (v1.3 pin ②) — case-insensitive
+//     substring match, multiple hits take the LAST, content is what follows
+//     it. Resolution of a non-matching anchor lands in the returned
+//     AnchorStatus (NotFound vs RolledPast per the board's RolledThrough).
 //   - match != "": keep only lines whose body contains match
-//     (case-insensitive substring). Filtering happens BEFORE latestN so the
-//     pair reads "last N of the matching lines".
-func (s *Store) BoardLines(boardID string, latestN int, match string) ([]BoardLine, error) {
+//     (case-insensitive substring). Filtering happens AFTER the anchor cut
+//     and BEFORE latestN so the trio reads "after what I saw, matching kw,
+//     last N of that".
+//   - latestN > 0: only the most recent latestN lines (still ascending).
+func (s *Store) BoardLines(boardID string, after string, match string, latestN int) ([]BoardLine, AnchorStatus, error) {
 	var out []BoardLine
+	anchor := AnchorFound
+	after = strings.ToLower(after)
 	match = strings.ToLower(match)
 	err := s.db.View(func(tx *bolt.Tx) error {
+		boardRaw := tx.Bucket(bBoards).Get([]byte(boardID))
+		if boardRaw == nil {
+			return ErrNoBoard
+		}
 		root := tx.Bucket(bBoardLines)
 		if root == nil {
 			return nil
@@ -298,17 +333,47 @@ func (s *Store) BoardLines(boardID string, latestN int, match string) ([]BoardLi
 			if err := json.Unmarshal(v, &l); err != nil {
 				continue
 			}
-			if match != "" && !strings.Contains(strings.ToLower(l.Body), match) {
-				continue
-			}
 			out = append(out, BoardLine{Body: l.Body, At: l.At})
+		}
+		if after != "" {
+			cut := -1
+			for i, l := range out {
+				if strings.Contains(strings.ToLower(l.Body), after) {
+					cut = i // multiple hits take the last
+				}
+			}
+			if cut >= 0 {
+				out = out[cut+1:]
+			} else {
+				// No retained match: definitive only when nothing has ever
+				// been rolled off this board.
+				var b Board
+				if err := json.Unmarshal(boardRaw, &b); err != nil {
+					return err
+				}
+				if b.RolledThrough > 0 {
+					anchor = AnchorRolledPast // full content stays
+				} else {
+					anchor = AnchorNotFound
+					out = nil
+				}
+			}
+		}
+		if match != "" {
+			kept := out[:0]
+			for _, l := range out {
+				if strings.Contains(strings.ToLower(l.Body), match) {
+					kept = append(kept, l)
+				}
+			}
+			out = kept
 		}
 		if latestN > 0 && len(out) > latestN {
 			out = out[len(out)-latestN:]
 		}
 		return nil
 	})
-	return out, err
+	return out, anchor, err
 }
 
 // AppendBoardLine stores one line and applies rolling. ErrBoardFull when the
@@ -342,7 +407,8 @@ func (s *Store) AppendBoardLine(boardID, body string, at time.Time) error {
 		b.Lines++
 		b.Bytes = newBytes
 		// Rolling: drop oldest (lowest seq) past the board's cap, adjusting
-		// the byte counter by what actually leaves.
+		// the byte counter by what actually leaves and advancing the
+		// roll-through watermark (anchor-operator state).
 		for b.Lines > b.LineCount {
 			k, v := bucket.Cursor().First()
 			if k == nil {
@@ -357,6 +423,9 @@ func (s *Store) AppendBoardLine(boardID, body string, at time.Time) error {
 			}
 			b.Lines--
 			b.Bytes -= int64(len(old.Body))
+			if old.Seq > b.RolledThrough {
+				b.RolledThrough = old.Seq
+			}
 			if b.Bytes < 0 {
 				b.Bytes = 0
 			}

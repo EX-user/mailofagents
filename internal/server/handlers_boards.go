@@ -10,8 +10,8 @@ package server
 // links, no Basic auth) — reads/appends/meta. Account auth is required only
 // where ownership matters: create, mine, preamble rewrite, delete. seq is a
 // server-internal counter and never leaves the server (v1.3: after_seq is
-// dead; increments read via ?latest=N, ?match=, and — pending the owner's
-// one-word ruling — ?after=<content anchor>, stubbed 501 below).
+// dead; increments read via ?latest=N, ?match= and the owner-approved
+// ?after=<content anchor>).
 //
 //   POST   /api/boards                    {name, line_count?, split_codes?}    (account)
 //   GET    /api/boards/mine                                                    (account)
@@ -78,7 +78,7 @@ func (s *Server) handleBoardsInfo(w http.ResponseWriter, r *http.Request) {
 			"part=full":    "all retained content lines (seq ascending)",
 			"latest=N":     "last N content lines (ascending)",
 			"match=kw":     "case-insensitive substring filter on content lines; stacks with part=full/latest=N",
-			"after=anchor": "pending owner ruling — responds 501 until frozen",
+			"after=anchor": "content after the last line containing anchor (case-insensitive); stacks with match/latest; miss on an intact board = empty + anchor=not_found, miss on a rolled board = full content + anchor=rolled_past",
 		},
 		"seq": "server-internal monotonic counter, never returned to clients",
 	})
@@ -256,13 +256,16 @@ func (s *Server) handleBoardRead(w http.ResponseWriter, r *http.Request, code st
 		return
 	}
 	q := r.URL.Query()
-	// v1.3 pin ②: the ?after anchor operator is frozen only on the
-	// owner's word; until then it is an explicit stub, not a silent no-op.
+	// v1.3 pin ②, owner-approved: ?after=<content anchor> — substring
+	// match (case-insensitive), multiple hits take the last, content is
+	// what follows it. A miss resolves per the board's roll state.
+	after := ""
 	if q.Has("after") {
-		writeJSON(w, http.StatusNotImplemented, map[string]any{
-			"error": "after anchor operator pending owner ruling",
-		})
-		return
+		after = q.Get("after")
+		if strings.TrimSpace(after) == "" {
+			badRequest(w, "after anchor must be non-empty")
+			return
+		}
 	}
 	base := map[string]any{
 		"name":       board.Name,
@@ -283,14 +286,17 @@ func (s *Server) handleBoardRead(w http.ResponseWriter, r *http.Request, code st
 		latest = n
 	}
 	match := q.Get("match")
-	if !partFull && latest == 0 && match == "" {
+	if !partFull && latest == 0 && match == "" && after == "" {
 		writeJSON(w, http.StatusOK, base)
 		return
 	}
-	lines, err := s.store.BoardLines(board.ID, latest, match)
+	lines, anchor, err := s.store.BoardLines(board.ID, after, match, latest)
 	if err != nil {
 		internalError(w, "read lines: "+err.Error())
 		return
+	}
+	if after != "" {
+		base["anchor"] = string(anchor)
 	}
 	base["content"] = lines
 	writeJSON(w, http.StatusOK, base)
