@@ -277,6 +277,10 @@ func writeFakeCLIsMulti(binDir, evDir string) error {
 # 真 CLI 启动即宣告会话（worker 的 salvage/续谈链依赖这一点），随后才是长活工作。
 printf '{"type":"thread.started","thread_id":"%s"}\n{"sessionID":"%s"}\n'
 sleep "${BENCH_SLOW:-0}"
+if [ -n "$BENCH_FAIL" ]; then
+  echo "opencode: $BENCH_FAIL" >&2
+  exit 42
+fi
 `
 	p := filepath.Join(binDir, "opencode")
 	if err := os.WriteFile(p, []byte(fmt.Sprintf(script, sess, sess)), 0o755); err != nil {
