@@ -72,16 +72,25 @@ func verboseEnabled() bool {
 // (which errorLog archives to the per-account error file).
 func shortErr(err error) string {
 	s := err.Error()
+	// Provider-declared billing/status tokens come FIRST: provider error
+	// payloads quote response headers ("connection":"keep-alive"), so the
+	// bare "connect" in the network case would swallow real quota errors
+	// (S8 ground truth: deepseek 402 wrapped as APIError JSON on stdout).
 	switch {
+	case strings.Contains(s, "429"), strings.Contains(s, "402"),
+		strings.Contains(s, "usage"), strings.Contains(s, "quota"),
+		strings.Contains(s, "限额"), strings.Contains(s, "使用上限"),
+		// real provider wording (S8 ground truth, 2026-09-05): deepseek
+		// reports an exhausted account as "Insufficient Balance" — no
+		// "quota"/"429" token anywhere, so match it case-insensitively.
+		strings.Contains(strings.ToLower(s), "insufficient"),
+		strings.Contains(s, "余额不足"):
+		return "provider quota/429"
 	case strings.Contains(s, "database is locked"):
 		return "opencode db lock (retry queued)"
 	case strings.Contains(s, "certificate"), strings.Contains(s, "stream disconnected"),
 		strings.Contains(s, "Reconnecting"), strings.Contains(s, "connect"):
 		return "network/tls unreachable"
-	case strings.Contains(s, "429"), strings.Contains(s, "usage"),
-		strings.Contains(s, "quota"), strings.Contains(s, "限额"),
-		strings.Contains(s, "使用上限"):
-		return "provider quota/429"
 	case strings.Contains(s, "signal: killed"):
 		return "timeout kill"
 	case strings.Contains(s, "Unknown argument"), strings.Contains(s, "Unknown option"),
