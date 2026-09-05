@@ -555,7 +555,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     return '<div class="attach-list">' + list.map(function (a, i) {
       const isImg = attachIsImage(a), isAud = attachIsAudio(a), isPdf = attachIsPdf(a), isMd = attachIsMd(a), isTxt = attachIsTxt(a);
       const preview = (isImg || isAud || isMd) ? '<div class="attach-preview" data-pv="' + i + '"></div>' : "";
-      const readBtn = isPdf ? '<button class="row-action" data-pdf="' + i + '">' + esc(t("attach.readPdf")) + "</button>" : "";
+      // superior 09-05: no PDF preview button on mobile (no inline PDF
+      // viewer there; canInlinePdf() already gates the lightbox) - the
+      // download button and fallback card remain the paths.
+      const readBtn = (isPdf && canInlinePdf()) ? '<button class="row-action" data-pdf="' + i + '">' + esc(t("attach.readPdf")) + "</button>" : "";
       const mdBtn = isMd ? '<button class="row-action" data-md="' + i + '" title="' + esc(t("attach.expandMd")) + '" aria-label="' + esc(t("attach.expandMd")) + '">⛶</button>' : "";
       const txtBtn = isTxt ? '<button class="row-action" data-txt="' + i + '">' + esc(t("attach.previewTxt")) + "</button>" : "";
       const actions = '<span class="attach-actions"><button class="row-action" data-dl="' + i + '">' + esc(t("attach.download")) + "</button>" + readBtn + mdBtn + txtBtn + "</span>";
