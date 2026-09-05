@@ -60,19 +60,9 @@ func ParseTimeBeat(schedule string) ([]int, error) {
 		if err != nil {
 			return nil, fmt.Errorf("range end %q: %w", parts[2], err)
 		}
-		stepTok := strings.TrimSpace(parts[1])
-		stepMin := 0
-		if strings.HasSuffix(stepTok, "m") {
-			stepMin, err = strconv.Atoi(strings.TrimSuffix(stepTok, "m"))
-			if err != nil || stepMin <= 0 {
-				return nil, fmt.Errorf("range step %q: want a positive minute count", stepTok)
-			}
-		} else {
-			h, err := strconv.Atoi(stepTok)
-			if err != nil || h <= 0 {
-				return nil, fmt.Errorf("range step %q: want hours or minutes (e.g. 1 or 15m)", stepTok)
-			}
-			stepMin = h * 60
+		stepMin, err := parseStep(parts[1])
+		if err != nil {
+			return nil, fmt.Errorf("range step %q: %w", parts[1], err)
 		}
 		if end < start {
 			return nil, fmt.Errorf("range end %02d:%02d before start %02d:%02d", end/60, end%60, start/60, start%60)
@@ -90,7 +80,7 @@ func ParseTimeBeat(schedule string) ([]int, error) {
 	}
 }
 
-// parseHourMin parses "8" (=8:00) or "HH:MM" into minutes-of-day.
+// parseHourMin parses "8", "8.5" (=8:30) or "HH:MM" into minutes-of-day.
 func parseHourMin(tok string) (int, error) {
 	hh, mm := 0, 0
 	if strings.Contains(tok, ":") {
@@ -107,6 +97,14 @@ func parseHourMin(tok string) (int, error) {
 			return 0, err
 		}
 		hh, mm = h, m
+	} else if strings.Contains(tok, ".") {
+		// decimal hours: "8.5" = 8:30, "8.25" = 8:15 (boss ask 2026-09-05)
+		f, err := strconv.ParseFloat(tok, 64)
+		if err != nil {
+			return 0, fmt.Errorf("want HH:MM or hours (8, 8.5)")
+		}
+		hh = int(f)
+		mm = int((f - float64(hh)) * 60)
 	} else {
 		h, err := strconv.Atoi(tok)
 		if err != nil {
@@ -118,6 +116,35 @@ func parseHourMin(tok string) (int, error) {
 		return 0, fmt.Errorf("time %02d:%02d out of range", hh, mm)
 	}
 	return hh*60 + mm, nil
+}
+
+// parseStep parses a step token: bare/fractional hours ("1", "1.5") or
+// minutes with an "m" suffix ("15m"), into minutes.
+func parseStep(tok string) (int, error) {
+	stepTok := strings.TrimSpace(tok)
+	if strings.HasSuffix(stepTok, "m") {
+		m, err := strconv.Atoi(strings.TrimSuffix(stepTok, "m"))
+		if err != nil || m <= 0 {
+			return 0, fmt.Errorf("want a positive minute count")
+		}
+		return m, nil
+	}
+	if strings.Contains(stepTok, ".") {
+		f, err := strconv.ParseFloat(stepTok, 64)
+		if err != nil || f <= 0 {
+			return 0, fmt.Errorf("want positive hours (e.g. 1 or 0.5)")
+		}
+		m := int(f * 60)
+		if m <= 0 {
+			return 0, fmt.Errorf("step rounds to zero")
+		}
+		return m, nil
+	}
+	h, err := strconv.Atoi(stepTok)
+	if err != nil || h <= 0 {
+		return 0, fmt.Errorf("want hours or minutes (e.g. 1 or 15m)")
+	}
+	return h * 60, nil
 }
 
 // beatSlotCrossed reports whether any scheduled slot lies in the minute
