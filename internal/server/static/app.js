@@ -2155,8 +2155,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         '<div class="b-line board-config">' +
         '<label class="board-cfg"><input type="checkbox" data-bf="show_time"' + (cfg.show_time ? " checked" : "") + " /> " + t("board.showTime") + "</label>" +
         '<label class="board-cfg"><input type="checkbox" data-bf="show_by"' + (cfg.show_by ? " checked" : "") + " /> " + t("board.showBy") + "</label>" +
-        '<button class="am-mini' + (cfg.muted ? " del" : "") + '" data-ba="toggle-mute">' + t(cfg.muted ? "board.unmute" : "board.mute") + "</button></div>" +
-        '<div class="b-line muted" style="font-size:11px;">' + t("board.codeInView") + "</div>";
+        '<label class="board-cfg"><input type="checkbox" data-bf="muted"' + (cfg.muted ? " checked" : "") + " /> " + t("board.mute") + "</label></div>";
     }
 
     // Config is fetched lazily on first settings open (rc7: GET response
@@ -2376,15 +2375,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         copyText(location.origin + "/api/boards/" + cc)
           .then(function () { toast(t("board.copied"), "success"); })
           .catch(function () { toast(t("common.error", { msg: "copy failed" }), "error"); });
-      } else if (act === "toggle-mute") {
-        const cfg = b.config || {};
-        try {
-          const d = await api("/api/boards/" + encodeURIComponent(writeCode(b)) + "/config", { method: "POST", body: JSON.stringify({ muted: !cfg.muted }) });
-          b.config = (d && d.config) ? d.config : Object.assign({}, cfg, { muted: !cfg.muted });
-          toast(t("board.saved"), "success");
-        } catch (e) { toastBoardErr(e); return; }
-        refreshSettingsRow(writeCode(b));
-        rerenderViewIfOpen(b);
       } else if (act === "del") {
         if (!window.confirm(t("board.delConfirm"))) return;
         try { await api("/api/boards/" + encodeURIComponent(writeCode(b)), { method: "DELETE" }); boards = boards.filter(function (x) { return x !== b; }); toast(t("board.deleted"), "success"); }
@@ -2532,7 +2522,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // Display toggles (show_time / show_by): partial config update,
     // creator-only server-side; optimistic revert on failure.
     cardEl.addEventListener("change", async function (ev) {
-      const inp = ev.target.closest('input[data-bf="show_time"], input[data-bf="show_by"]');
+      const inp = ev.target.closest('input[data-bf="show_time"], input[data-bf="show_by"], input[data-bf="muted"]');
       if (!inp) return;
       const panel = inp.closest(".board-set");
       if (!panel) return;
