@@ -181,8 +181,9 @@ func (s *Server) handleBoardCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	now := time.Now()
+	creator := accountFrom(r.Context())
 	for _, line := range seed {
-		if err := s.store.AppendBoardLine(board.ID, line, now); err != nil {
+		if err := s.store.AppendBoardLine(board.ID, line, creator, now); err != nil {
 			internalError(w, "seed content: "+err.Error())
 			return
 		}
@@ -295,6 +296,12 @@ func (s *Server) handleBoardCode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleBoardPreamble(w, r, code)
+	case "config":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w)
+			return
+		}
+		s.handleBoardConfig(w, r, code)
 	default:
 		http.Error(w, "no such board", http.StatusNotFound)
 	}
@@ -341,6 +348,7 @@ func (s *Server) handleBoardRead(w http.ResponseWriter, r *http.Request, code st
 		"line_count": board.LineCount,
 		"lines":      board.Lines,
 		"bytes":      board.Bytes,
+		"config":     boardConfigView(board),
 	}
 	partFull := q.Get("part") == "full"
 	latest := 0
@@ -382,6 +390,7 @@ func (s *Server) handleBoardMeta(w http.ResponseWriter, r *http.Request, code st
 		"line_count": board.LineCount,
 		"lines":      board.Lines,
 		"bytes":      board.Bytes,
+		"config":     boardConfigView(board),
 	})
 }
 
@@ -420,6 +429,10 @@ func (s *Server) handleBoardAppend(w http.ResponseWriter, r *http.Request, code 
 		badRequest(w, "line too long")
 		return
 	}
+	if board.Muted {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "board is muted"})
+		return
+	}
 	now := time.Now()
 	// The per-account window only applies when the request actually
 	// carries a valid account credential (optional on this endpoint — the
@@ -439,7 +452,7 @@ func (s *Server) handleBoardAppend(w http.ResponseWriter, r *http.Request, code 
 		http.Error(w, "board append rate limit exceeded (per board)", http.StatusTooManyRequests)
 		return
 	}
-	if err := s.store.AppendBoardLine(board.ID, body, now); err != nil {
+	if err := s.store.AppendBoardLine(board.ID, body, s.optionalAccount(r), now); err != nil {
 		if errors.Is(err, store.ErrBoardFull) {
 			http.Error(w, "board content quota exceeded", http.StatusRequestEntityTooLarge)
 			return
@@ -494,6 +507,63 @@ func (s *Server) handleBoardPreamble(w http.ResponseWriter, r *http.Request, cod
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "preamble": body})
+}
+
+// boardConfigView is the creator-toggleable display/mute configuration.
+func boardConfigView(b *store.Board) map[string]any {
+	return map[string]any{
+		"show_time": b.ShowTime,
+		"show_by":   b.ShowBy,
+		"muted":     b.Muted,
+	}
+}
+
+// handleBoardConfig POSTs a partial config update: creator-only with the
+// write code in the path (preamble three-gate pattern). Keys not present
+// in the body stay unchanged; toggles are render-only and never rewrite
+// stored lines.
+func (s *Server) handleBoardConfig(w http.ResponseWriter, r *http.Request, code string) {
+	board, ref, err := s.store.BoardByCode(code)
+	if err != nil {
+		http.Error(w, "no such board", http.StatusNotFound)
+		return
+	}
+	if !ref.Write {
+		http.Error(w, "code has no write power", http.StatusForbidden)
+		return
+	}
+	address, ok := s.authAccount(w, r)
+	if !ok {
+		return // 401 written
+	}
+	if !strings.EqualFold(address, board.Owner) {
+		http.Error(w, "only the creator can change board config", http.StatusForbidden)
+		return
+	}
+	var req struct {
+		ShowTime *bool `json:"show_time"`
+		ShowBy   *bool `json:"show_by"`
+		Muted    *bool `json:"muted"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := decodeJSON(r, &req); err != nil {
+		badRequest(w, "invalid body: "+err.Error())
+		return
+	}
+	if req.ShowTime == nil && req.ShowBy == nil && req.Muted == nil {
+		badRequest(w, "nothing to update")
+		return
+	}
+	if err := s.store.SetBoardConfig(board.ID, req.ShowTime, req.ShowBy, req.Muted); err != nil {
+		internalError(w, "set config: "+err.Error())
+		return
+	}
+	fresh, err := s.store.BoardByID(board.ID)
+	if err != nil {
+		internalError(w, "reload board: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config": boardConfigView(fresh)})
 }
 
 // handleBoardDelete removes a board: creator or admin only (v1.2 point on

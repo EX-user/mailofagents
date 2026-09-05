@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -69,6 +70,95 @@ line"]}`, nil); code != 400 {
 	}
 	if code := apiCall(t, "GET", ts.URL, "/api/boards/mine", addr, pw, "", &mine); code != 200 || mine.Used != 2 {
 		t.Fatalf("after failed seed used=%d, want 2 (no phantom board)", mine.Used)
+	}
+}
+
+// TestBoardConfigAndAttribution pins the creator-toggleable config
+// (show_time/show_by/muted), the distinct muted 403, and by-capture:
+// authenticated appends record the account, anonymous ones stay "".
+func TestBoardConfigAndAttribution(t *testing.T) {
+	ts, st := newRegisterTestServer(t)
+	owner, ownerPw := mkAccount(t, st, "cfgowner")
+	other, otherPw := mkAccount(t, st, "cfgother")
+
+	var board map[string]any
+	if code := apiCall(t, "POST", ts.URL, "/api/boards", owner, ownerPw,
+		`{"name":"cfg"}`, &board); code != 201 {
+		t.Fatalf("create = %d", code)
+	}
+	wc, _ := board["code"].(string)
+
+	// Config: non-creator (holding the full-power code) -> 403; anonymous -> 401. (holding the write code) -> 403; anonymous -> 401.
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", other, otherPw,
+		`{"muted":true}`, nil); c != http.StatusForbidden {
+		t.Fatalf("other config = %d, want 403", c)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", "", "",
+		`{"muted":true}`, nil); c != http.StatusUnauthorized {
+		t.Fatalf("anon config = %d, want 401", c)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
+		`{}`, nil); c != 400 {
+		t.Fatalf("empty config = %d, want 400", c)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
+		`{"show_time":true,"show_by":true}`, nil); c != 200 {
+		t.Fatalf("config set = %d, want 200", c)
+	}
+
+	// by-capture: authenticated append records the account, anonymous stays "".
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", owner, ownerPw,
+		`{"body":"from owner"}`, nil); c != 200 {
+		t.Fatalf("authed append = %d", c)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", "", "",
+		`{"body":"from anon"}`, nil); c != 200 {
+		t.Fatalf("anon append = %d", c)
+	}
+	var read struct {
+		Content []struct {
+			Body string `json:"body"`
+			By   string `json:"by"`
+		} `json:"content"`
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?part=full", "", "", "", &read); c != 200 {
+		t.Fatalf("read = %d", c)
+	}
+	if len(read.Content) != 2 || read.Content[0].By == "" || read.Content[1].By != "" {
+		t.Fatalf("by capture wrong: %+v", read.Content)
+	}
+
+	// Mute: appends 403 with the distinct error, reads unaffected, unfreeze
+	// restores; toggles never rewrite stored lines (by/by history intact).
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
+		`{"muted":true}`, nil); c != 200 {
+		t.Fatalf("mute = %d", c)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", owner, ownerPw,
+		`{"body":"while muted"}`, nil); c != http.StatusForbidden {
+		t.Fatalf("append while muted = %d, want 403 (creator included)", c)
+	}
+	var mutedRead map[string]any
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?part=full", "", "", "", &mutedRead); c != 200 {
+		t.Fatalf("read while muted = %d", c)
+	}
+	cfg := mutedRead["config"].(map[string]any)
+	if cfg["muted"] != true || cfg["show_by"] != true || cfg["show_time"] != true {
+		t.Fatalf("config echo wrong: %v", cfg)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
+		`{"muted":false}`, nil); c != 200 {
+		t.Fatalf("unmute = %d", c)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", "", "",
+		`{"body":"after unmute"}`, nil); c != 200 {
+		t.Fatalf("append after unmute = %d", c)
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?match="+url.QueryEscape("from owner"), "", "", "", &read); c != 200 {
+		t.Fatalf("history read = %d", c)
+	}
+	if len(read.Content) != 1 || read.Content[0].Body != "from owner" || read.Content[0].By == "" {
+		t.Fatalf("toggle must not rewrite stored lines: %+v", read.Content)
 	}
 }
 

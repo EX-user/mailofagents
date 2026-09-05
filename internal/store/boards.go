@@ -68,6 +68,11 @@ type Board struct {
 	ReadCode   string `json:"read_code"`
 	WriteCode  string `json:"write_code"`
 	Preamble   string `json:"preamble"`
+	// Display/mute configuration (creator-toggleable via /config; render
+	// switches only — they never rewrite stored lines).
+	ShowTime bool `json:"show_time"`
+	ShowBy   bool `json:"show_by"`
+	Muted    bool `json:"muted"`
 	// Seq is the server-internal monotonic line counter. It keeps rising
 	// across rolling (never reset, never exposed to clients) so the
 	// lines-bucket ordering stays stable.
@@ -103,16 +108,19 @@ type boardCodeRef struct {
 }
 
 // BoardLine is one retained content line as returned to readers. At is unix
-// seconds (append time). The seq lives only in the bucket key.
+// seconds (append time). By is the appending account address, or "" when the
+// append was code-only (anonymous). The seq lives only in the bucket key.
 type BoardLine struct {
 	Body string `json:"body"`
 	At   int64  `json:"at"`
+	By   string `json:"by"`
 }
 
 // boardLine is the stored form (seq duplicated inside for trim accounting).
 type boardLine struct {
 	Body string `json:"body"`
 	At   int64  `json:"at"`
+	By   string `json:"by"`
 	Seq  int64  `json:"seq"`
 }
 
@@ -348,7 +356,7 @@ func (s *Store) BoardLines(boardID string, after string, match string, latestN i
 			if err := json.Unmarshal(v, &l); err != nil {
 				continue
 			}
-			out = append(out, BoardLine{Body: l.Body, At: l.At})
+			out = append(out, BoardLine{Body: l.Body, At: l.At, By: l.By})
 		}
 		if after != "" {
 			cut := -1
@@ -395,7 +403,7 @@ func (s *Store) BoardLines(boardID string, after string, match string, latestN i
 // line would push the board past BoardBytesMax (quota rejects, never rolls
 // away content to make room). The seq counter advances even for lines that
 // are immediately rolled off — monotonicity is not tied to retention.
-func (s *Store) AppendBoardLine(boardID, body string, at time.Time) error {
+func (s *Store) AppendBoardLine(boardID, body, by string, at time.Time) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		braw := tx.Bucket(bBoards).Get([]byte(boardID))
 		if braw == nil {
@@ -415,7 +423,7 @@ func (s *Store) AppendBoardLine(boardID, body string, at time.Time) error {
 			return err
 		}
 		b.Seq++
-		l := boardLine{Body: body, At: at.Unix(), Seq: b.Seq}
+		l := boardLine{Body: body, At: at.Unix(), By: by, Seq: b.Seq}
 		if err := bucket.Put(boardLineKey(b.Seq), mustJSON(l)); err != nil {
 			return err
 		}
@@ -444,6 +452,31 @@ func (s *Store) AppendBoardLine(boardID, body string, at time.Time) error {
 			if b.Bytes < 0 {
 				b.Bytes = 0
 			}
+		}
+		return tx.Bucket(bBoards).Put([]byte(boardID), mustJSON(b))
+	})
+}
+
+// SetBoardConfig applies a partial config update (only provided keys
+// change). Creator-only enforcement lives in the HTTP layer.
+func (s *Store) SetBoardConfig(boardID string, showTime, showBy, muted *bool) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		braw := tx.Bucket(bBoards).Get([]byte(boardID))
+		if braw == nil {
+			return ErrNoBoard
+		}
+		var b Board
+		if err := json.Unmarshal(braw, &b); err != nil {
+			return err
+		}
+		if showTime != nil {
+			b.ShowTime = *showTime
+		}
+		if showBy != nil {
+			b.ShowBy = *showBy
+		}
+		if muted != nil {
+			b.Muted = *muted
 		}
 		return tx.Bucket(bBoards).Put([]byte(boardID), mustJSON(b))
 	})

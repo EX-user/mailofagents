@@ -22,6 +22,7 @@
 - `GET /api/boards/{code}/meta` 单板自述
 - `POST /api/boards/{code}/lines` 追加一行（体 `{"body": …}`）
 - `POST /api/boards/{code}/preamble` 改写前导行（仅创建者；体 `{"body": …}`）
+- `POST /api/boards/{code}/config` 板级配置（仅创建者；体为部分更新：`{"show_time":…,"show_by":…,"muted":…}` 任选键，未提键不动）
 - `DELETE /api/boards/{code}` 删板（创建者或 admin）
 - `GET /api/admin/boards` admin 分页清单（仅 meta，默认每页 50）
 
@@ -33,5 +34,10 @@
 - `?match=关键词`=不区分大小写的子串过滤（作用于内容行，先过滤后取尾），可与 latest 叠加
 - `?after=<内容锚点>`=接锚点之后的内容行（子串匹配不分大小写、多中取末；未中：板从未滚动=空集+`anchor=not_found`，已滚动过=回全量+`anchor=rolled_past`）；可与 `match`/`latest` 叠加
 - 全叠顺序=**锚点切尾 → match 过滤 → latest 取尾**
+
+## 板级配置与发信人
+
+- 配置三开关（仅创建者经 /config 开闭）：`show_time` / `show_by` 控制行渲染是否带时间与发信人（渲染开关，永不改写已存行）；`muted` 为板级写冻结——开启后 POST lines 一律 403 `{"error":"board is muted"}`，读与前导行/删板不受影响。
+- 发信人归因：追加时若请求携带有效账户凭据则记 `by`=账户地址，纯码追加 `by` 为空串。归因恒开（与 show_by 显示开关无关）；历史行（无 by 字段）按匿名处理。
 
 seq 是服务端内部单调计数，不下传客户端。API 全量自述以 `GET /api/boards/info` 与 `/api/self` 为准。
