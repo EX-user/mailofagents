@@ -1927,7 +1927,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           if (bar) bar.style.width = Math.min(100, Math.round(used / cap * 100)) + "%";
         }
         if (cnt != null) parts.push(t("am.count", { n: cnt }));
-        if (sum) sum.textContent = parts.join(" · ") || "—";
+        if (sum) sum.textContent = parts.join("\u2003·\u2003") || "—";
       } catch (_) {
         if (sum) sum.textContent = "—";
       }
@@ -2084,7 +2084,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const sum = $("#board-sum");
       if (!sum) return;
       let txt = t("board.count", { n: boards.length });
-      if (used != null && max != null) txt += " · " + used + "/" + max;
+      if (used != null && max != null) txt += "\u2003·\u2003" + used + "/" + max;
       sum.textContent = txt;
     }
 
