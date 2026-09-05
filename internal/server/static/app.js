@@ -2162,7 +2162,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     function renderMarkdown(text) {
       if (window.marked && window.DOMPurify) {
         try {
-          return DOMPurify.sanitize(window.marked.parse(text || ""), {
+          return DOMPurify.sanitize(window.marked.parse(text || "", { breaks: true }), {
             FORBID_TAGS: ["style", "img", "audio", "video", "iframe"], FORBID_ATTR: ["style"]
           });
         } catch (_) { /* fall through to plain */ }
