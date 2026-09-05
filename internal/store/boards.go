@@ -323,7 +323,9 @@ const (
 //     last N of that".
 //   - latestN > 0: only the most recent latestN lines (still ascending).
 func (s *Store) BoardLines(boardID string, after string, match string, latestN int) ([]BoardLine, AnchorStatus, error) {
-	var out []BoardLine
+	// Non-nil from the start: an empty result must marshal as [] not null
+	// (clients iterate content without null-guards).
+	out := []BoardLine{}
 	anchor := AnchorFound
 	after = strings.ToLower(after)
 	match = strings.ToLower(match)
@@ -368,7 +370,7 @@ func (s *Store) BoardLines(boardID string, after string, match string, latestN i
 					anchor = AnchorRolledPast // full content stays
 				} else {
 					anchor = AnchorNotFound
-					out = nil
+					out = out[:0]
 				}
 			}
 		}
