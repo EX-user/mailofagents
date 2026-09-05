@@ -2053,6 +2053,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     function toastBoardErr(e) {
       const msg = String((e && e.message) || e || "");
       if (msg.indexOf("429") >= 0) toast(t("board.rate"), "error");
+      else if (msg.indexOf("muted") >= 0) toast(t("board.mutedToast"), "error");
       else if (msg.indexOf("404") >= 0) toast(t("board.gone"), "error");
       else if (msg.indexOf("403") >= 0) toast(t("board.forbidden"), "error");
       else toast(t("common.error", { msg: msg }), "error");
@@ -2091,6 +2092,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       boardSum();
       const box = $("#board-rows");
       if (!box) return;
+      const openCodes = [];
+      const openPans = box.querySelectorAll(".board-set:not(.hidden)");
+      for (let i = 0; i < openPans.length; i++) openCodes.push(openPans[i].dataset.set);
       if (!boards.length) {
         box.innerHTML = '<p class="muted" style="font-size:12px;">' + esc(t("board.empty")) + "</p>";
         return;
@@ -2110,6 +2114,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           "</span></div>" +
           '<div class="board-set hidden" data-set="' + esc(code) + '"></div>';
       }).join("");
+      // restore settings panels that were open before the rebuild
+      // (append re-renders the list; the panel must survive, 1009 note).
+      for (let i = 0; i < openCodes.length; i++) {
+        const b2 = findBoard(openCodes[i]);
+        const pn = box.querySelector('.board-set[data-set="' + openCodes[i] + '"]');
+        if (b2 && pn) { pn.innerHTML = settingsHtml(b2); pn.classList.remove("hidden"); }
+      }
     }
 
     function findBoard(code) {
@@ -2137,10 +2148,39 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
     function settingsHtml(b) {
       const code = writeCode(b);
+      const cfg = b.config || {};
       return '<div class="b-line"><span>' + t("board.header") + "</span>" +
         '<input type="text" data-bf="header" value="' + esc(b.preamble || "") + '" maxlength="400" placeholder="' + esc(t("board.headerPh")) + '" />' +
         '<button class="am-mini" data-ba="save-header">' + t("board.save") + "</button></div>" +
+        '<div class="b-line board-config">' +
+        '<label class="board-cfg"><input type="checkbox" data-bf="show_time"' + (cfg.show_time ? " checked" : "") + " /> " + t("board.showTime") + "</label>" +
+        '<label class="board-cfg"><input type="checkbox" data-bf="show_by"' + (cfg.show_by ? " checked" : "") + " /> " + t("board.showBy") + "</label>" +
+        '<button class="am-mini' + (cfg.muted ? " del" : "") + '" data-ba="toggle-mute">' + t(cfg.muted ? "board.unmute" : "board.mute") + "</button></div>" +
         '<div class="b-line muted" style="font-size:11px;">' + t("board.codeInView") + "</div>";
+    }
+
+    // Config is fetched lazily on first settings open (rc7: GET response
+    // carries the config block); a failed fetch still yields {} so the
+    // panel stays usable.
+    function ensureConfig(b, cb) {
+      if (b.config) { if (cb) cb(); return; }
+      api("/api/boards/" + encodeURIComponent(writeCode(b)), { keepSession: true })
+        .then(function (d) { b.config = (d && d.config) ? d.config : {}; })
+        .catch(function () { b.config = {}; })
+        .then(function () { if (cb) cb(); });
+    }
+
+    function rerenderViewIfOpen(b) {
+      const m = document.querySelector(".board-modal");
+      if (!m) return;
+      const code = writeCode(b), rc = readCode(b);
+      if (m.dataset.code !== code && m.dataset.code !== rc) return;
+      m.querySelector(".board-content").innerHTML = renderBoardContent(linesOf(b), b.config);
+      const headEl = m.querySelector(".board-head");
+      const badge = headEl.querySelector(".board-muted-badge");
+      const want = b.config && b.config.muted;
+      if (want && !badge) headEl.insertAdjacentHTML("beforeend", ' <span class="board-muted-badge">' + esc(t("board.mutedBadge")) + "</span>");
+      else if (!want && badge) badge.remove();
     }
 
     function refreshSettingsRow(code) {
@@ -2157,7 +2197,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       for (let i = 0; i < all.length; i++) all[i].classList.add("hidden");
       if (!showing) {
         const b = findBoard(code);
-        if (b) { panel.innerHTML = settingsHtml(b); panel.classList.remove("hidden"); }
+        if (b) {
+          panel.innerHTML = settingsHtml(b);
+          panel.classList.remove("hidden");
+          ensureConfig(b, function () { refreshSettingsRow(code); });
+        }
       }
     }
 
@@ -2175,12 +2219,26 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // Per-line rendering (superior tweaks 09-05 #1): each appended line
     // becomes a bordered block; markdown `---` semantics untouched
     // (setext H2 trap, Devi note).
-    function renderBoardContent(text) {
-      if (!text) return "";
-      const lines = String(text).split(/\r?\n/);
-      return lines.map(function (ln) {
-        return '<div class="board-line">' + renderMarkdown(ln) + "</div>";
+    // Config-aware per-line rendering (round-2 polish #1, main 33e5dd6):
+    // lines are {body, at, by}; [time]/address: prefixes render only when
+    // the board config flags are on (display-only - history is kept
+    // server-side; by="" renders without the address prefix).
+    function renderBoardContent(lines, cfg) {
+      if (!lines || !lines.length) return "";
+      return lines.map(function (l) {
+        const o = (typeof l === "string") ? { body: l } : (l || {});
+        let meta = "";
+        if (cfg && cfg.show_time && o.at) meta += "[" + esc(fmtTime(o.at)) + "] ";
+        if (cfg && cfg.show_by && o.by) meta += esc(o.by) + ": ";
+        return '<div class="board-line">' +
+          (meta ? '<span class="board-line-meta">' + meta + "</span>" : "") +
+          renderMarkdown(o.body) + "</div>";
       }).join("");
+    }
+    function linesOf(b) {
+      if (b.lineObjs) return b.lineObjs;
+      return String(b.content || "").split(/\r?\n/).filter(function (x) { return x !== ""; })
+        .map(function (x) { return { body: x }; });
     }
 
     function openView(target) {
@@ -2194,12 +2252,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       if (old) old.remove();
       const lb = document.createElement("div");
       lb.className = "board-modal";
+      lb.dataset.code = addr;
       const frame = document.createElement("div");
       frame.className = "board-modal-frame";
       const head = document.createElement("div");
       head.className = "board-head";
       head.innerHTML = "<strong>" + esc(b.name || "") + "</strong>" +
-        (b.preamble ? '<span class="muted"> — ' + esc(b.preamble) + "</span>" : "");
+        (b.preamble ? '<span class="muted"> — ' + esc(b.preamble) + "</span>" : "") +
+        (b.config && b.config.muted ? ' <span class="board-muted-badge">' + esc(t("board.mutedBadge")) + "</span>" : "");
       const body = document.createElement("div");
       body.className = "board-content";
       body.innerHTML = '<p class="muted" style="font-size:12px;">…</p>';
@@ -2236,12 +2296,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           if (head1 && head1.preamble != null) {
             b.preamble = head1.preamble;
             head.innerHTML = "<strong>" + esc(b.name || head1.name || "") + "</strong>" +
-              (head1.preamble ? '<span class="muted"> — ' + esc(head1.preamble) + "</span>" : "");
+              (head1.preamble ? '<span class="muted"> — ' + esc(head1.preamble) + "</span>" : "") +
+              (b.config && b.config.muted ? ' <span class="board-muted-badge">' + esc(t("board.mutedBadge")) + "</span>" : "");
           }
+          if (head1 && head1.config) b.config = head1.config;
           const full = await api("/api/boards/" + encodeURIComponent(addr) + "?part=full", { keepSession: true });
-          const lines = (full && full.content) ? full.content.map(function (l) { return l.body; }) : [];
-          b.content = lines.join("\n");
-          body.innerHTML = renderBoardContent(b.content);
+          b.lineObjs = (full && full.content) ? full.content : [];
+          if (full && full.config) b.config = full.config;
+          body.innerHTML = renderBoardContent(linesOf(b), b.config);
         } catch (e) {
           body.innerHTML = '<p class="muted" style="font-size:12px;">' + esc(
             String((e && e.message) || "").indexOf("404") >= 0 ? t("board.gone") : t("board.loadErr")) + "</p>";
@@ -2261,7 +2323,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
             appendBtn.textContent = t("subs.cancel");
             saveBtn.classList.remove("hidden");
           } else {
-            body.innerHTML = renderBoardContent(b.content || "");
+            body.innerHTML = renderBoardContent(linesOf(b), b.config);
             body.classList.remove("hidden");
             edit.classList.add("hidden");
             appendBtn.textContent = t("board.append");
@@ -2276,13 +2338,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
             await api("/api/boards/" + encodeURIComponent(addr) + "/lines", { method: "POST", body: JSON.stringify({ body: add }) });
             toast(t("board.saved"), "success");
           } catch (e) { toastBoardErr(e); return; }
-          if (isOwn) {
-            b.content = (b.content ? b.content + "\n" : "") + add;
-            if (typeof b.lines === "number") b.lines += add.split("\n").length;
-          } else {
-            bvContentAppend(b, add);
-          }
-          body.innerHTML = renderBoardContent(b.content);
+          const me = getSession() || {};
+          const fresh = add.split(/\r?\n/).map(function (x) {
+            return { body: x, at: Math.floor(Date.now() / 1000), by: me.address || "" };
+          });
+          b.lineObjs = linesOf(b).concat(fresh);
+          if (typeof b.lines === "number") b.lines += fresh.length;
+          body.innerHTML = renderBoardContent(b.lineObjs, b.config);
           body.classList.remove("hidden");
           edit.classList.add("hidden");
           edit.value = "";
@@ -2314,6 +2376,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         copyText(location.origin + "/api/boards/" + cc)
           .then(function () { toast(t("board.copied"), "success"); })
           .catch(function () { toast(t("common.error", { msg: "copy failed" }), "error"); });
+      } else if (act === "toggle-mute") {
+        const cfg = b.config || {};
+        try {
+          const d = await api("/api/boards/" + encodeURIComponent(writeCode(b)) + "/config", { method: "POST", body: JSON.stringify({ muted: !cfg.muted }) });
+          b.config = (d && d.config) ? d.config : Object.assign({}, cfg, { muted: !cfg.muted });
+          toast(t("board.saved"), "success");
+        } catch (e) { toastBoardErr(e); return; }
+        refreshSettingsRow(writeCode(b));
+        rerenderViewIfOpen(b);
       } else if (act === "del") {
         if (!window.confirm(t("board.delConfirm"))) return;
         try { await api("/api/boards/" + encodeURIComponent(writeCode(b)), { method: "DELETE" }); boards = boards.filter(function (x) { return x !== b; }); toast(t("board.deleted"), "success"); }
@@ -2344,15 +2415,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           const head1 = await api("/api/boards/" + encodeURIComponent(code), { keepSession: true });
           bv.name = head1.name || code;
           bv.preamble = head1.preamble || "";
+          if (head1.config) bv.config = head1.config;
           const full = await api("/api/boards/" + encodeURIComponent(code) + "?part=full", { keepSession: true });
-          const lines = (full && full.content) ? full.content.map(function (l) { return l.body; }) : [];
-          bv.content = lines.join("\n");
+          bv.lineObjs = (full && full.content) ? full.content : [];
+          if (full && full.config) bv.config = full.config;
           bv.lines = full ? full.lines : null;
           const lb = document.querySelector(".board-modal");
           if (!lb) return;
           lb.querySelector(".board-head").innerHTML = "<strong>" + esc(bv.name) + "</strong>" +
-            (bv.preamble ? '<span class="muted"> — ' + esc(bv.preamble) + "</span>" : "");
-          lb.querySelector(".board-content").innerHTML = renderBoardContent(bv.content);
+            (bv.preamble ? '<span class="muted"> — ' + esc(bv.preamble) + "</span>" : "") +
+            (bv.config && bv.config.muted ? ' <span class="board-muted-badge">' + esc(t("board.mutedBadge")) + "</span>" : "");
+          lb.querySelector(".board-content").innerHTML = renderBoardContent(linesOf(bv), bv.config);
           recordShared(bv);
         } catch (e) {
           const lb = document.querySelector(".board-modal");
@@ -2454,6 +2527,29 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         if (!panel) return;
         boardAction(panel.dataset.set, actBtn.dataset.ba, panel);
       }
+    });
+
+    // Display toggles (show_time / show_by): partial config update,
+    // creator-only server-side; optimistic revert on failure.
+    cardEl.addEventListener("change", async function (ev) {
+      const inp = ev.target.closest('input[data-bf="show_time"], input[data-bf="show_by"]');
+      if (!inp) return;
+      const panel = inp.closest(".board-set");
+      if (!panel) return;
+      const b = findBoard(panel.dataset.set);
+      if (!b) return;
+      const patch = {};
+      patch[inp.dataset.bf] = inp.checked;
+      try {
+        const d = await api("/api/boards/" + encodeURIComponent(writeCode(b)) + "/config", { method: "POST", body: JSON.stringify(patch) });
+        b.config = (d && d.config) ? d.config : Object.assign({}, b.config || {}, patch);
+        toast(t("board.saved"), "success");
+      } catch (e) {
+        inp.checked = !inp.checked;
+        toastBoardErr(e);
+        return;
+      }
+      rerenderViewIfOpen(b);
     });
 
     // Load on first entry to the profile tab (same grammar as the

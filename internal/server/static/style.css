@@ -2597,3 +2597,10 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   .board-modal { padding: 10px; }
   .board-modal-frame { height: min(86vh, 720px); padding: 12px; }
 }
+/* Board config UI (round-2 polish #1): line meta prefixes, config row,
+   muted badge. */
+.board-line-meta { color: var(--muted); font-size: 11px; margin-right: 4px; }
+.board-cfg { display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--muted); cursor: pointer; }
+.board-muted-badge { color: var(--error); font-size: 11px;
+  border: 1px solid var(--error); border-radius: 8px; padding: 0 6px; }
