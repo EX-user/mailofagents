@@ -2317,13 +2317,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         const appendBtn = bar.querySelector('[data-vb="toggle-edit"]');
         if (act === "toggle-edit") {
           if (edit.classList.contains("hidden")) {
+            // superior 09-05: content stays visible - the write box lifts
+            // it (body shrinks/scrolls) instead of being covered.
             edit.classList.remove("hidden");
-            body.classList.add("hidden");
             appendBtn.textContent = t("subs.cancel");
             saveBtn.classList.remove("hidden");
           } else {
             body.innerHTML = renderBoardContent(linesOf(b), b.config);
-            body.classList.remove("hidden");
             edit.classList.add("hidden");
             appendBtn.textContent = t("board.append");
             saveBtn.classList.add("hidden");
@@ -2344,7 +2344,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           b.lineObjs = linesOf(b).concat(fresh);
           if (typeof b.lines === "number") b.lines += fresh.length;
           body.innerHTML = renderBoardContent(b.lineObjs, b.config);
-          body.classList.remove("hidden");
           edit.classList.add("hidden");
           edit.value = "";
           appendBtn.textContent = t("board.append");
