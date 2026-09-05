@@ -35,6 +35,23 @@ type Duty struct {
 	urgentCh       chan struct{} // capacity-1: fires an immediate re-check after an urgent interrupt
 	superiors      []string      // fallback escalation addresses: declared superiors via /api/subs (refreshed every 10 min)
 	compactPending bool          // notice due: next wake carries the persist-memory notice; compact in place after it
+
+	// time_beat (clock-scheduled beats, boss spec 2026-09-05): slots are
+	// minutes-of-day; a slot crossing sets beatPending (the [报时] line
+	// rides the next wake) and — when a wake is in flight and the internal
+	// min interval allows — cancels the wake for an immediate beat re-wake.
+	beatSlots         []int        // parsed schedule; nil = feature off
+	beatPending       atomic.Bool  // a slot crossed: next wake carries the beat line
+	beatHit           atomic.Bool  // a slot interrupted the CURRENT wake
+	lastSlotCheck     atomic.Int64 // unix nano: last minute boundary the beat logic covered
+	lastBeatInterrupt atomic.Int64 // unix nano: last beat INTERRUPT (min-interval anchor)
+
+	// heartbeat upload (waiting/working signals, boss spec 2026-09-05):
+	// POSTed to /api/worker/heartbeat; a 404 (server without the endpoint)
+	// disables uploads silently for this duty's lifetime.
+	hbDisabled atomic.Bool
+	hbLast     atomic.Int64 // unix nano: last successful upload
+	hbState    string       // last uploaded state (mu)
 }
 
 // cliWakeLocks serializes wakes per CLI id within this worker process (see
@@ -42,7 +59,7 @@ type Duty struct {
 var cliWakeLocks sync.Map // cli id -> *sync.Mutex
 
 func NewDuty(cfg *Config, fresh, compactBeforeWake bool) *Duty {
-	return &Duty{
+	d := &Duty{
 		cfg:               cfg,
 		mail:              NewMailClient(cfg.Server, cfg.Address, cfg.Password),
 		adapter:           pickAdapter(cfg.CLI),
@@ -50,6 +67,10 @@ func NewDuty(cfg *Config, fresh, compactBeforeWake bool) *Duty {
 		compactBeforeWake: compactBeforeWake,
 		urgentCh:          make(chan struct{}, 1),
 	}
+	// LoadConfigs already validated the schedule; a parse failure here just
+	// means the feature stays off (direct NewDuty callers bypass validation).
+	d.beatSlots, _ = ParseTimeBeat(cfg.TimeBeat)
+	return d
 }
 
 // logf prefixes every duty log line with the account local-part so
@@ -289,7 +310,9 @@ func (d *Duty) Run(ctx context.Context) {
 	}
 	d.lastBeat = time.Now()
 	d.startedAt = time.Now()
+	d.lastSlotCheck.Store(time.Now().UnixNano())
 	go d.refreshContacts(ctx)
+	go d.heartbeatLoop(ctx)
 
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
@@ -433,12 +456,60 @@ func (d *Duty) watchUrgent(wakeCtx context.Context, cancel context.CancelFunc, d
 	}
 }
 
+// watchBeat is the clock twin of watchUrgent: a 1s ticker checks whether a
+// scheduled slot crossed since the last covered boundary. A crossing always
+// sets beatPending (the [报时] line rides the next wake); it only CANCELS
+// the in-flight wake when the internal min interval since the last beat
+// interrupt allows — frequent model interruptions are exactly what the
+// constant exists to prevent (boss ruling: user-unconfigurable).
+func (d *Duty) watchBeat(wakeCtx context.Context, cancel context.CancelFunc, done func()) {
+	defer done()
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-wakeCtx.Done():
+			return
+		case <-t.C:
+			now := time.Now()
+			from := time.Unix(0, d.lastSlotCheck.Load())
+			if !beatSlotCrossed(d.beatSlots, from, now) {
+				continue
+			}
+			d.lastSlotCheck.Store(now.UnixNano())
+			d.beatPending.Store(true)
+			if time.Since(time.Unix(0, d.lastBeatInterrupt.Load())) >= beatMinInterval {
+				d.lastBeatInterrupt.Store(now.UnixNano())
+				d.beatHit.Store(true)
+				d.logf("time-beat: scheduled slot reached, interrupting wake")
+				cancel()
+				return
+			}
+			// inside the min interval: no interrupt — the pending line rides
+			// the next natural wake instead
+		}
+	}
+}
+
 func (d *Duty) checkOnce(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
+	// time_beat prologue: consume any minute boundary the poll sleep
+	// covered. A crossing always sets beatPending (the [报时] line rides
+	// the next wake); whether it also INTERRUPTS an in-flight wake is
+	// watchBeat's call during the wake itself.
+	now := time.Now()
+	if len(d.beatSlots) > 0 {
+		from := time.Unix(0, d.lastSlotCheck.Load())
+		if beatSlotCrossed(d.beatSlots, from, now) {
+			d.beatPending.Store(true)
+		}
+		d.lastSlotCheck.Store(now.UnixNano())
+	}
 	unread, err := d.mail.UnreadInbox(50)
 	if err != nil {
 		short := shortErr(err)
 		board.Set(tag, "waiting", "poll failed: "+short)
+		d.hb("waiting", "poll failed: "+short)
 		d.logf("poll failed: %s", short)
 		d.noteFailure("poll: " + short)
 		return
@@ -451,12 +522,15 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		dueMark = " [duty window due]"
 	}
 	board.Set(tag, "waiting", fmt.Sprintf("%d unread%s", len(unread), dueMark))
-	// Empty-inbox wake suppressors, with two exceptions: compact_pending
-	// forces a round (persist memory before compaction), and an empty
+	d.hb("waiting", fmt.Sprintf("%d unread%s", len(unread), dueMark))
+	// Empty-inbox wake suppressors, with three exceptions: compact_pending
+	// forces a round (persist memory before compaction), beat_pending
+	// forces a round (the [报时] line is the whole point of a clock beat —
+	// it must land at its scheduled time, mail or no mail), and an empty
 	// session id forces the bootstrap round — onboarding with no mail yet,
 	// so the agent orients itself and builds its memory file ahead of the
 	// first real mail.
-	if len(unread) == 0 && !dutyDue && !d.compactPending && d.sessionID != "" {
+	if len(unread) == 0 && !dutyDue && !d.compactPending && !d.beatPending.Load() && d.sessionID != "" {
 		d.failStreak = 0
 		return
 	}
@@ -473,9 +547,14 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.logf("wake: time beat (session %q)", d.sessionID)
 	}
 	board.Set(tag, "working", "digest sent, model is on it…")
+	d.hb("working", "digest sent")
 
 	var timeBeat string
-	if dutyDue {
+	switch {
+	case d.beatPending.Swap(false):
+		timeBeat = fmt.Sprintf("[报时] 定时报时到点（time_beat 档）。当前时间 %s。若你有到点的定时任务请执行；没有则本条无需回信，知悉即可。",
+			time.Now().Format("2006-01-02 15:04 -0700"))
+	case dutyDue:
 		timeBeat = fmt.Sprintf("[报时] 值守已连续运行 %s，当前时间 %s。若你有到点的定时任务请执行；没有则本条无需回信，知悉即可。",
 			time.Since(d.lastBeat).Round(time.Second), time.Now().Format("2006-01-02 15:04:05 -0700"))
 		d.lastBeat = time.Now()
@@ -508,6 +587,11 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	if d.cfg.Emergency.UrgentPhrase != "" {
 		urgentDone = make(chan struct{})
 		go d.watchUrgent(wakeCtx, cancel, func() { close(urgentDone) })
+	}
+	var beatDone chan struct{}
+	if len(d.beatSlots) > 0 {
+		beatDone = make(chan struct{})
+		go d.watchBeat(wakeCtx, cancel, func() { close(beatDone) })
 	}
 	// Serialize wakes per CLI within this worker process: opencode keeps a
 	// single global SQLite session store per user, so two concurrent
@@ -552,6 +636,10 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		cancel() // wake over: the watcher exits via its wakeCtx select
 		<-urgentDone
 	}
+	if beatDone != nil {
+		cancel()
+		<-beatDone
+	}
 	if ctx.Err() != nil {
 		return // shutting down; do not count as failure
 	}
@@ -575,6 +663,14 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			d.urgentNow()
 			return
 		}
+		if d.beatHit.Swap(false) {
+			// time-beat interrupt (boss spec 2026-09-05): a scheduled clock
+			// slot crossed mid-wake; re-wake at once with the [报时] line —
+			// beatPending was set by watchBeat before the cancel.
+			d.logf("time-beat interrupt: wake cancelled, re-waking with beat line")
+			d.urgentNow()
+			return
+		}
 		// Failure display: the compact classified reason goes on the reused
 		// board row (and one short log line); the full stderr/stdout tails
 		// archive to the per-account error file.
@@ -587,6 +683,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			short += " · session salvaged"
 		}
 		board.Set(tag, "waiting", "wake failed: "+short)
+		d.hb("waiting", "wake failed: "+short)
 		d.logf("wake failed: %s", short)
 		if wakeCtx.Err() != context.DeadlineExceeded {
 			// A watchdog timeout on a long-running turn is expected and
@@ -608,6 +705,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		if c, ok := d.adapter.(Compacter); ok && d.sessionID != "" {
 			d.mu.Unlock()
 			board.Set(tag, "working", "compacting session in place…")
+			d.hb("working", "compacting session in place")
 			d.logf("compact: summarizing session %s in place", d.sessionID)
 			cctx, ccancel := context.WithTimeout(ctx, 3*time.Minute)
 			err := c.CompactSession(cctx, d.cfg, d.sessionID)
@@ -630,6 +728,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// No log line on success: the board row (last ok + session head) and
 	// the shutdown report carry the trace; scrollback stays flat.
 	board.Set(tag, "waiting", "last ok: "+truncate(newID, 24))
+	d.hb("waiting", "last ok: "+truncate(newID, 24))
 
 	// compact_notice_tokens: if this wake's context-size report crossed the
 	// threshold, the NEXT wake carries the compaction notice; after that

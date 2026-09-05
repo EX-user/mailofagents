@@ -29,6 +29,7 @@ type Config struct {
 	TimeoutSec          int               `json:"timeout_sec"`             // per-wake process timeout (hard kill)
 	SessionMaxMin       int               `json:"session_max_runtime_min"` // soft cap before interruption+resume
 	DutyWindowMin       int               `json:"duty_window_min"`         // max continuous duty stretch; 0/absent = unlimited (no time-beat wakes)
+	TimeBeat            string            `json:"time_beat"`               // clock-scheduled beat interrupts (boss spec 2026-09-05): "{8:00,9:30}" enum or "[8:1:22]" step range; absent = off. Beat interrupts an in-flight wake and injects the time; min interval between interrupts is a worker-internal constant (user-unconfigurable)
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`   // context-size notice threshold: one persist-memory round, then in-place compaction (adapter entry) or the CLI's built-in auto-compact; the session is never rotated. 0/absent = built-in compaction only
 	ContextWindow       int64             `json:"context_window"`          // model context window in tokens (optional) — powers the status board's ctx% readout; falls back to compact_notice_tokens as the reference, absolute count only when neither is set
 	Model               string            `json:"model"`                   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
@@ -183,6 +184,9 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 			if ag.DutyWindowMin > 0 {
 				c.DutyWindowMin = ag.DutyWindowMin
 			}
+			if ag.TimeBeat != "" {
+				c.TimeBeat = ag.TimeBeat
+			}
 			if ag.CompactNoticeTokens > 0 {
 				c.CompactNoticeTokens = ag.CompactNoticeTokens
 			}
@@ -248,6 +252,13 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 		if c.Emergency.UrgentPhrase != "" && len([]rune(c.Emergency.UrgentPhrase)) <= 8 {
 			return nil, fmt.Errorf("emergency.urgent_phrase must be longer than 8 characters (got %d runes)", len([]rune(c.Emergency.UrgentPhrase)))
 		}
+		// time_beat: fail fast on an unparsable schedule (a silently dead
+		// beat feature would look exactly like a missed alarm).
+		if c.TimeBeat != "" {
+			if _, err := ParseTimeBeat(c.TimeBeat); err != nil {
+				return nil, fmt.Errorf("time_beat: %w", err)
+			}
+		}
 		c.defaults()
 	}
 	return out, nil
@@ -306,6 +317,7 @@ type fileConfig struct {
 	TimeoutSec          int               `json:"timeout_sec"`
 	SessionMaxMin       int               `json:"session_max_runtime_min"`
 	DutyWindowMin       int               `json:"duty_window_min"`
+	TimeBeat            string            `json:"time_beat"`
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
 	ContextWindow       int64             `json:"context_window"`
 	Model               string            `json:"model"`
@@ -337,6 +349,7 @@ type agentConfig struct {
 	TimeoutSec          int               `json:"timeout_sec"`
 	SessionMaxMin       int               `json:"session_max_runtime_min"`
 	DutyWindowMin       int               `json:"duty_window_min"`
+	TimeBeat            string            `json:"time_beat"`
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
 	ContextWindow       int64             `json:"context_window"`
 	FullPerm            *bool             `json:"full_perm"`
@@ -351,6 +364,7 @@ func (f *fileConfig) globalRuntime(path string) *Config {
 		TimeoutSec:          f.TimeoutSec,
 		SessionMaxMin:       f.SessionMaxMin,
 		DutyWindowMin:       f.DutyWindowMin,
+		TimeBeat:            f.TimeBeat,
 		CompactNoticeTokens: f.CompactNoticeTokens,
 		ContextWindow:       f.ContextWindow,
 		Model:               f.Model,
