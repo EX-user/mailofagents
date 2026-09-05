@@ -2481,8 +2481,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         if (!name) return;
         try {
           const d = await api("/api/boards", { method: "POST", body: JSON.stringify({ name: name }) });
-          if (d && (d.code || d.read_code)) boards.unshift(d);
-          else if (d) loadBoards();
+          if (d && (d.code || d.read_code)) {
+            boards.unshift(d);
+            // superior default 09-05: new boards start with time+sender
+            // attribution display ON (creator config, best-effort).
+            const wc = d.write_code || d.code;
+            api("/api/boards/" + encodeURIComponent(wc) + "/config", { method: "POST", body: JSON.stringify({ show_time: true, show_by: true }) })
+              .then(function (cd) { if (cd && cd.config) d.config = cd.config; })
+              .catch(function () {});
+          } else if (d) loadBoards();
           toast(t("board.saved"), "success");
           renderBoards();
         } catch (e) { toastBoardErr(e); }
