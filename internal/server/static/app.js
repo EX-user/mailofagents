@@ -2140,7 +2140,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       return '<div class="b-line"><span>' + t("board.header") + "</span>" +
         '<input type="text" data-bf="header" value="' + esc(b.preamble || "") + '" maxlength="400" placeholder="' + esc(t("board.headerPh")) + '" />' +
         '<button class="am-mini" data-ba="save-header">' + t("board.save") + "</button></div>" +
-        '<div class="b-line board-codeline">' + codesHtml(b) + "</div>";
+        '<div class="b-line muted" style="font-size:11px;">' + t("board.codeInView") + "</div>";
     }
 
     function refreshSettingsRow(code) {
@@ -2462,7 +2462,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const profTab = document.getElementById("tab-profile");
     if (profTab && !profTab.classList.contains("hidden")) loadBoards();
     new MutationObserver(function () {
-      if (!profTab.classList.contains("hidden") && !boards.length) loadBoards();
+      // reload on every profile-tab entry: boards can also be created
+      // externally via the API (Felix smoke note 09-05); panel keeps no
+      // stale copy when the tab re-opens.
+      if (!profTab.classList.contains("hidden")) loadBoards();
     }).observe(profTab, { attributes: true, attributeFilter: ["class"] });
   })();
 
