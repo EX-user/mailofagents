@@ -32,9 +32,9 @@ var (
 	bMessages = []byte("messages")
 	bInbox    = []byte("inbox")
 	bSent     = []byte("sent")
-	bUnread   = []byte("unread") // key: uuid(32 hex) + ulid(26) -> exists = unread for that account
-	bMeta     = []byte("meta")   // system metadata (initialized flag, domain, ...)
-	bSubs     = []byte("subs")   // subordinate-relationship graph: superior\x00subordinate -> SubRecord
+	bUnread   = []byte("unread")   // key: uuid(32 hex) + ulid(26) -> exists = unread for that account
+	bMeta     = []byte("meta")     // system metadata (initialized flag, domain, ...)
+	bSubs     = []byte("subs")     // subordinate-relationship graph: superior\x00subordinate -> SubRecord
 	bTokens   = []byte("tokens")   // session tokens, keyed by SHA-256 hash (v0.6.27 remember-login)
 	bPushSubs = []byte("pushsubs") // web push subscriptions: sha256(endpoint) -> PushSubscription (v0.6.30)
 	bPushDND  = []byte("pushdnd")  // per-account notification do-not-disturb windows (v0.6.30)
@@ -42,26 +42,26 @@ var (
 
 // Meta keys within the meta bucket.
 var (
-	mInitialized         = []byte("initialized")
-	mDomain              = []byte("domain")
-	mListen              = []byte("listen")
-	mRegistrationEnabled  = []byte("registration_enabled")
-	mDirectoryListedEnabled = []byte("directory_listed_enabled")
-	mSendRateLimit        = []byte("send_rate_limit")
-	mByteRateLimit        = []byte("byte_rate_limit")
-	mRegisterIPRateLimit  = []byte("register_ip_rate_limit")
-	mFilesTotalLimit      = []byte("files_total_limit")
-	mFileQuotaPerAcct     = []byte("file_quota_per_acct")
+	mInitialized             = []byte("initialized")
+	mDomain                  = []byte("domain")
+	mListen                  = []byte("listen")
+	mRegistrationEnabled     = []byte("registration_enabled")
+	mDirectoryListedEnabled  = []byte("directory_listed_enabled")
+	mSendRateLimit           = []byte("send_rate_limit")
+	mByteRateLimit           = []byte("byte_rate_limit")
+	mRegisterIPRateLimit     = []byte("register_ip_rate_limit")
+	mFilesTotalLimit         = []byte("files_total_limit")
+	mFileQuotaPerAcct        = []byte("file_quota_per_acct")
 	mOneclickRegisterEnabled = []byte("oneclick_register_enabled")
 	// mRandomRegisterEnabled gates the PASSWORDLESS /api/register path
 	// (the retired one-click random register). Absent = disabled: the
 	// mechanism retired with a superior directive, so the default must
 	// stay off even on instances that carry old oneclick UI-hint values.
 	mRandomRegisterEnabled = []byte("random_register_enabled")
-	mShowcaseEnabled      = []byte("showcase_enabled")
-	mDanmakuMode          = []byte("danmaku_default_mode")
-	mDanmakuSpeed         = []byte("danmaku_default_speed")
-	mDanmakuCount         = []byte("danmaku_default_count")
+	mShowcaseEnabled       = []byte("showcase_enabled")
+	mDanmakuMode           = []byte("danmaku_default_mode")
+	mDanmakuSpeed          = []byte("danmaku_default_speed")
+	mDanmakuCount          = []byte("danmaku_default_count")
 )
 
 // Store wraps a bbolt database with agentmail's operations.
@@ -78,7 +78,7 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{db: db, now: time.Now}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bAccounts, bMessages, bInbox, bSent, bUnread, bMeta, bShowcase, bFiles, bFileData, bSubs, bTokens, bPushSubs, bPushDND, bBoards, bBoardCodes, bBoardLines} {
+		for _, b := range [][]byte{bAccounts, bMessages, bInbox, bSent, bUnread, bMeta, bShowcase, bFiles, bFileData, bSubs, bTokens, bPushSubs, bPushDND, bBoards, bBoardCodes, bBoardLines, bWorkerBeat} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("create bucket %q: %w", b, err)
 			}
@@ -396,14 +396,18 @@ func (s *Store) metaStr(key []byte, def string, allowed []string) string {
 // Danmaku defaults for the portal's showcase danmaku (server default;
 // browsers may override via localStorage).
 var (
-	danmakuModes      = []string{"A", "B"}
-	danmakuSpeeds     = []string{"slow", "medium", "fast"}
-	danmakuCounts     = []string{"few", "normal", "more"}
+	danmakuModes  = []string{"A", "B"}
+	danmakuSpeeds = []string{"slow", "medium", "fast"}
+	danmakuCounts = []string{"few", "normal", "more"}
 )
 
-func (s *Store) GetDanmakuDefaultMode() string   { return s.metaStr(mDanmakuMode, "A", danmakuModes) }
-func (s *Store) GetDanmakuDefaultSpeed() string  { return s.metaStr(mDanmakuSpeed, "medium", danmakuSpeeds) }
-func (s *Store) GetDanmakuDefaultCount() string  { return s.metaStr(mDanmakuCount, "normal", danmakuCounts) }
+func (s *Store) GetDanmakuDefaultMode() string { return s.metaStr(mDanmakuMode, "A", danmakuModes) }
+func (s *Store) GetDanmakuDefaultSpeed() string {
+	return s.metaStr(mDanmakuSpeed, "medium", danmakuSpeeds)
+}
+func (s *Store) GetDanmakuDefaultCount() string {
+	return s.metaStr(mDanmakuCount, "normal", danmakuCounts)
+}
 
 // SetDanmakuDefaults validates and persists any provided danmaku default.
 // Empty string leaves that field unchanged.

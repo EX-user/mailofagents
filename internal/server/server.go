@@ -74,8 +74,8 @@ type Server struct {
 
 	// Push delivery state (v0.6.30 M2): aggregation windows, DND queues and
 	// the test seam for actually sending a notification.
-	pd        *pushDelivery
-	sendPush  sendPushFunc // nil = real webpush sender
+	pd           *pushDelivery
+	sendPush     sendPushFunc // nil = real webpush sender
 	vapidSubject string
 }
 
@@ -223,6 +223,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Boards (kanban) API — /api/boards/info and /api/boards/mine are
 	// exact-pattern and win over the /api/boards/ subtree dispatcher.
+	mux.HandleFunc("/api/worker/heartbeat", s.requireInitialized(s.requireAccount(s.handleWorkerHeartbeat)))
 	mux.HandleFunc("/api/boards", s.requireInitialized(s.requireAccount(s.handleBoardCreate)))
 	mux.HandleFunc("/api/boards/info", s.requireInitialized(s.handleBoardsInfo))
 	mux.HandleFunc("/api/boards/mine", s.requireInitialized(s.requireAccount(s.handleBoardsMine)))
