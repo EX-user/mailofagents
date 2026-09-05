@@ -151,8 +151,33 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 		t.Fatalf("config echo wrong: %v", cfg)
 	}
 	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
-		`{"muted":false}`, nil); c != 200 {
-		t.Fatalf("unmute = %d", c)
+		`{"muted":false,"show_time":false}`, nil); c != 200 {
+		t.Fatalf("unmute+show_time off = %d", c)
+	}
+	var gatedRead struct {
+		Content []struct {
+			At int64 `json:"at"`
+		} `json:"content"`
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?part=full", "", "", "", &gatedRead); c != 200 {
+		t.Fatalf("gated read = %d", c)
+	}
+	for _, l := range gatedRead.Content {
+		if l.At != 0 {
+			t.Fatalf("show_time=false must zero at in responses: %+v", gatedRead.Content)
+		}
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
+		`{"show_time":true}`, nil); c != 200 {
+		t.Fatalf("show_time on = %d", c)
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?part=full", "", "", "", &gatedRead); c != 200 {
+		t.Fatalf("revealed read = %d", c)
+	}
+	for _, l := range gatedRead.Content {
+		if l.At == 0 {
+			t.Fatalf("show_time=true must reveal at: %+v", gatedRead.Content)
+		}
 	}
 	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", "", "",
 		`{"body":"after unmute"}`, nil); c != 200 {

@@ -360,14 +360,20 @@ func (s *Store) BoardLines(boardID string, after string, match string, latestN i
 			if err := json.Unmarshal(v, &l); err != nil {
 				continue
 			}
-			// Privacy: with show_by off the owner opted out of exposing
-			// who writes — strip by from read responses (storage keeps
-			// it; flipping the switch back reveals history again).
-			by := l.By
+			// Config toggles gate read responses (storage keeps the full
+			// data; flipping a switch back reveals it again):
+			//   show_by off  -> strip by (privacy: code-holders are often
+			//     anonymous outsiders, and the owner opted out of exposing
+			//     who writes)
+			//   show_time off -> zero at
+			by, at := l.By, l.At
 			if !b.ShowBy {
 				by = ""
 			}
-			out = append(out, BoardLine{Body: l.Body, At: l.At, By: by})
+			if !b.ShowTime {
+				at = 0
+			}
+			out = append(out, BoardLine{Body: l.Body, At: at, By: by})
 		}
 		if after != "" {
 			cut := -1
