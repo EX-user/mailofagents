@@ -2076,6 +2076,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         return;
       }
       renderBoards();
+      renderShared();
     }
 
     function boardSum() {
@@ -2104,6 +2105,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           '<span class="btns">' +
           '<button class="am-mini" data-b="settings">' + t("board.settings") + "</button>" +
           '<button class="am-mini" data-b="view">' + t("board.view") + "</button>" +
+          '<button class="am-mini" data-b="copy">' + t("board.copy") + "</button>" +
+          '<button class="am-mini del" data-b="del">' + t("board.del") + "</button>" +
           "</span></div>" +
           '<div class="board-set hidden" data-set="' + esc(code) + '"></div>';
       }).join("");
@@ -2137,8 +2140,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       return '<div class="b-line"><span>' + t("board.header") + "</span>" +
         '<input type="text" data-bf="header" value="' + esc(b.preamble || "") + '" maxlength="400" placeholder="' + esc(t("board.headerPh")) + '" />' +
         '<button class="am-mini" data-ba="save-header">' + t("board.save") + "</button></div>" +
-        '<div class="b-line board-codeline">' + codesHtml(b) + "</div>" +
-        '<div class="b-line"><button class="am-mini del" data-ba="del">' + t("board.del") + "</button></div>";
+        '<div class="b-line board-codeline">' + codesHtml(b) + "</div>";
     }
 
     function refreshSettingsRow(code) {
@@ -2170,6 +2172,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       return "<pre>" + esc(text || "") + "</pre>";
     }
 
+    // Per-line rendering (superior tweaks 09-05 #1): each appended line
+    // becomes a bordered block; markdown `---` semantics untouched
+    // (setext H2 trap, Devi note).
+    function renderBoardContent(text) {
+      if (!text) return "";
+      const lines = String(text).split(/\r?\n/);
+      return lines.map(function (ln) {
+        return '<div class="board-line">' + renderMarkdown(ln) + "</div>";
+      }).join("");
+    }
+
     function openView(target) {
       // target: a mine-list board object, or a bare {code} view model for
       // shared boards (openShared fills it asynchronously).
@@ -2177,12 +2190,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const isOwn = !!findBoard(target.code) || !!findBoard(writeCode(target));
       const b = isOwn ? (findBoard(target.code) || findBoard(writeCode(target)) || target) : target;
       const addr = isOwn ? writeCode(b) : b.code;
-      const old = document.querySelector(".board-lightbox");
+      const old = document.querySelector(".board-modal");
       if (old) old.remove();
       const lb = document.createElement("div");
-      lb.className = "pdf-lightbox md-lightbox board-lightbox";
+      lb.className = "board-modal";
       const frame = document.createElement("div");
-      frame.className = "pdf-lightbox-frame md-lightbox-frame board-frame";
+      frame.className = "board-modal-frame";
       const head = document.createElement("div");
       head.className = "board-head";
       head.innerHTML = "<strong>" + esc(b.name || "") + "</strong>" +
@@ -2201,7 +2214,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         '<span class="b-spacer"></span>' +
         '<span class="b-line board-codeline">' + codesHtml(b).replace(/ data-ba="/g, ' data-vb="') + "</span>";
       const x = document.createElement("button");
-      x.className = "pdf-lightbox-x";
+      x.className = "board-modal-x";
       x.type = "button";
       x.textContent = "×";
       x.setAttribute("aria-label", "close");
@@ -2228,7 +2241,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           const full = await api("/api/boards/" + encodeURIComponent(addr) + "?part=full", { keepSession: true });
           const lines = (full && full.content) ? full.content.map(function (l) { return l.body; }) : [];
           b.content = lines.join("\n");
-          body.innerHTML = renderMarkdown(b.content);
+          body.innerHTML = renderBoardContent(b.content);
         } catch (e) {
           body.innerHTML = '<p class="muted" style="font-size:12px;">' + esc(
             String((e && e.message) || "").indexOf("404") >= 0 ? t("board.gone") : t("board.loadErr")) + "</p>";
@@ -2248,7 +2261,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
             appendBtn.textContent = t("subs.cancel");
             saveBtn.classList.remove("hidden");
           } else {
-            body.innerHTML = renderMarkdown(b.content || "");
+            body.innerHTML = renderBoardContent(b.content || "");
             body.classList.remove("hidden");
             edit.classList.add("hidden");
             appendBtn.textContent = t("board.append");
@@ -2269,7 +2282,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           } else {
             bvContentAppend(b, add);
           }
-          body.innerHTML = renderMarkdown(b.content);
+          body.innerHTML = renderBoardContent(b.content);
           body.classList.remove("hidden");
           edit.classList.add("hidden");
           edit.value = "";
@@ -2335,17 +2348,58 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           const lines = (full && full.content) ? full.content.map(function (l) { return l.body; }) : [];
           bv.content = lines.join("\n");
           bv.lines = full ? full.lines : null;
-          const lb = document.querySelector(".board-lightbox");
+          const lb = document.querySelector(".board-modal");
           if (!lb) return;
           lb.querySelector(".board-head").innerHTML = "<strong>" + esc(bv.name) + "</strong>" +
             (bv.preamble ? '<span class="muted"> — ' + esc(bv.preamble) + "</span>" : "");
-          lb.querySelector(".board-content").innerHTML = renderMarkdown(bv.content);
+          lb.querySelector(".board-content").innerHTML = renderBoardContent(bv.content);
+          recordShared(bv);
         } catch (e) {
-          const lb = document.querySelector(".board-lightbox");
+          const lb = document.querySelector(".board-modal");
           if (lb) lb.querySelector(".board-content").innerHTML = '<p class="muted" style="font-size:12px;">' +
             esc(String((e && e.message) || "").indexOf("404") >= 0 ? t("board.gone") : t("board.loadErr")) + "</p>";
         }
       })();
+    }
+
+    // Recently opened shared boards (tweaks 09-05 #5): pure client-side
+    // LRU in localStorage, max 50; forget = local remove. Codes cannot be
+    // listed back from the server (the code IS the credential).
+    const SHARED_KEY = "moa_board_recent_shared";
+    function loadShared() {
+      try { const v = JSON.parse(localStorage.getItem(SHARED_KEY) || "[]"); return Array.isArray(v) ? v : []; }
+      catch (_) { return []; }
+    }
+    function saveShared(list) {
+      try { localStorage.setItem(SHARED_KEY, JSON.stringify(list.slice(0, 50))); } catch (_) {}
+    }
+    function recordShared(bv) {
+      let list = loadShared().filter(function (x) { return x.code !== bv.code; });
+      list.unshift({ code: bv.code, name: bv.name || bv.code, preamble: bv.preamble || "", ts: Date.now() });
+      saveShared(list);
+      renderShared();
+    }
+    function forgetShared(code) {
+      saveShared(loadShared().filter(function (x) { return x.code !== code; }));
+      renderShared();
+    }
+    function renderShared() {
+      const box = $("#board-shared-rows");
+      if (!box) return;
+      const list = loadShared();
+      if (!list.length) {
+        box.innerHTML = '<p class="muted" style="font-size:12px;">' + esc(t("board.sharedEmpty")) + "</p>";
+        return;
+      }
+      box.innerHTML = list.map(function (x) {
+        return '<div class="am-row board-row board-shared-row" data-scode="' + esc(x.code) + '">' +
+          '<span class="fn" title="' + esc(x.name || x.code) + '">' + esc(x.name || x.code) + "</span>" +
+          '<span class="meta">' + esc(x.preamble || x.code) + "</span>" +
+          '<span class="btns">' +
+          '<button class="am-mini" data-s="view">' + t("board.view") + "</button>" +
+          '<button class="am-mini del" data-s="forget">' + t("board.forget") + "</button>" +
+          "</span></div>";
+      }).join("");
     }
 
     cardEl.addEventListener("click", async function (ev) {
@@ -2371,12 +2425,27 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         } catch (e) { toastBoardErr(e); }
         return;
       }
+      const sBtn = ev.target.closest("button[data-s]");
+      if (sBtn) {
+        const srow = sBtn.closest(".board-shared-row");
+        if (!srow) return;
+        if (sBtn.dataset.s === "view") openShared(srow.dataset.scode);
+        else if (sBtn.dataset.s === "forget") forgetShared(srow.dataset.scode);
+        return;
+      }
       const rowBtn = ev.target.closest("button[data-b]");
       if (rowBtn) {
         const row = rowBtn.closest(".am-row.board-row");
         if (!row) return;
         if (rowBtn.dataset.b === "settings") { toggleSettings(row.dataset.bcode); return; }
         if (rowBtn.dataset.b === "view") { openView(row.dataset.bcode); return; }
+        if (rowBtn.dataset.b === "copy") {
+          copyText(location.origin + "/api/boards/" + row.dataset.bcode)
+            .then(function () { toast(t("board.copied"), "success"); })
+            .catch(function () { toast(t("common.error", { msg: "copy failed" }), "error"); });
+          return;
+        }
+        if (rowBtn.dataset.b === "del") { boardAction(row.dataset.bcode, "del", row.parentNode); return; }
         return;
       }
       const actBtn = ev.target.closest("button[data-ba]");
@@ -2389,6 +2458,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
     // Load on first entry to the profile tab (same grammar as the
     // attachment card summary).
+    renderShared();
     const profTab = document.getElementById("tab-profile");
     if (profTab && !profTab.classList.contains("hidden")) loadBoards();
     new MutationObserver(function () {

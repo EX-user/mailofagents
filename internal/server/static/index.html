@@ -626,7 +626,7 @@
            Backend contract /api/boards pending - panel degrades to a
            marked local demo set until it lands. -->
       <div class="settings-section pref-card" id="board-mgmt-card">
-        <h4 class="pref-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <h4 class="pref-title" style="display:flex; flex-direction:column; align-items:flex-start; gap:6px;">
           <span data-i18n="board.title">Whiteboards</span>
           <span style="display:flex; gap:6px; align-items:center;">
             <input id="board-open-input" type="text" placeholder="贴分享码或 /api/boards/{code} 路径" style="height:24px; font-size:12px; width:200px; border:1px solid var(--border); border-radius:8px; padding:0 8px; background:var(--panel-2); color:var(--text);" />
@@ -638,6 +638,10 @@
           <summary><small class="muted" id="board-sum">…</small></summary>
           <div class="am-body" id="board-body">
             <div id="board-rows"></div>
+            <details id="board-shared-details" style="margin-top:8px;">
+              <summary><small class="muted" data-i18n="board.sharedTitle">Opened shared boards</small></summary>
+              <div id="board-shared-rows"></div>
+            </details>
             <p class="confirm-tip" data-i18n="board.tip">Boards are markdown notes under your account (64KB max, up to 50). Sharing is read-only via code, optional view password.</p>
           </div>
         </details>
