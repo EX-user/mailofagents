@@ -155,17 +155,16 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 		t.Fatalf("unmute+show_time off = %d", c)
 	}
 	var gatedRead struct {
-		Content []struct {
-			At int64 `json:"at"`
-		} `json:"content"`
+		Content []map[string]any `json:"content"`
 	}
 	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?part=full", "", "", "", &gatedRead); c != 200 {
 		t.Fatalf("gated read = %d", c)
 	}
 	for _, l := range gatedRead.Content {
-		if l.At != 0 {
-			t.Fatalf("show_time=false must zero at in responses: %+v", gatedRead.Content)
+		if _, has := l["at"]; has {
+			t.Fatalf("show_time=false must omit the at field: %+v", l)
 		}
+		// show_by is still true at this point — by legitimately present.
 	}
 	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
 		`{"show_time":true}`, nil); c != 200 {
@@ -175,8 +174,11 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 		t.Fatalf("revealed read = %d", c)
 	}
 	for _, l := range gatedRead.Content {
-		if l.At == 0 {
-			t.Fatalf("show_time=true must reveal at: %+v", gatedRead.Content)
+		if _, has := l["at"]; !has {
+			t.Fatalf("show_time=true must reveal at: %+v", l)
+		}
+		if _, has := l["by"]; !has {
+			t.Fatalf("show_by=true must reveal by: %+v", l)
 		}
 	}
 	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", "", "",
@@ -196,11 +198,29 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 		`{"show_by":false}`, nil); c != 200 {
 		t.Fatalf("show_by off = %d", c)
 	}
+	if t2, err := http.NewRequest("GET", ts.URL+"/api/boards/"+wc+"?match="+url.QueryEscape("from owner"), nil); err == nil {
+		resp2, err2 := http.DefaultClient.Do(t2)
+		if err2 == nil {
+			buf := make([]byte, 600)
+			n, _ := resp2.Body.Read(buf)
+			fmt.Printf("DEBUG raw: %s\n", buf[:n])
+			resp2.Body.Close()
+		}
+	}
+	// Reset before decode: with by omitted from the JSON, reusing the
+	// struct would silently retain the previous decode's value — the
+	// exact client hygiene this contract demands.
+	read = struct {
+		Content []struct {
+			Body string `json:"body"`
+			By   string `json:"by"`
+		} `json:"content"`
+	}{}
 	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?match="+url.QueryEscape("from owner"), "", "", "", &read); c != 200 {
 		t.Fatalf("stripped read = %d", c)
 	}
 	if len(read.Content) != 1 || read.Content[0].Body != "from owner" || read.Content[0].By != "" {
-		t.Fatalf("show_by=false must strip by: %+v", read.Content)
+		t.Fatalf("show_by=false must omit by (decodes as empty): %+v", read.Content)
 	}
 	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
 		`{"show_by":true}`, nil); c != 200 {

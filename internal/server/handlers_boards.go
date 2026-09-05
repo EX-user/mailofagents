@@ -373,7 +373,21 @@ func (s *Server) handleBoardRead(w http.ResponseWriter, r *http.Request, code st
 	if after != "" {
 		base["anchor"] = string(anchor)
 	}
-	base["content"] = lines
+	// Field-level visibility (boss ruling): the panel toggles control
+	// whether at/by are delivered at all — gated fields are omitted from
+	// the response, not zeroed. Stored data is untouched.
+	content := make([]map[string]any, 0, len(lines))
+	for _, l := range lines {
+		m := map[string]any{"body": l.Body}
+		if board.ShowTime {
+			m["at"] = l.At
+		}
+		if board.ShowBy {
+			m["by"] = l.By
+		}
+		content = append(content, m)
+	}
+	base["content"] = content
 	writeJSON(w, http.StatusOK, base)
 }
 

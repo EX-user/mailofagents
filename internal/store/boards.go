@@ -332,7 +332,9 @@ const (
 //   - latestN > 0: only the most recent latestN lines (still ascending).
 func (s *Store) BoardLines(boardID string, after string, match string, latestN int) ([]BoardLine, AnchorStatus, error) {
 	// Non-nil from the start: an empty result must marshal as [] not null
-	// (clients iterate content without null-guards).
+	// (clients iterate content without null-guards). Full data is always
+	// returned here; show_time/show_by visibility gating lives in the HTTP
+	// layer (fields are omitted from responses when toggled off).
 	out := []BoardLine{}
 	anchor := AnchorFound
 	after = strings.ToLower(after)
@@ -360,20 +362,7 @@ func (s *Store) BoardLines(boardID string, after string, match string, latestN i
 			if err := json.Unmarshal(v, &l); err != nil {
 				continue
 			}
-			// Config toggles gate read responses (storage keeps the full
-			// data; flipping a switch back reveals it again):
-			//   show_by off  -> strip by (privacy: code-holders are often
-			//     anonymous outsiders, and the owner opted out of exposing
-			//     who writes)
-			//   show_time off -> zero at
-			by, at := l.By, l.At
-			if !b.ShowBy {
-				by = ""
-			}
-			if !b.ShowTime {
-				at = 0
-			}
-			out = append(out, BoardLine{Body: l.Body, At: at, By: by})
+			out = append(out, BoardLine{Body: l.Body, At: l.At, By: l.By})
 		}
 		if after != "" {
 			cut := -1
