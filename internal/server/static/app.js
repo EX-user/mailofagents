@@ -2035,6 +2035,313 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       loadSummary().catch(function () {});
     };
   })();
+  // ---- whiteboard management panel (design v2, rewired to the landed
+  // contract v1.2/v1.3 per the authoritative field map, Felix/Devi
+  // 09-05) ----
+  // Key semantics: the code IS the address and the credential - boards
+  // carry no ULID; owner operations ride Basic auth, paths carry the
+  // board code (write ops on split boards use write_code). No share
+  // toggle / no rotate / no password: codes are one-shot credentials,
+  // shown in-table with copy links. Append-only lines; 429/404 have
+  // dedicated toasts.
+  (function wireBoards() {
+    const cardEl = $("#board-mgmt-card");
+    if (!cardEl) return;
+    let boards = [];
+    let used = null, max = null;
+
+    function toastBoardErr(e) {
+      const msg = String((e && e.message) || e || "");
+      if (msg.indexOf("429") >= 0) toast(t("board.rate"), "error");
+      else if (msg.indexOf("404") >= 0) toast(t("board.gone"), "error");
+      else if (msg.indexOf("403") >= 0) toast(t("board.forbidden"), "error");
+      else toast(t("common.error", { msg: msg }), "error");
+    }
+
+    // Primary code for addressing: split boards use write_code for write
+    // operations and read_code for reads; single-mode boards just code.
+    function readCode(b) { return b.mode === "split" ? (b.read_code || b.write_code || b.code) : b.code; }
+    function writeCode(b) { return b.mode === "split" ? (b.write_code || b.read_code || b.code) : b.code; }
+
+    async function loadBoards() {
+      try {
+        const d = await api("/api/boards/mine", { keepSession: true });
+        boards = (d && d.boards) || [];
+        used = typeof d.used === "number" ? d.used : null;
+        max = typeof d.max === "number" ? d.max : null;
+      } catch (e) {
+        boards = [];
+        const sum = $("#board-sum");
+        if (sum) sum.textContent = t("board.loadErr");
+        return;
+      }
+      renderBoards();
+    }
+
+    function boardSum() {
+      const sum = $("#board-sum");
+      if (!sum) return;
+      let txt = t("board.count", { n: boards.length });
+      if (used != null && max != null) txt += " · " + used + "/" + max;
+      sum.textContent = txt;
+    }
+
+    function renderBoards() {
+      boardSum();
+      const box = $("#board-rows");
+      if (!box) return;
+      if (!boards.length) {
+        box.innerHTML = '<p class="muted" style="font-size:12px;">' + esc(t("board.empty")) + "</p>";
+        return;
+      }
+      box.innerHTML = boards.map(function (b) {
+        const code = readCode(b);
+        return '<div class="am-row board-row" data-bname="' + esc(b.name || "") + '" data-bcode="' + esc(code) + '">' +
+          '<span class="fn" title="' + esc(b.name || "") + '">' + esc(b.name || code) + "</span>" +
+          '<span class="meta">' + (b.lines != null ? b.lines + "/" + (b.line_count || "—") + " · " : "") +
+          (b.bytes != null ? fmtBytes(b.bytes) + " · " : "") +
+          (b.created ? fmtTime(b.created) : "—") + "</span>" +
+          '<span class="btns">' +
+          '<button class="am-mini" data-b="settings">' + t("board.settings") + "</button>" +
+          '<button class="am-mini" data-b="view">' + t("board.view") + "</button>" +
+          "</span></div>" +
+          '<div class="board-set hidden" data-set="' + esc(code) + '"></div>';
+      }).join("");
+    }
+
+    function findBoard(code) {
+      for (let i = 0; i < boards.length; i++) {
+        const b = boards[i];
+        if (readCode(b) === code || writeCode(b) === code) return b;
+      }
+      return null;
+    }
+
+    // Credential lines for the settings panel: every code the board has,
+    // each with its own copy link (the code IS the share).
+    function codesHtml(b) {
+      const link = function (c) { return location.origin + "/api/boards/" + c; };
+      const one = function (label, c) {
+        return '<span class="muted">' + label + '</span>' +
+          '<span class="board-share-code">' + esc(c) + "</span>" +
+          '<button class="am-mini" data-ba="copy-code" data-code="' + esc(c) + '">' + t("board.copy") + "</button>";
+      };
+      if (b.mode === "split") {
+        return one(t("board.codeRead"), b.read_code || "") + one(t("board.codeWrite"), b.write_code || "");
+      }
+      return one(t("board.share"), b.code || "");
+    }
+
+    function settingsHtml(b) {
+      const code = writeCode(b);
+      return '<div class="b-line"><span>' + t("board.header") + "</span>" +
+        '<input type="text" data-bf="header" value="' + esc(b.preamble || "") + '" maxlength="400" placeholder="' + esc(t("board.headerPh")) + '" />' +
+        '<button class="am-mini" data-ba="save-header">' + t("board.save") + "</button></div>" +
+        '<div class="b-line board-codeline">' + codesHtml(b) + "</div>" +
+        '<div class="b-line"><button class="am-mini del" data-ba="del">' + t("board.del") + "</button></div>";
+    }
+
+    function refreshSettingsRow(code) {
+      const np = document.querySelector('.board-set[data-set="' + code + '"]');
+      const b = findBoard(code);
+      if (np && b) { np.innerHTML = settingsHtml(b); np.classList.remove("hidden"); }
+    }
+
+    function toggleSettings(code) {
+      const panel = document.querySelector('.board-set[data-set="' + code + '"]');
+      if (!panel) return;
+      const showing = !panel.classList.contains("hidden");
+      const all = document.querySelectorAll(".board-set");
+      for (let i = 0; i < all.length; i++) all[i].classList.add("hidden");
+      if (!showing) {
+        const b = findBoard(code);
+        if (b) { panel.innerHTML = settingsHtml(b); panel.classList.remove("hidden"); }
+      }
+    }
+
+    function renderMarkdown(text) {
+      if (window.marked && window.DOMPurify) {
+        try {
+          return DOMPurify.sanitize(window.marked.parse(text || ""), {
+            FORBID_TAGS: ["style", "img", "audio", "video", "iframe"], FORBID_ATTR: ["style"]
+          });
+        } catch (_) { /* fall through to plain */ }
+      }
+      return "<pre>" + esc(text || "") + "</pre>";
+    }
+
+    function openView(code) {
+      const b = findBoard(code);
+      if (!b) return;
+      const wc = writeCode(b);
+      const old = document.querySelector(".board-lightbox");
+      if (old) old.remove();
+      const lb = document.createElement("div");
+      lb.className = "pdf-lightbox md-lightbox board-lightbox";
+      const frame = document.createElement("div");
+      frame.className = "pdf-lightbox-frame md-lightbox-frame board-frame";
+      const head = document.createElement("div");
+      head.className = "board-head";
+      head.innerHTML = "<strong>" + esc(b.name || "") + "</strong>" +
+        (b.preamble ? '<span class="muted"> — ' + esc(b.preamble) + "</span>" : "");
+      const body = document.createElement("div");
+      body.className = "board-content";
+      body.innerHTML = '<p class="muted" style="font-size:12px;">…</p>';
+      const edit = document.createElement("textarea");
+      edit.className = "board-edit hidden";
+      edit.placeholder = t("board.appendPh");
+      const bar = document.createElement("div");
+      bar.className = "board-bar";
+      bar.innerHTML =
+        '<button class="am-mini" data-vb="toggle-edit">' + t("board.append") + "</button>" +
+        '<button class="am-mini hidden" data-vb="save-append">' + t("board.save") + "</button>" +
+        '<span class="b-spacer"></span>' +
+        '<span class="b-line board-codeline">' + codesHtml(b).replace(/ data-ba="/g, ' data-vb="') + "</span>";
+      const x = document.createElement("button");
+      x.className = "pdf-lightbox-x";
+      x.type = "button";
+      x.textContent = "×";
+      x.setAttribute("aria-label", "close");
+      x.addEventListener("click", function (ev) { ev.stopPropagation(); lb.remove(); });
+      frame.appendChild(head);
+      frame.appendChild(body);
+      frame.appendChild(edit);
+      frame.appendChild(bar);
+      frame.appendChild(x);
+      lb.appendChild(frame);
+      lb.addEventListener("click", function (ev) { if (ev.target === lb) lb.remove(); });
+      lb.addEventListener("keydown", function (ev) { if (ev.key === "Escape") lb.remove(); });
+      document.body.appendChild(lb);
+
+      // Load: header first (no-param skeleton), then ?part=full.
+      (async function () {
+        try {
+          const head1 = await api("/api/boards/" + encodeURIComponent(wc), { keepSession: true });
+          if (head1 && head1.preamble != null) {
+            b.preamble = head1.preamble;
+            head.innerHTML = "<strong>" + esc(b.name || head1.name || "") + "</strong>" +
+              (head1.preamble ? '<span class="muted"> — ' + esc(head1.preamble) + "</span>" : "");
+          }
+          const full = await api("/api/boards/" + encodeURIComponent(wc) + "?part=full", { keepSession: true });
+          const lines = (full && full.content) ? full.content.map(function (l) { return l.body; }) : [];
+          b.content = lines.join("\n");
+          body.innerHTML = renderMarkdown(b.content);
+        } catch (e) {
+          body.innerHTML = '<p class="muted" style="font-size:12px;">' + esc(
+            String((e && e.message) || "").indexOf("404") >= 0 ? t("board.gone") : t("board.loadErr")) + "</p>";
+        }
+      })();
+
+      bar.addEventListener("click", async function (ev) {
+        const btn = ev.target.closest("button[data-vb]");
+        if (!btn) return;
+        const act = btn.dataset.vb;
+        const saveBtn = bar.querySelector('[data-vb="save-append"]');
+        const appendBtn = bar.querySelector('[data-vb="toggle-edit"]');
+        if (act === "toggle-edit") {
+          if (edit.classList.contains("hidden")) {
+            edit.classList.remove("hidden");
+            body.classList.add("hidden");
+            appendBtn.textContent = t("subs.cancel");
+            saveBtn.classList.remove("hidden");
+          } else {
+            body.innerHTML = renderMarkdown(b.content || "");
+            body.classList.remove("hidden");
+            edit.classList.add("hidden");
+            appendBtn.textContent = t("board.append");
+            saveBtn.classList.add("hidden");
+          }
+        } else if (act === "save-append") {
+          // append-only: the textarea carries only NEW lines (cap 500,
+          // oldest dropped server-side); 10/min/code + 30/min/board.
+          const add = edit.value.replace(/^\r?\n+/, "").replace(/\r?\n+$/, "");
+          if (!add) return;
+          try {
+            await api("/api/boards/" + encodeURIComponent(writeCode(b)) + "/lines", { method: "POST", body: JSON.stringify({ body: add }) });
+            toast(t("board.saved"), "success");
+          } catch (e) { toastBoardErr(e); return; }
+          b.content = (b.content ? b.content + "\n" : "") + add;
+          if (typeof b.lines === "number") b.lines += add.split("\n").length;
+          body.innerHTML = renderMarkdown(b.content);
+          body.classList.remove("hidden");
+          edit.classList.add("hidden");
+          edit.value = "";
+          appendBtn.textContent = t("board.append");
+          saveBtn.classList.add("hidden");
+          renderBoards();
+        } else if (act === "copy-code") {
+          const c = btn.dataset.code || "";
+          copyText(location.origin + "/api/boards/" + c)
+            .then(function () { toast(t("board.copied"), "success"); })
+            .catch(function () { toast(t("common.error", { msg: "copy failed" }), "error"); });
+        }
+      });
+    }
+
+    async function boardAction(code, act, panel) {
+      const b = findBoard(code);
+      if (!b) return;
+      const headerInp = panel.querySelector('[data-bf="header"]');
+      if (act === "save-header") {
+        const v = headerInp.value.slice(0, 400);
+        try { await api("/api/boards/" + encodeURIComponent(writeCode(b)) + "/preamble", { method: "POST", body: JSON.stringify({ body: v }) }); b.preamble = v; toast(t("board.saved"), "success"); }
+        catch (e) { toastBoardErr(e); return; }
+        renderBoards();
+        refreshSettingsRow(writeCode(b));
+      } else if (act === "copy-code") {
+        const btn = panel.querySelector('[data-ba="copy-code"]');
+        const cc = btn ? (btn.dataset.code || "") : writeCode(b);
+        copyText(location.origin + "/api/boards/" + cc)
+          .then(function () { toast(t("board.copied"), "success"); })
+          .catch(function () { toast(t("common.error", { msg: "copy failed" }), "error"); });
+      } else if (act === "del") {
+        if (!window.confirm(t("board.delConfirm"))) return;
+        try { await api("/api/boards/" + encodeURIComponent(writeCode(b)), { method: "DELETE" }); boards = boards.filter(function (x) { return x !== b; }); toast(t("board.deleted"), "success"); }
+        catch (e) { toastBoardErr(e); return; }
+        renderBoards();
+      }
+    }
+
+    cardEl.addEventListener("click", async function (ev) {
+      const newBtn = ev.target.closest("#btn-board-new");
+      if (newBtn) {
+        const name = window.prompt(t("board.namePrompt"), t("board.untitled"));
+        if (!name) return;
+        try {
+          const d = await api("/api/boards", { method: "POST", body: JSON.stringify({ name: name }) });
+          if (d && (d.code || d.read_code)) boards.unshift(d);
+          else if (d) loadBoards();
+          toast(t("board.saved"), "success");
+          renderBoards();
+        } catch (e) { toastBoardErr(e); }
+        return;
+      }
+      const rowBtn = ev.target.closest("button[data-b]");
+      if (rowBtn) {
+        const row = rowBtn.closest(".am-row.board-row");
+        if (!row) return;
+        if (rowBtn.dataset.b === "settings") { toggleSettings(row.dataset.bcode); return; }
+        if (rowBtn.dataset.b === "view") { openView(row.dataset.bcode); return; }
+        return;
+      }
+      const actBtn = ev.target.closest("button[data-ba]");
+      if (actBtn) {
+        const panel = actBtn.closest(".board-set");
+        if (!panel) return;
+        boardAction(panel.dataset.set, actBtn.dataset.ba, panel);
+      }
+    });
+
+    // Load on first entry to the profile tab (same grammar as the
+    // attachment card summary).
+    const profTab = document.getElementById("tab-profile");
+    if (profTab && !profTab.classList.contains("hidden")) loadBoards();
+    new MutationObserver(function () {
+      if (!profTab.classList.contains("hidden") && !boards.length) loadBoards();
+    }).observe(profTab, { attributes: true, attributeFilter: ["class"] });
+  })();
+
+
 
   // ---- team register v2: name-like member names ----
   // Multi-cultural pools (superior-approved: en/ja-romaji/zh-pinyin/fr/de/ru;

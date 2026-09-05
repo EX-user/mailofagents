@@ -620,6 +620,23 @@
             <p class="confirm-tip" data-i18n="am.tip">Release = confirm, delete, and reclaim quota immediately (download links in sent letters stop working); Extend = expiry +30 days. Untouched files are cleaned up automatically at expiry.</p>
           </div>
         </details>
+      <!-- Whiteboard management (design v1, Felix 2026-09-05; panel
+           preview by Iris): same fold grammar as the attachment card;
+           "new board" at card head; rows carry settings/view actions.
+           Backend contract /api/boards pending - panel degrades to a
+           marked local demo set until it lands. -->
+      <div class="settings-section pref-card" id="board-mgmt-card">
+        <h4 class="pref-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <span data-i18n="board.title">Whiteboards</span>
+          <button id="btn-board-new" class="am-mini" data-i18n="board.new">New board</button>
+        </h4>
+        <details id="board-details">
+          <summary><small class="muted" id="board-sum">…</small></summary>
+          <div class="am-body" id="board-body">
+            <div id="board-rows"></div>
+            <p class="confirm-tip" data-i18n="board.tip">Boards are markdown notes under your account (64KB max, up to 50). Sharing is read-only via code, optional view password.</p>
+          </div>
+        </details>
       </div>
     </section>
 
