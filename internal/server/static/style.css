@@ -1330,6 +1330,8 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
    (same disclosure triangle as the subordinate section) + compact
    single-line rows shared by desktop and mobile. */
 #am-details summary { cursor: pointer; }
+/* superior 09-05: pull the fold line a bit closer to its card title. */
+#attach-mgmt-card .pref-title, #board-mgmt-card .pref-title { margin-bottom: 6px; }
 #am-details summary #am-sum { font-size: 12px; color: var(--muted);
   font-family: ui-monospace, Consolas, monospace; }
 .am-body { margin-top: 10px; }
