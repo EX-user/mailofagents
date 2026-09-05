@@ -2170,10 +2170,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       return "<pre>" + esc(text || "") + "</pre>";
     }
 
-    function openView(code) {
-      const b = findBoard(code);
-      if (!b) return;
-      const wc = writeCode(b);
+    function openView(target) {
+      // target: a mine-list board object, or a bare {code} view model for
+      // shared boards (openShared fills it asynchronously).
+      if (typeof target === "string") target = { code: target };
+      const isOwn = !!findBoard(target.code) || !!findBoard(writeCode(target));
+      const b = isOwn ? (findBoard(target.code) || findBoard(writeCode(target)) || target) : target;
+      const addr = isOwn ? writeCode(b) : b.code;
       const old = document.querySelector(".board-lightbox");
       if (old) old.remove();
       const lb = document.createElement("div");
@@ -2216,13 +2219,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // Load: header first (no-param skeleton), then ?part=full.
       (async function () {
         try {
-          const head1 = await api("/api/boards/" + encodeURIComponent(wc), { keepSession: true });
+          const head1 = await api("/api/boards/" + encodeURIComponent(addr), { keepSession: true });
           if (head1 && head1.preamble != null) {
             b.preamble = head1.preamble;
             head.innerHTML = "<strong>" + esc(b.name || head1.name || "") + "</strong>" +
               (head1.preamble ? '<span class="muted"> — ' + esc(head1.preamble) + "</span>" : "");
           }
-          const full = await api("/api/boards/" + encodeURIComponent(wc) + "?part=full", { keepSession: true });
+          const full = await api("/api/boards/" + encodeURIComponent(addr) + "?part=full", { keepSession: true });
           const lines = (full && full.content) ? full.content.map(function (l) { return l.body; }) : [];
           b.content = lines.join("\n");
           body.innerHTML = renderMarkdown(b.content);
@@ -2257,18 +2260,22 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           const add = edit.value.replace(/^\r?\n+/, "").replace(/\r?\n+$/, "");
           if (!add) return;
           try {
-            await api("/api/boards/" + encodeURIComponent(writeCode(b)) + "/lines", { method: "POST", body: JSON.stringify({ body: add }) });
+            await api("/api/boards/" + encodeURIComponent(addr) + "/lines", { method: "POST", body: JSON.stringify({ body: add }) });
             toast(t("board.saved"), "success");
           } catch (e) { toastBoardErr(e); return; }
-          b.content = (b.content ? b.content + "\n" : "") + add;
-          if (typeof b.lines === "number") b.lines += add.split("\n").length;
+          if (isOwn) {
+            b.content = (b.content ? b.content + "\n" : "") + add;
+            if (typeof b.lines === "number") b.lines += add.split("\n").length;
+          } else {
+            bvContentAppend(b, add);
+          }
           body.innerHTML = renderMarkdown(b.content);
           body.classList.remove("hidden");
           edit.classList.add("hidden");
           edit.value = "";
           appendBtn.textContent = t("board.append");
           saveBtn.classList.add("hidden");
-          renderBoards();
+          if (isOwn) renderBoards();
         } else if (act === "copy-code") {
           const c = btn.dataset.code || "";
           copyText(location.origin + "/api/boards/" + c)
@@ -2302,7 +2309,55 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       }
     }
 
+    // Shared-board entry (superior directive 09-05): paste a code or a
+    // full /api/boards/{code} path - the code IS the credential, so the
+    // existing view window renders/append directly against it.
+    function extractCode(text) {
+      const t = String(text || "").trim();
+      const m = /api\/boards\/([A-Za-z0-9]+)/.exec(t);
+      return m ? m[1] : (t || "");
+    }
+
+    function bvContentAppend(bv, add) {
+      bv.content = (bv.content ? bv.content + "\n" : "") + add;
+      if (typeof bv.lines === "number") bv.lines += add.split("\n").length;
+    }
+
+    function openShared(code) {
+      const bv = { code: code, name: code, preamble: "", content: "", lines: null };
+      openView(bv);
+      (async function () {
+        try {
+          const head1 = await api("/api/boards/" + encodeURIComponent(code), { keepSession: true });
+          bv.name = head1.name || code;
+          bv.preamble = head1.preamble || "";
+          const full = await api("/api/boards/" + encodeURIComponent(code) + "?part=full", { keepSession: true });
+          const lines = (full && full.content) ? full.content.map(function (l) { return l.body; }) : [];
+          bv.content = lines.join("\n");
+          bv.lines = full ? full.lines : null;
+          const lb = document.querySelector(".board-lightbox");
+          if (!lb) return;
+          lb.querySelector(".board-head").innerHTML = "<strong>" + esc(bv.name) + "</strong>" +
+            (bv.preamble ? '<span class="muted"> — ' + esc(bv.preamble) + "</span>" : "");
+          lb.querySelector(".board-content").innerHTML = renderMarkdown(bv.content);
+        } catch (e) {
+          const lb = document.querySelector(".board-lightbox");
+          if (lb) lb.querySelector(".board-content").innerHTML = '<p class="muted" style="font-size:12px;">' +
+            esc(String((e && e.message) || "").indexOf("404") >= 0 ? t("board.gone") : t("board.loadErr")) + "</p>";
+        }
+      })();
+    }
+
     cardEl.addEventListener("click", async function (ev) {
+      const openBtn = ev.target.closest("#btn-board-open");
+      if (openBtn) {
+        const inp = document.getElementById("board-open-input");
+        const code = extractCode(inp ? inp.value : "");
+        if (!code) { toast(t("board.needCode"), "error"); return; }
+        if (inp) inp.value = "";
+        openShared(code);
+        return;
+      }
       const newBtn = ev.target.closest("#btn-board-new");
       if (newBtn) {
         const name = window.prompt(t("board.namePrompt"), t("board.untitled"));

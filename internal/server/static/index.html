@@ -628,7 +628,11 @@
       <div class="settings-section pref-card" id="board-mgmt-card">
         <h4 class="pref-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
           <span data-i18n="board.title">Whiteboards</span>
-          <button id="btn-board-new" class="am-mini" data-i18n="board.new">New board</button>
+          <span style="display:flex; gap:6px; align-items:center;">
+            <input id="board-open-input" type="text" placeholder="贴分享码或 /api/boards/{code} 路径" style="height:24px; font-size:12px; width:200px; border:1px solid var(--border); border-radius:8px; padding:0 8px; background:var(--panel-2); color:var(--text);" />
+            <button id="btn-board-open" class="am-mini" data-i18n="board.openShared">打开分享板</button>
+            <button id="btn-board-new" class="am-mini" data-i18n="board.new">New board</button>
+          </span>
         </h4>
         <details id="board-details">
           <summary><small class="muted" id="board-sum">…</small></summary>
