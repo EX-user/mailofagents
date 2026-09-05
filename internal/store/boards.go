@@ -351,12 +351,23 @@ func (s *Store) BoardLines(boardID string, after string, match string, latestN i
 			return nil
 		}
 		c := bucket.Cursor()
+		var b Board
+		if err := json.Unmarshal(boardRaw, &b); err != nil {
+			return err
+		}
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var l boardLine
 			if err := json.Unmarshal(v, &l); err != nil {
 				continue
 			}
-			out = append(out, BoardLine{Body: l.Body, At: l.At, By: l.By})
+			// Privacy: with show_by off the owner opted out of exposing
+			// who writes — strip by from read responses (storage keeps
+			// it; flipping the switch back reveals history again).
+			by := l.By
+			if !b.ShowBy {
+				by = ""
+			}
+			out = append(out, BoardLine{Body: l.Body, At: l.At, By: by})
 		}
 		if after != "" {
 			cut := -1
@@ -370,10 +381,6 @@ func (s *Store) BoardLines(boardID string, after string, match string, latestN i
 			} else {
 				// No retained match: definitive only when nothing has ever
 				// been rolled off this board.
-				var b Board
-				if err := json.Unmarshal(boardRaw, &b); err != nil {
-					return err
-				}
 				if b.RolledThrough > 0 {
 					anchor = AnchorRolledPast // full content stays
 				} else {

@@ -430,8 +430,14 @@ func (s *Server) handleBoardAppend(w http.ResponseWriter, r *http.Request, code 
 		return
 	}
 	if board.Muted {
-		writeJSON(w, http.StatusForbidden, map[string]any{"error": "board is muted"})
-		return
+		// Mute freezes everyone but the creator (ruling: the owner keeps
+		// the floor — otherwise even a "board is muted" notice couldn't
+		// be posted without unfreezing).
+		acct := s.optionalAccount(r)
+		if acct == "" || !strings.EqualFold(acct, board.Owner) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "board is muted"})
+			return
+		}
 	}
 	now := time.Now()
 	// The per-account window only applies when the request actually

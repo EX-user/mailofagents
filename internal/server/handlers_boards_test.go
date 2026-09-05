@@ -128,15 +128,19 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 		t.Fatalf("by capture wrong: %+v", read.Content)
 	}
 
-	// Mute: appends 403 with the distinct error, reads unaffected, unfreeze
-	// restores; toggles never rewrite stored lines (by/by history intact).
+	// Mute: non-creator appends 403 with the distinct error; the creator
+	// keeps the floor (ruling: owner exemption); reads unaffected.
 	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
 		`{"muted":true}`, nil); c != 200 {
 		t.Fatalf("mute = %d", c)
 	}
-	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", owner, ownerPw,
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", "", "",
 		`{"body":"while muted"}`, nil); c != http.StatusForbidden {
-		t.Fatalf("append while muted = %d, want 403 (creator included)", c)
+		t.Fatalf("anon append while muted = %d, want 403", c)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", owner, ownerPw,
+		`{"body":"owner still talks"}`, nil); c != 200 {
+		t.Fatalf("creator append while muted = %d, want 200 (owner exempt)", c)
 	}
 	var mutedRead map[string]any
 	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?part=full", "", "", "", &mutedRead); c != 200 {
@@ -159,6 +163,29 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 	}
 	if len(read.Content) != 1 || read.Content[0].Body != "from owner" || read.Content[0].By == "" {
 		t.Fatalf("toggle must not rewrite stored lines: %+v", read.Content)
+	}
+
+	// show_by=false strips by from read responses (privacy: code-holders
+	// are often anonymous outsiders); flip back and by returns.
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
+		`{"show_by":false}`, nil); c != 200 {
+		t.Fatalf("show_by off = %d", c)
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?match="+url.QueryEscape("from owner"), "", "", "", &read); c != 200 {
+		t.Fatalf("stripped read = %d", c)
+	}
+	if len(read.Content) != 1 || read.Content[0].Body != "from owner" || read.Content[0].By != "" {
+		t.Fatalf("show_by=false must strip by: %+v", read.Content)
+	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/config", owner, ownerPw,
+		`{"show_by":true}`, nil); c != 200 {
+		t.Fatalf("show_by on = %d", c)
+	}
+	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?match="+url.QueryEscape("from owner"), "", "", "", &read); c != 200 {
+		t.Fatalf("revealed read = %d", c)
+	}
+	if len(read.Content) != 1 || read.Content[0].By == "" {
+		t.Fatalf("show_by=true must reveal stored by: %+v", read.Content)
 	}
 }
 
