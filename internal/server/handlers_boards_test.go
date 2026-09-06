@@ -111,9 +111,20 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 		`{"body":"from owner"}`, nil); c != 200 {
 		t.Fatalf("authed append = %d", c)
 	}
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", other, otherPw,
+		`{"body":"from other"}`, nil); c != 200 {
+		t.Fatalf("other append = %d", c)
+	}
+
+	// show_by=true boards refuse anonymous appends (distinct error body);
+	// authenticated appends unaffected.
+	var anonBlocked map[string]any
 	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", "", "",
-		`{"body":"from anon"}`, nil); c != 200 {
-		t.Fatalf("anon append = %d", c)
+		`{"body":"anon on show_by"}`, &anonBlocked); c != http.StatusForbidden {
+		t.Fatalf("anon append on show_by board = %d, want 403", c)
+	}
+	if anonBlocked["error"] != "anonymous posting is disabled on this board" {
+		t.Fatalf("anon-block error body wrong: %v", anonBlocked)
 	}
 	var read struct {
 		Content []struct {
@@ -124,7 +135,7 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 	if c := apiCall(t, "GET", ts.URL, "/api/boards/"+wc+"?part=full", "", "", "", &read); c != 200 {
 		t.Fatalf("read = %d", c)
 	}
-	if len(read.Content) != 2 || read.Content[0].By == "" || read.Content[1].By != "" {
+	if len(read.Content) != 2 || read.Content[0].By == "" || read.Content[1].By == "" {
 		t.Fatalf("by capture wrong: %+v", read.Content)
 	}
 
@@ -181,7 +192,7 @@ func TestBoardConfigAndAttribution(t *testing.T) {
 			t.Fatalf("show_by=true must reveal by: %+v", l)
 		}
 	}
-	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", "", "",
+	if c := apiCall(t, "POST", ts.URL, "/api/boards/"+wc+"/lines", owner, ownerPw,
 		`{"body":"after unmute"}`, nil); c != 200 {
 		t.Fatalf("append after unmute = %d", c)
 	}

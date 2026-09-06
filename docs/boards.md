@@ -38,6 +38,6 @@
 ## 板级配置与发信人
 
 - 配置三开关（仅创建者经 /config 开闭）：`show_time` / `show_by` 控制行的时间与发信人是否对外可见（关=读响应分别置 `at=0` / 剥除 `by`，存储恒记全量，开关回开即恢复；渲染开关，永不改写已存行）；`muted` 为板级写冻结——开启后 POST lines 一律 403 `{"error":"board is muted"}`，读与前导行/删板不受影响。
-- 发信人归因：追加时若请求携带有效账户凭据则记 `by`=账户地址，纯码追加 `by` 为空串。归因恒开（与 show_by 显示开关无关）；历史行（无 by 字段）按匿名处理。
+- 发信人归因：追加时若请求携带有效账户凭据则记 `by`=账户地址。**show_by=true 的板禁匿名追加**（无有效凭据 403 `{"error":"anonymous posting is disabled on this board"}`，要写请用账户认证）；show_by=false 的板匿名照旧（by 空串）。归因恒开（与显示开关无关）；历史行（无 by 字段）按匿名处理。
 
 seq 是服务端内部单调计数，不下传客户端。API 全量自述以 `GET /api/boards/info` 与 `/api/self` 为准。

@@ -443,11 +443,16 @@ func (s *Server) handleBoardAppend(w http.ResponseWriter, r *http.Request, code 
 		badRequest(w, "line too long")
 		return
 	}
+	// Identity resolves once: show_by boards refuse anonymous appends
+	// entirely (distinct error body for the UI toast — a board that
+	// displays who writes must know who writes); the mute freeze then
+	// applies to everyone but the creator.
+	acct := s.optionalAccount(r)
+	if board.ShowBy && acct == "" {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "anonymous posting is disabled on this board"})
+		return
+	}
 	if board.Muted {
-		// Mute freezes everyone but the creator (ruling: the owner keeps
-		// the floor — otherwise even a "board is muted" notice couldn't
-		// be posted without unfreezing).
-		acct := s.optionalAccount(r)
 		if acct == "" || !strings.EqualFold(acct, board.Owner) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "board is muted"})
 			return
@@ -458,7 +463,7 @@ func (s *Server) handleBoardAppend(w http.ResponseWriter, r *http.Request, code 
 	// carries a valid account credential (optional on this endpoint — the
 	// code is the credential; an empty key must never gate anonymous
 	// appends as one global bucket).
-	if acct := s.optionalAccount(r); acct != "" {
+	if acct != "" {
 		if !s.boardAcctRate.allow(acct, boardAcctAppendPerMin, now) {
 			http.Error(w, "board append rate limit exceeded (per account)", http.StatusTooManyRequests)
 			return
