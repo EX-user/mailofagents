@@ -2054,6 +2054,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const msg = String((e && e.message) || e || "");
       if (msg.indexOf("429") >= 0) toast(t("board.rate"), "error");
       else if (msg.indexOf("muted") >= 0) toast(t("board.mutedToast"), "error");
+      else if (msg.indexOf("anonymous posting is disabled") >= 0) toast(t("board.anonToast"), "error");
       else if (msg.indexOf("404") >= 0) toast(t("board.gone"), "error");
       else if (msg.indexOf("403") >= 0) toast(t("board.forbidden"), "error");
       else toast(t("common.error", { msg: msg }), "error");
