@@ -212,6 +212,7 @@ func ensureWorkdir(path string) error {
 // "no output for a while" (possible stall — suspicious, not confirmed).
 type lineTee struct {
 	tag      string
+	cli      string // cli id: usage field semantics differ per provider family (S8 audit)
 	buf      bytes.Buffer
 	secret   string // account password: masked in anything shown on the board
 	lastText string // most recent spoken text; its tail anchors the next step_start
@@ -272,27 +273,27 @@ func (w *lineTee) Write(p []byte) (int, error) {
 // The LLM's input IS the context, so the last report is the authoritative
 // session-size estimate; max() across the wake is what compact_notice
 // compares against.
-func contextTokens(o any) int64 {
+func contextTokens(o any, cli string) int64 {
 	switch v := o.(type) {
 	case map[string]any:
 		if u, ok := v["usage"].(map[string]any); ok {
-			if n := usageContext(u); n > 0 {
+			if n := usageContext(u, cli); n > 0 {
 				return n
 			}
 		}
 		if u, ok := v["tokens"].(map[string]any); ok {
-			if n := usageContext(u); n > 0 {
+			if n := usageContext(u, cli); n > 0 {
 				return n
 			}
 		}
 		for _, vv := range v {
-			if n := contextTokens(vv); n > 0 {
+			if n := contextTokens(vv, cli); n > 0 {
 				return n
 			}
 		}
 	case []any:
 		for _, x := range v {
-			if n := contextTokens(x); n > 0 {
+			if n := contextTokens(x, cli); n > 0 {
 				return n
 			}
 		}
@@ -300,14 +301,33 @@ func contextTokens(o any) int64 {
 	return 0
 }
 
-func usageContext(u map[string]any) int64 {
-	// context = input (uncached) + cache read + cache write; output and
-	// reasoning excluded (they ride into next turn's input anyway).
-	n := numOf(u, "input") + numOf(u, "input_tokens") + numOf(u, "cacheRead") +
-		numOf(u, "cache_read_input_tokens") + numOf(u, "cached_input_tokens") +
+func usageContext(u map[string]any, cli string) int64 {
+	// Two provider families, two field semantics (S8 audit 2026-09-08, real
+	// captures in REALRUN_RESEARCH.md):
+	//
+	//   codex (OpenAI responses wire): input_tokens ALREADY INCLUDES cached
+	//   input — "Insufficient"-proof ground truth: {input_tokens: 8890,
+	//   cached_input_tokens: 8064} on an 8890-token prompt. Adding cached
+	//   double-counts (the reported "6M context" = true 3M + cached 3M).
+	//
+	//   anthropic family (claude/pi) and opencode: input and cache_read/
+	//   creation are DISJOINT — context = input + cache read + cache write;
+	//   output and reasoning excluded (they ride into next turn's input).
+	n := int64(0)
+	if cli == "codex" {
+		// input_tokens (responses wire) / prompt_tokens (chat wire) both
+		// include the cached share; cached fields are subsets, never added.
+		return numOf(u, "input_tokens") + numOf(u, "prompt_tokens")
+	}
+	n = numOf(u, "input") + numOf(u, "input_tokens") + numOf(u, "cacheRead") +
+		numOf(u, "cache_read_input_tokens") +
 		numOf(u, "cacheWrite") + numOf(u, "cache_creation_input_tokens")
 	// opencode nests its cache counters one level down: tokens.cache.{read,
-	// write} — the bulk of a cached session's context hides there.
+	// write} — the bulk of a cached session's context hides there. (Its
+	// tokens.input excludes cache: input+cacheRead+output+reasoning=total,
+	// verified against a real funded-key capture.) cached_input_tokens is
+	// NOT in opencode's vocabulary — keeping it here would double-count
+	// codex-shaped maps that reach this path via the default arm.
 	if c, ok := u["cache"].(map[string]any); ok {
 		n += numOf(c, "read") + numOf(c, "write")
 	}
@@ -352,7 +372,7 @@ func (w *lineTee) summarize(line []byte) string {
 			} else if s := toolDigest(ev); s != "" {
 				parts = append(parts, s)
 			}
-			if n := contextTokens(ev); n > 0 {
+			if n := contextTokens(ev, w.cli); n > 0 {
 				// Track the wake's high-water mark: opencode interleaves
 				// tiny side-request steps (title generation etc.) whose
 				// usage would otherwise drag the readout down from the
@@ -532,7 +552,7 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	var stdout, stderr bytes.Buffer
-	tee := &lineTee{tag: tag, secret: cfg.Password}
+	tee := &lineTee{tag: tag, cli: cfg.CLI, secret: cfg.Password}
 	wakeTees.Store(tag, tee)
 	defer wakeTees.Delete(tag)
 	cmd.Stdout = io.MultiWriter(&stdout, tee)
