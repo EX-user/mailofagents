@@ -682,7 +682,8 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		} else if newID != "" {
 			short += " · session salvaged"
 		}
-		board.Set(tag, "waiting", "wake failed: "+short)
+		board.Set(tag, "error", "wake failed: "+short)
+		d.hb("error", "wake failed: "+short)
 		d.hb("waiting", "wake failed: "+short)
 		d.logf("wake failed: %s", short)
 		if wakeCtx.Err() != context.DeadlineExceeded {

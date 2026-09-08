@@ -41,6 +41,8 @@ func main() {
 	plan := flag.String("plan", "", "print the exact invocation(s) the wake would build for the matching account(s), then exit — no CLI is run (argv-shape debugging; same matching as -switch_address)")
 	compact := flag.String("compact", "", "compress the matching account's bound session IN PLACE (cli built-in entry) and exit — no wake, no session generation; other accounts are not even read (same matching as -switch_address)")
 	compactBeforeWake := flag.String("compact-before-wake", "", "run the normal duty loop, but compress the matching account's bound session once before its first wake — only that account's first turn is delayed (same matching as -switch_address)")
+	tuiShot := flag.Bool("tui-screenshot", false, "print synthetic TUI frames (four states + truncation samples, 100 cols) to stdout and exit — bench acceptance artifacts, no config needed")
+	tuiWidth := flag.Int("tui-width", 100, "column width for -tui-screenshot frames")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
@@ -48,6 +50,10 @@ func main() {
 
 	if *showVer {
 		fmt.Println("agentmail-worker build:", buildTag)
+		return
+	}
+	if *tuiShot {
+		worker.DumpTUIScreenshots(*tuiWidth, buildTag)
 		return
 	}
 	log.Printf("build: %s", buildTag)
@@ -137,6 +143,7 @@ func main() {
 	// machines (own session binding, own workdir) so they run in parallel
 	// with no shared mutable state. SIGTERM cancels the shared context and
 	// stops all of them. The status board redraws itself on a fast tick.
+	worker.SetMeta(buildTag, "errors-*.log beside each account's state file (+ WORKER_LOG_FILE when set)")
 	go worker.RenderLoop(ctx)
 	var wg sync.WaitGroup
 	cbwSet := map[string]bool{}

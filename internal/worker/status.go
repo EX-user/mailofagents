@@ -1,11 +1,24 @@
 package worker
 
-// StatusBoard: one fixed bottom line per account, redrawn in place
-// (ANSI) — working rows stream the latest model-output summary, waiting
-// rows show a live uptime/read count. Regular log lines print above the
-// board (the board is erased before a line and redrawn after). When stdout
-// is not a TTY (redirected to a file) the board disables itself and
-// summaries fall back to plain log lines.
+// StatusBoard TUI (v0.2.8 upgrade, boss ASCII spec = acceptance baseline):
+//
+//	worker launch at <ts>. version: <buildTag>
+//	--------------------------------------------------
+//	[addr] waiting up 15m17s | 3 unread | ctx ≈97k
+//	  | <rolling output, latest last (2 lines)>
+//	[addr2] working up … | thinking… | ctx ≈196k
+//	  | …
+//	--------------------------------------------------
+//	[worker-log]
+//	  | <up to 10 rolling log lines>
+//	  | full logs: <path>            (hint line, not counted in the 10)
+//
+// States: waiting | working | compact | error (error = quota/network/wake
+// failures — boss detail #2). Every rendered line is clamped to the
+// terminal width: no wrapping (boss detail #1). The frame is built by
+// renderFrame as a plain multi-line string — the ANSI draw loop prints it
+// in place, and `-tui-screenshot` dumps synthetic frames for the bench
+// (boss acceptance detail: TUI "screenshots" without running a duty loop).
 
 import (
 	"context"
@@ -17,9 +30,14 @@ import (
 	"time"
 )
 
+const (
+	rollLines   = 2  // rolling output lines per account (boss spec)
+	logRingSize = 10 // worker-log rolling lines (boss spec)
+)
+
 type statusRow struct {
 	tag          string
-	state        string // "waiting" | "working"
+	state        string // "waiting" | "working" | "compact" | "error"
 	detail       string
 	since        time.Time // when the current state started
 	started      time.Time // process start, for uptime
@@ -29,16 +47,34 @@ type statusRow struct {
 }
 
 type Board struct {
-	mu      sync.Mutex
-	rows    []*statusRow
-	enabled bool
-	drawn   int
+	mu       sync.Mutex
+	rows     []*statusRow
+	enabled  bool
+	drawn    int
+	launch   time.Time
+	version  string
+	logHint  string   // full-log path hint line (boss detail #3)
+	logRing  []string // worker-log rolling lines, oldest first
+	rowRolls map[string][]string
 }
 
-var board = &Board{}
+var board = &Board{launch: time.Now(), rowRolls: map[string][]string{}}
+
+// SetMeta feeds the header/version and the full-log hint line (called from
+// main before the duty loop).
+func (b *Board) SetMeta(version, logHint string) {
+	b.mu.Lock()
+	b.version = version
+	b.logHint = logHint
+	b.mu.Unlock()
+}
 
 // RenderLoop drives the in-place status board redraw (package-level entry).
-func RenderLoop(ctx context.Context) { board.RenderLoop(ctx) }
+func RenderLoop(ctx context.Context) { board.renderLoop(ctx) }
+
+// SetMeta feeds the board header (version) and the full-log hint line
+// (package-level entry, called from main before the duty loop).
+func SetMeta(version, logHint string) { board.SetMeta(version, logHint) }
 
 func init() {
 	// Enabled only on a TTY; WORKER_PLAIN=1 force-disables (files, pipes,
@@ -73,22 +109,31 @@ func (b *Board) SetCtx(tag string, tokens int64) {
 	b.mu.Unlock()
 }
 
-// Set updates a row's state/detail.
+// Set updates a row's state/detail. State "" = streaming output summary:
+// it rolls into the account's two-line output area instead of the row line.
 func (b *Board) Set(tag, state, detail string) {
 	b.mu.Lock()
 	row := b.row(tag)
 	if row != nil {
-		if row.state != state || detail != row.detail {
-			row.since = time.Now()
-		}
-		if state != "" {
+		if state == "" {
+			// streaming output: roll the two-line area (latest last)
+			rolls := append(b.rowRolls[tag], detail)
+			if len(rolls) > rollLines {
+				rolls = rolls[len(rolls)-rollLines:]
+			}
+			b.rowRolls[tag] = rolls
+			row.detail = ""
+		} else {
+			if row.state != state || detail != row.detail {
+				row.since = time.Now()
+			}
 			row.state = state
+			row.detail = detail
 		}
-		row.detail = detail
 	}
 	b.mu.Unlock()
-	if board.enabled {
-		board.render()
+	if b.enabled {
+		b.render()
 	}
 }
 
@@ -101,20 +146,24 @@ func (b *Board) row(tag string) *statusRow {
 	return nil
 }
 
-// Logf prints a normal log line above the board (erase board → line →
-// redraw), then refreshes. The explicit erase() first moves the cursor
-// above the board so the log line lands where the board stood; draw()'s
-// internal erase is then a no-op (drawn==0) and just repaints.
+// Logf records a line into the worker-log rolling pane (in-place redraw;
+// nothing prints above the board anymore — boss spec: errors scroll at the
+// bottom, never stack). When the board is disabled it falls back to plain
+// log.Printf so redirected runs keep a flat log.
 func (b *Board) Logf(tag, format string, args ...any) {
+	line := fmt.Sprintf("[%s] %s", tag, fmt.Sprintf(format, args...))
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if b.enabled {
-		b.erase()
+		b.logRing = append(b.logRing, line)
+		if len(b.logRing) > logRingSize {
+			b.logRing = b.logRing[len(b.logRing)-logRingSize:]
+		}
+		b.mu.Unlock()
+		b.render()
+		return
 	}
-	log.Printf("["+tag+"] "+format, args...)
-	if b.enabled {
-		b.draw()
-	}
+	b.mu.Unlock()
+	log.Print(line)
 }
 
 // render redraws the board (locks; for use outside Logf).
@@ -134,26 +183,58 @@ func (b *Board) erase() {
 	b.drawn = 0
 }
 
-// draw repaints the board in place: lift the cursor above the rows drawn
-// last time, clear down, then print one line per account. Erase+repaint is
-// one atomic op here — every caller (Logf, Set, RenderLoop) goes through
-// draw, so the board never grows a new line per tick. Each row is clamped
-// to the terminal width: a row that wraps onto a second physical line
-// breaks the erase cursor arithmetic and resurrects stale rows.
+// draw repaints the board in place from renderFrame's output.
 func (b *Board) draw() {
 	b.erase()
 	w := consoleWidth()
 	if w < 20 {
 		w = 80
 	}
-	for _, r := range b.rows {
+	b.mu.Lock()
+	rows := append([]*statusRow(nil), b.rows...)
+	rolls := map[string][]string{}
+	for k, v := range b.rowRolls {
+		rolls[k] = append([]string(nil), v...)
+	}
+	ring := append([]string(nil), b.logRing...)
+	launch, version, hint := b.launch, b.version, b.logHint
+	b.mu.Unlock()
+
+	frame := renderFrame(w, launch, version, rows, rolls, ring, hint)
+	for _, line := range strings.Split(frame, "\n") {
+		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", line)
+		b.drawn++
+	}
+}
+
+// renderFrame builds the whole board as a plain string (no ANSI) — the
+// single source of the layout, shared by the live draw loop and the
+// -tui-screenshot dumps (boss acceptance: bench-viewable frames).
+func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rolls map[string][]string, logRing []string, logHint string) string {
+	// Defensive caps: renderFrame is the layout authority even when callers
+	// bypass Set/Logf.
+	if len(logRing) > logRingSize {
+		logRing = logRing[len(logRing)-logRingSize:]
+	}
+	capped := map[string][]string{}
+	for k, v := range rolls {
+		if len(v) > rollLines {
+			v = v[len(v)-rollLines:]
+		}
+		capped[k] = v
+	}
+	rolls = capped
+	sep := strings.Repeat("-", min2(w, 100))
+	var bld strings.Builder
+	fmt.Fprintf(&bld, "%s\n", clampCols(fmt.Sprintf("worker launch at %s. version: %s",
+		launch.Format("2006/01/02 15:04:05"), version), w))
+	bld.WriteString(sep + "\n")
+	for _, r := range rows {
 		up := time.Since(r.started).Round(time.Second)
 		line := fmt.Sprintf("[%s] %-7s up %s", r.tag, r.state, up)
 		if r.detail != "" {
 			line += " | " + r.detail
 		}
-		// Live age of the current detail once it stops refreshing: makes a
-		// silent generation/tool phase read as "moving", not "stuck".
 		if r.state == "working" {
 			if age := time.Since(r.since).Round(time.Second); age >= 3*time.Second {
 				line += fmt.Sprintf(" · %s", age)
@@ -162,9 +243,34 @@ func (b *Board) draw() {
 		if r.ctxTokens > 0 {
 			line += " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
 		}
-		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", clampCols(line, w))
-		b.drawn++
+		fmt.Fprintf(&bld, "%s\n", clampCols(line, w))
+		for _, out := range rolls[r.tag] {
+			fmt.Fprintf(&bld, "  | %s\n", clampCols(out, max2(w-4, 10)))
+		}
 	}
+	bld.WriteString(sep + "\n")
+	bld.WriteString("[worker-log]\n")
+	for _, l := range logRing {
+		fmt.Fprintf(&bld, "  | %s\n", clampCols(l, max2(w-4, 10)))
+	}
+	if logHint != "" {
+		fmt.Fprintf(&bld, "  | full logs: %s\n", clampCols(logHint, max2(w-4, 10)))
+	}
+	return strings.TrimRight(bld.String(), "\n")
+}
+
+func min2(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max2(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // ctxReadout renders the context usage: a percentage against the configured
@@ -218,9 +324,9 @@ func SprintDetail(s string) string {
 	return truncate(strings.ReplaceAll(s, "\n", " "), 100)
 }
 
-// RenderLoop redraws the board periodically so uptime clocks tick and
+// renderLoop redraws the board periodically so uptime clocks tick and
 // waiting rows stay visible without new log lines. Call once from main.
-func (b *Board) RenderLoop(ctx context.Context) {
+func (b *Board) renderLoop(ctx context.Context) {
 	if !b.enabled {
 		return
 	}
@@ -232,8 +338,8 @@ func (b *Board) RenderLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			b.mu.Lock()
-			b.draw()
 			b.mu.Unlock()
+			b.draw()
 		}
 	}
 }
