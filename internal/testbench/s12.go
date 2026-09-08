@@ -95,7 +95,7 @@ func (s s12claudereal) Run(ctx context.Context, env *Env) Result {
 
 	cfg := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 5, "timeout_sec": 420,
-  "agents": [{"address":%q,"password":"x","cli":"claude","workdir":%q,"model":"deepseek-chat"}]
+  "agents": [{"address":%q,"password":"bench-fixture-pw","cli":"claude","workdir":%q,"model":"deepseek-chat"}]
 }`, srvURL, acctA, filepath.Join(env.RunDir, "wd-alpha"))
 	cfgPath := filepath.Join(env.RunDir, "config.json")
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {

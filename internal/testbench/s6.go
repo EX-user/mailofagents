@@ -65,7 +65,7 @@ func (s s6notice) Run(ctx context.Context, env *Env) Result {
 	cfg := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 1, "timeout_sec": 30,
   "compact_notice_tokens": 1000,
-  "agents": [{"address":%q,"password":"x","cli":"codex","workdir":%q}]
+  "agents": [{"address":%q,"password":"bench-fixture-pw","cli":"codex","workdir":%q}]
 }`, srvURL, acctA, filepath.Join(env.RunDir, "wd-alpha"))
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		res.add("config", false, "%v", err)

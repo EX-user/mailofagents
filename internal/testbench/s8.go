@@ -106,7 +106,7 @@ func (s s8realquota) Run(ctx context.Context, env *Env) Result {
 
 	cfg := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 1, "timeout_sec": 30,
-  "agents": [{"address":%q,"password":"x","cli":"opencode","workdir":%q,"model":%q}]
+  "agents": [{"address":%q,"password":"bench-fixture-pw","cli":"opencode","workdir":%q,"model":%q}]
 }`, srvURL, acctA, filepath.Join(env.RunDir, "wd-alpha"), modelID)
 	cfgPath := filepath.Join(env.RunDir, "config.json")
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {

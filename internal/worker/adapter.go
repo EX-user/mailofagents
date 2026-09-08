@@ -619,7 +619,12 @@ func runWake(ctx context.Context, cfg *Config, name string, args []string, stdin
 // redact masks the watched account's password in CLI output that ends up on
 // the status board or in error tails.
 func redact(s, secret string) string {
-	if secret == "" {
+	// Minimum-length guard: a short secret (the bench fixtures use "x")
+	// would mask every occurrence of that letter in normal words
+	// ("text" → "te•••t") — redaction that mangles the display hides
+	// more than it protects. Four+ characters can still only match by
+	// genuine containment.
+	if secret == "" || len(secret) < 4 {
 		return s
 	}
 	return strings.ReplaceAll(s, secret, "•••")

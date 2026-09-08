@@ -127,7 +127,7 @@ func (s s7combo) Run(ctx context.Context, env *Env) Result {
 	cfg := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 1, "timeout_sec": 30,
   "emergency": {"addresses": ["actor@fixture.test"], "urgent_phrase": "[紧急] 生产故障"},
-  "agents": [{"address":%q,"password":"x","cli":"opencode","workdir":%q}]
+  "agents": [{"address":%q,"password":"bench-fixture-pw","cli":"opencode","workdir":%q}]
 }`, srvURL, acctA, wdAlpha)
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		res.add("config", false, "%v", err)
@@ -224,7 +224,7 @@ func (s s7combo) Run(ctx context.Context, env *Env) Result {
 	// ---- B. -compact 红线（codex 线：无 Compacter 入口）----
 	cfg2 := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 1, "timeout_sec": 30,
-  "agents": [{"address":%q,"password":"x","cli":"codex","workdir":%q}]
+  "agents": [{"address":%q,"password":"bench-fixture-pw","cli":"codex","workdir":%q}]
 }`, srvURL, acctA, filepath.Join(env.RunDir, "wd-alpha"))
 	cfgB := filepath.Join(env.RunDir, "config-compact.json")
 	if err := os.WriteFile(cfgB, []byte(cfg2), 0o644); err != nil {

@@ -70,7 +70,7 @@ func (s s1evolution) Run(ctx context.Context, env *Env) Result {
 			if i > 0 {
 				agents += ","
 			}
-			agents += fmt.Sprintf(`{"address":%q,"password":"x","cli":"opencode","workdir":%q}`,
+			agents += fmt.Sprintf(`{"address":%q,"password":"bench-fixture-pw","cli":"opencode","workdir":%q}`,
 				n, filepath.Join(env.RunDir, "wd-"+strings.SplitN(n, "@", 2)[0]))
 		}
 		cfg := fmt.Sprintf(`{"server":%q,"poll_interval_sec":1,"timeout_sec":30,"agents":[%s]}`,

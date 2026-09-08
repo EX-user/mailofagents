@@ -64,9 +64,9 @@ func (s s2quota) Run(ctx context.Context, env *Env) Result {
 	cfg := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 1, "timeout_sec": 30,
   "agents": [
-    {"address":%q,"password":"x","cli":"opencode","workdir":%q,
+    {"address":%q,"password":"bench-fixture-pw","cli":"opencode","workdir":%q,
      "env": {"BENCH_FAIL": "insufficient_quota"}},
-    {"address":%q,"password":"x","cli":"opencode","workdir":%q}
+    {"address":%q,"password":"bench-fixture-pw","cli":"opencode","workdir":%q}
   ]
 }`, srvURL, acctA, filepath.Join(env.RunDir, "wd-alpha"),
 		acctB, filepath.Join(env.RunDir, "wd-bravo"))

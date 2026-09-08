@@ -106,7 +106,7 @@ func (s s10realsuccess) Run(ctx context.Context, env *Env) Result {
 
 	cfg := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 5, "timeout_sec": 300,
-  "agents": [{"address":%q,"password":"x","cli":"opencode","workdir":%q,"model":%q}]
+  "agents": [{"address":%q,"password":"bench-fixture-pw","cli":"opencode","workdir":%q,"model":%q}]
 }`, srvURL, acctA, filepath.Join(env.RunDir, "wd-alpha"), modelID)
 	cfgPath := filepath.Join(env.RunDir, "config.json")
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
@@ -114,8 +114,11 @@ func (s s10realsuccess) Run(ctx context.Context, env *Env) Result {
 		return res
 	}
 
+	// WORKER_TUI_DUMP: the real run's TUI frames get captured as files —
+	// boss acceptance (真实运行过程截图) and replay artifacts in one.
+	framesDir := filepath.Join(env.RunDir, "frames")
 	cmd := exec.Command(env.WorkerBin, "-config", cfgPath)
-	cmd.Env = WhitelistEnv(root)
+	cmd.Env = WhitelistEnv(root, "WORKER_TUI_DUMP="+framesDir)
 	cmd.Dir = env.RunDir
 	logBuf := &bytes.Buffer{}
 	cmd.Stdout, cmd.Stderr = logBuf, logBuf
@@ -171,6 +174,10 @@ func (s s10realsuccess) Run(ctx context.Context, env *Env) Result {
 	res.add("no_wake_failed", !strings.Contains(log, "wake failed"),
 		"log carries no wake-failed line")
 	res.add("worker_survives", alive, "worker alive through the real wake")
+
+	// ⑤ 真实运行帧（boss 验收）: dump 模式在状态变化时固化 TUI 帧。
+	frames, _ := os.ReadDir(filepath.Join(env.RunDir, "frames"))
+	res.add("real_frames_captured", len(frames) > 0, "%d real TUI frame(s) dumped", len(frames))
 	return res
 }
 

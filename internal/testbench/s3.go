@@ -62,7 +62,7 @@ func (s s3watchdog) Run(ctx context.Context, env *Env) Result {
 	cfgPath := filepath.Join(env.RunDir, "config.json")
 	cfg := fmt.Sprintf(`{
   "server": %q, "poll_interval_sec": 1, "timeout_sec": 2,
-  "agents": [{"address":%q,"password":"x","cli":"opencode","workdir":%q}]
+  "agents": [{"address":%q,"password":"bench-fixture-pw","cli":"opencode","workdir":%q}]
 }`, srvURL, acctA, filepath.Join(env.RunDir, "wd-alpha"))
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		res.add("config", false, "%v", err)
