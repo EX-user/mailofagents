@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	rollLines   = 2  // rolling output lines per account (boss spec)
+	rollRows    = 2  // rolling output rows per account (boss spec)
+	rollEvents  = 8  // recent stream events kept per account (chunked at render)
 	logRingSize = 10 // worker-log rolling lines (boss spec)
 )
 
@@ -47,18 +48,22 @@ type statusRow struct {
 }
 
 type Board struct {
-	mu       sync.Mutex
-	rows     []*statusRow
-	enabled  bool
-	drawn    int
-	launch   time.Time
-	version  string
-	logHint  string   // full-log path hint line (boss detail #3)
-	logRing  []string // worker-log rolling lines, oldest first
-	rowRolls map[string][]string
+	mu           sync.Mutex
+	rows         []*statusRow
+	enabled      bool
+	drawn        int
+	dumpDir      string // WORKER_TUI_DUMP: write frames as files even without a TTY (bench capture)
+	launch       time.Time
+	version      string
+	logHint      string              // full-log path hint line (boss detail #3)
+	logRing      []string            // worker-log rolling lines, oldest first
+	rowEvents    map[string][]string // per-account recent stream events (raw, newest last)
+	lastDump     string              // last dumped frame content (dump mode dedup)
+	lastDumpTime int64               // unix nano of last dump (throttle)
+	dumped       []string            // dumped frame contents
 }
 
-var board = &Board{launch: time.Now(), rowRolls: map[string][]string{}}
+var board = &Board{launch: time.Now(), rowEvents: map[string][]string{}}
 
 // SetMeta feeds the header/version and the full-log hint line (called from
 // main before the duty loop).
@@ -85,6 +90,9 @@ func init() {
 	if os.Getenv("WORKER_PLAIN") == "1" {
 		board.enabled = false
 	}
+	// WORKER_TUI_DUMP: frame dumps on state changes even without a TTY —
+	// the bench captures REAL-run frames through it (boss acceptance).
+	board.dumpDir = os.Getenv("WORKER_TUI_DUMP")
 }
 
 // AddRow registers one account line at board creation time. ctxWindow /
@@ -107,6 +115,9 @@ func (b *Board) SetCtx(tag string, tokens int64) {
 		row.ctxTokens = tokens
 	}
 	b.mu.Unlock()
+	if b.dumpDir != "" {
+		b.render()
+	}
 }
 
 // Set updates a row's state/detail. State "" = streaming output summary:
@@ -116,12 +127,13 @@ func (b *Board) Set(tag, state, detail string) {
 	row := b.row(tag)
 	if row != nil {
 		if state == "" {
-			// streaming output: roll the two-line area (latest last)
-			rolls := append(b.rowRolls[tag], detail)
-			if len(rolls) > rollLines {
-				rolls = rolls[len(rolls)-rollLines:]
+			// streaming output: keep recent raw events; the render chunks
+			// them into the two-line horizontal continuation window
+			evs := append(b.rowEvents[tag], detail)
+			if len(evs) > rollEvents {
+				evs = evs[len(evs)-rollEvents:]
 			}
-			b.rowRolls[tag] = rolls
+			b.rowEvents[tag] = evs
 			row.detail = ""
 		} else {
 			if row.state != state || detail != row.detail {
@@ -129,10 +141,11 @@ func (b *Board) Set(tag, state, detail string) {
 			}
 			row.state = state
 			row.detail = detail
+			delete(b.rowEvents, tag) // state change: stale stream fragments go
 		}
 	}
 	b.mu.Unlock()
-	if b.enabled {
+	if b.enabled || b.dumpDir != "" {
 		b.render()
 	}
 }
@@ -153,7 +166,7 @@ func (b *Board) row(tag string) *statusRow {
 func (b *Board) Logf(tag, format string, args ...any) {
 	line := fmt.Sprintf("[%s] %s", tag, fmt.Sprintf(format, args...))
 	b.mu.Lock()
-	if b.enabled {
+	if b.enabled || b.dumpDir != "" {
 		b.logRing = append(b.logRing, line)
 		if len(b.logRing) > logRingSize {
 			b.logRing = b.logRing[len(b.logRing)-logRingSize:]
@@ -169,10 +182,70 @@ func (b *Board) Logf(tag, format string, args ...any) {
 // render redraws the board (locks; for use outside Logf).
 func (b *Board) render() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.enabled {
-		b.draw()
+	w := consoleWidth()
+	if w < 20 {
+		w = 80
 	}
+	rows := append([]*statusRow(nil), b.rows...)
+	rolls := map[string][]string{}
+	for k, v := range b.rowEvents {
+		rolls[k] = append([]string(nil), v...)
+	}
+	ring := append([]string(nil), b.logRing...)
+	launch, version, hint := b.launch, b.version, b.logHint
+	b.mu.Unlock()
+
+	frame := renderFrame(w, launch, version, rows, rolls, ring, hint)
+	if b.enabled {
+		b.drawFrame(frame)
+	}
+	b.dumpFrame(frame)
+}
+
+// drawFrame prints a frame in place (erase previous + repaint).
+func (b *Board) drawFrame(frame string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.erase()
+	for _, line := range strings.Split(frame, "\n") {
+		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", line)
+		b.drawn++
+	}
+}
+
+// dumpFrame writes the frame to WORKER_TUI_DUMP when its content changed —
+// the bench's real-run screenshot capture.
+func (b *Board) dumpFrame(frame string) {
+	if b.dumpDir == "" {
+		return
+	}
+	b.mu.Lock()
+	now := time.Now()
+	if frame == b.lastDump || now.UnixNano()-b.lastDumpTime < 15*time.Second.Nanoseconds() {
+		// identical frame, or a same-state frame within the throttle
+		// window: the board ticks every 500ms and uptime/age make every
+		// tick textually unique — without this gate one real wake would
+		// flood the dump dir with near-identical frames.
+		if frame != b.lastDump {
+			b.lastDump = frame
+		}
+		b.mu.Unlock()
+		return
+	}
+	b.lastDump = frame
+	b.lastDumpTime = now.UnixNano()
+	n := len(b.dumped) + 1
+	state := ""
+	if r := b.rows; len(r) > 0 {
+		// name frames after the first row's state for scanability
+		state = r[0].state
+	}
+	b.dumped = append(b.dumped, frame)
+	dir := b.dumpDir
+	b.mu.Unlock()
+	os.MkdirAll(dir, 0o755)
+	name := fmt.Sprintf("%s/frame-%02d-%s.txt", dir, n, strings.ReplaceAll(state, " ", "_"))
+	_ = os.WriteFile(name, []byte(frame), 0o644)
 }
 
 // erase lifts the cursor above the drawn board and clears downward.
@@ -183,29 +256,8 @@ func (b *Board) erase() {
 	b.drawn = 0
 }
 
-// draw repaints the board in place from renderFrame's output.
-func (b *Board) draw() {
-	b.erase()
-	w := consoleWidth()
-	if w < 20 {
-		w = 80
-	}
-	b.mu.Lock()
-	rows := append([]*statusRow(nil), b.rows...)
-	rolls := map[string][]string{}
-	for k, v := range b.rowRolls {
-		rolls[k] = append([]string(nil), v...)
-	}
-	ring := append([]string(nil), b.logRing...)
-	launch, version, hint := b.launch, b.version, b.logHint
-	b.mu.Unlock()
-
-	frame := renderFrame(w, launch, version, rows, rolls, ring, hint)
-	for _, line := range strings.Split(frame, "\n") {
-		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", line)
-		b.drawn++
-	}
-}
+// (draw was folded into render + drawFrame: the frame is built once and
+// either printed in place or dumped to WORKER_TUI_DUMP.)
 
 // renderFrame builds the whole board as a plain string (no ANSI) — the
 // single source of the layout, shared by the live draw loop and the
@@ -218,8 +270,8 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 	}
 	capped := map[string][]string{}
 	for k, v := range rolls {
-		if len(v) > rollLines {
-			v = v[len(v)-rollLines:]
+		if len(v) > rollEvents {
+			v = v[len(v)-rollEvents:]
 		}
 		capped[k] = v
 	}
@@ -231,20 +283,15 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 	bld.WriteString(sep + "\n")
 	for _, r := range rows {
 		up := time.Since(r.started).Round(time.Second)
-		line := fmt.Sprintf("[%s] %-7s up %s", r.tag, r.state, up)
+		line := fmt.Sprintf("[%s] %s · up %s", r.tag, strings.ToUpper(r.state), up)
 		if r.detail != "" {
 			line += " | " + r.detail
-		}
-		if r.state == "working" {
-			if age := time.Since(r.since).Round(time.Second); age >= 3*time.Second {
-				line += fmt.Sprintf(" · %s", age)
-			}
 		}
 		if r.ctxTokens > 0 {
 			line += " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
 		}
 		fmt.Fprintf(&bld, "%s\n", clampCols(line, w))
-		for _, out := range rolls[r.tag] {
+		for _, out := range rollWindow(rolls[r.tag], max2(w-4, 10), rollRows) {
 			fmt.Fprintf(&bld, "  | %s\n", clampCols(out, max2(w-4, 10)))
 		}
 	}
@@ -257,6 +304,56 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 		fmt.Fprintf(&bld, "  | full logs: %s\n", clampCols(logHint, max2(w-4, 10)))
 	}
 	return strings.TrimRight(bld.String(), "\n")
+}
+
+// rollWindow renders the two-line rolling area as a horizontal
+// continuation window over recent stream events (boss feedback
+// 2026-09-08): a longer-than-width item WRAPS across both rows (its
+// hidden earlier part marked with a leading "…"); shorter items show one
+// per row, newest last. Metering lines that merely duplicate the row's
+// ctx readout are skipped.
+func rollWindow(events []string, width, rows int) []string {
+	var pieces []string
+	for i := len(events) - 1; i >= 0 && len(pieces) < rows; i-- {
+		ev := strings.ReplaceAll(events[i], "\n", " ")
+		if strings.HasPrefix(ev, "step_finish") {
+			continue // metering: duplicates the row's ctx readout
+		}
+		chunks := chunkCols(ev, width)
+		room := rows - len(pieces)
+		if len(chunks) > room {
+			chunks = chunks[len(chunks)-room:]
+			if len(chunks) > 0 {
+				chunks[0] = "…" + chunks[0]
+			}
+		}
+		pieces = append(chunks, pieces...)
+		if len(pieces) >= rows {
+			break
+		}
+	}
+	for len(pieces) < rows {
+		pieces = append(pieces, "")
+	}
+	return pieces[:rows]
+}
+
+// chunkCols splits s into width-column chunks (wide-rune aware).
+func chunkCols(s string, w int) []string {
+	if w < 10 {
+		w = 10
+	}
+	var out []string
+	cur, used := 0, 0
+	for i, r := range s {
+		cw := runeWidth(r)
+		if used+cw > w {
+			out = append(out, s[cur:i])
+			cur, used = i, 0
+		}
+		used += cw
+	}
+	return append(out, s[cur:])
 }
 
 func min2(a, b int) int {
@@ -337,9 +434,7 @@ func (b *Board) renderLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			b.mu.Lock()
-			b.mu.Unlock()
-			b.draw()
+			b.render()
 		}
 	}
 }

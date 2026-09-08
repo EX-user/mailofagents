@@ -17,7 +17,7 @@ func DumpTUIScreenshots(width int, version string) {
 	since := time.Now().Add(-40 * time.Second)
 
 	longDetail := "wake failed: provider quota/429 · insufficient_balance: 您的余额不足请充值后再试 (this line is deliberately long to prove truncation at the frame width)"
-	longRoll := "step_start · bash · ls -la /very/long/path/that/goes/on/and/on/and/on/until/it/surely/passes/the/frame/width/and/gets/clamped"
+	longRoll := "这是一条超长内容。甲乙丙丁戊己庚辛壬癸ABCDEFGHIJK LMNOPQRSTUVWXYZ0123456789甲乙丙丁戊己庚辛壬癸（boss 原例：验证超长内容跨两行滚动换行）"
 
 	mkrows := func() []*statusRow {
 		return []*statusRow{
@@ -50,7 +50,7 @@ func DumpTUIScreenshots(width int, version string) {
 		{tag: "alpha", state: "error", detail: longDetail, since: since, started: started},
 	}
 	fmt.Println(renderFrame(width, time.Date(2026, 9, 8, 9, 46, 2, 0, time.Local), version,
-		longRows, map[string][]string{"alpha": {longRoll, "tool · edit · config.go [行内容同样超长以验证滚动区截断边界]"}},
+		longRows, map[string][]string{"alpha": {"tool · edit · config.go（更早的独立事件，被超长新事件滚出）", longRoll}},
 		[]string{"[alpha] " + longDetail}, hint))
 
 	fmt.Printf("\n=== frame 3: empty board (bootstrap, no accounts yet) ===\n")

@@ -18,9 +18,9 @@ func TestRenderFrameStatesAndPanes(t *testing.T) {
 
 	for _, want := range []string{
 		"version: v0.2.8-test", // header
-		"[alpha] working",      // row line
+		"[alpha] WORKING · up", // row line (uppercase state + separator)
 		"roll old", "roll new", // two-line rolling area
-		"[bravo] error",           // error state renders
+		"[bravo] ERROR",           // error state renders
 		"[worker-log]",            // log pane header
 		"full logs: errors-*.log", // hint line
 	} {
