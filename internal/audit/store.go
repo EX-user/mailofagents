@@ -47,6 +47,7 @@ const (
 	ActionSubRevoke            Action = "sub_revoke"
 	ActionSubRead              Action = "sub_read"
 	ActionSubRemoved           Action = "sub_removed"
+	ActionRecipientLimits      Action = "recipient_limits"     // per-account to/cc caps (self/superior/admin)
 	ActionAuthTokenIssue       Action = "auth_token_issue"     // v0.6.27 remember-login mint (alice's enum-precision note)
 	ActionAuthTokenRevoke      Action = "auth_token_revoke"    // logout / password-change revocation
 	ActionPushSubscribe        Action = "push_subscribe"       // v0.6.30 web push registration

@@ -179,6 +179,9 @@ func (s *Server) Handler() http.Handler {
 	// update_profile tool forwards to the /self path).
 	mux.HandleFunc("/api/profile", s.requireInitialized(s.requireAccount(s.handleProfileSelf)))
 	mux.HandleFunc("/api/account/info", s.requireInitialized(s.requireAccount(s.handleAccountInfo)))
+	// Per-account to/cc count caps — self / direct superior / admin can
+	// view and adjust (boss 2026-09-09 bloat-lever feature).
+	mux.HandleFunc("/api/account/limits", s.requireInitialized(s.requireAccount(s.handleAccountLimits)))
 	mux.HandleFunc("/api/contacts", s.requireInitialized(s.requireAccount(s.handleContacts)))
 	mux.HandleFunc("/api/sent", s.requireInitialized(s.requireAccount(s.handleSent)))
 	mux.HandleFunc("/api/mygrowth", s.requireInitialized(s.requireAccount(s.handleMyGrowth)))

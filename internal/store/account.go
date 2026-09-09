@@ -49,6 +49,15 @@ type Account struct {
 	// ruling: mail surfaces stay all-lowercase). Empty = unset. Invariant:
 	// strings.ToLower(DisplayLocal) == local part of Address.
 	DisplayLocal string `json:"display_local,omitempty"`
+	// MaxRecipients caps how many addresses the account may put in a
+	// send's "to" array; MaxCC caps "cc" the same way. 0 = unlimited —
+	// the default, and what old records without these fields decode to,
+	// so no data migration is needed. Settable by the account itself, any
+	// of its superiors, or the admin (mass sends / large cc are the main
+	// mailbox-bloat source, so capping them is the bloat lever, boss
+	// 2026-09-09).
+	MaxRecipients int `json:"max_recipients,omitempty"`
+	MaxCC         int `json:"max_cc,omitempty"`
 }
 
 // CreateAccountResult is returned by CreateAccount.
@@ -413,6 +422,38 @@ func (s *Store) UpdatePrefs(address string, prefs map[string]any) error {
 		if len(acc.Prefs) == 0 {
 			acc.Prefs = nil // keep old records byte-identical when empty
 		}
+		newVal, err := json.Marshal(acc)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(address), newVal)
+	})
+}
+
+// MaxRecipientLimitCap bounds a configured to/cc limit from above; the API
+// layer rejects anything outside [0, cap] so a typo can't brick an
+// account's sending entirely.
+const MaxRecipientLimitCap = 1000
+
+// SetRecipientLimits persists the account's to/cc count caps. Either value
+// of 0 means "no limit". Callers (the API layer) validate the range; the
+// store only defends against negatives.
+func (s *Store) SetRecipientLimits(address string, maxTo, maxCC int) error {
+	if maxTo < 0 || maxCC < 0 {
+		return fmt.Errorf("recipient limits must be >= 0 (0 = unlimited)")
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bAccounts)
+		val := b.Get([]byte(address))
+		if val == nil {
+			return ErrAccountNotFound
+		}
+		var acc Account
+		if err := json.Unmarshal(val, &acc); err != nil {
+			return err
+		}
+		acc.MaxRecipients = maxTo
+		acc.MaxCC = maxCC
 		newVal, err := json.Marshal(acc)
 		if err != nil {
 			return err

@@ -21,6 +21,11 @@ type accountView struct {
 	Visible   bool   `json:"visible"`
 	Signature string `json:"signature"`
 	CreatedAt int64  `json:"created_at"`
+	// Recipient/cc count caps (0 = unlimited) — admin overview of the
+	// bloat-lever limits; adjustable by self/superior/admin via
+	// POST /api/account/limits.
+	MaxRecipients int `json:"max_recipients"`
+	MaxCC         int `json:"max_cc"`
 }
 
 // handleAdminMessages lets the admin read any account's inbox.
@@ -106,13 +111,15 @@ func (s *Server) handleAdminAccounts(w http.ResponseWriter, r *http.Request) {
 	out := make([]accountView, 0, len(rows))
 	for _, a := range rows {
 		out = append(out, accountView{
-			UUID:      a.UUID,
-			Address:   a.Address,
-			IsAdmin:   a.IsAdmin,
-			Disabled:  a.Disabled,
-			Visible:   a.Visible,
-			Signature: a.Signature,
-			CreatedAt: a.CreatedAt,
+			UUID:          a.UUID,
+			Address:       a.Address,
+			IsAdmin:       a.IsAdmin,
+			Disabled:      a.Disabled,
+			Visible:       a.Visible,
+			Signature:     a.Signature,
+			CreatedAt:     a.CreatedAt,
+			MaxRecipients: a.MaxRecipients,
+			MaxCC:         a.MaxCC,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"accounts": out, "count": len(out)})

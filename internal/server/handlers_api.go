@@ -232,6 +232,19 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "invalid body: "+err.Error())
 		return
 	}
+	// Per-account recipient/cc count limits: the first gate on the send
+	// path (boss 2026-09-09 — fail fast with a plain count-vs-limit
+	// message before anything else is validated). 0 = no limit.
+	if acc, err := s.store.GetAccount(from); err == nil {
+		if acc.MaxRecipients > 0 && len(body.To) > acc.MaxRecipients {
+			badRequest(w, fmt.Sprintf("too many recipients: %d given, limit is %d", len(body.To), acc.MaxRecipients))
+			return
+		}
+		if acc.MaxCC > 0 && len(body.CC) > acc.MaxCC {
+			badRequest(w, fmt.Sprintf("too many cc: %d given, limit is %d", len(body.CC), acc.MaxCC))
+			return
+		}
+	}
 	if body.InReplyTo != "" && !isULID(body.InReplyTo) {
 		badRequest(w, "in_reply_to must be a 26-char ULID")
 		return
