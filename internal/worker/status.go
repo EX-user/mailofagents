@@ -1,21 +1,22 @@
 package worker
 
-// StatusBoard TUI (v0.2.8 upgrade, boss ASCII spec = acceptance baseline):
+// StatusBoard TUI (v0.2.8 upgrade, boss ASCII spec = acceptance baseline;
+// rolling/log wrap + indent form per boss letter 2026-09-10):
 //
 //	worker launch at <ts>. version: <buildTag>
 //	--------------------------------------------------
 //	[addr] waiting up 15m17s | 3 unread | ctx ≈97k
-//	  | <rolling output, latest last (2 lines)>
+//	    <rolling output, latest last (2 wrappable lines, right-indent)>
 //	[addr2] working up … | thinking… | ctx ≈196k
-//	  | …
+//	    …
 //	--------------------------------------------------
 //	[worker-log]
-//	  | <up to 10 rolling log lines>
-//	  | full logs: <path>            (hint line, not counted in the 10)
+//	    <up to 10 rolling log lines, each may wrap>
+//	    full logs: <path>            (hint line, not counted in the 10)
 //
 // States: waiting | working | compact | error (error = quota/network/wake
-// failures — boss detail #2). Every rendered line is clamped to the
-// terminal width: no wrapping (boss detail #1). The frame is built by
+// failures — boss detail #2). Status rows stay on one line; the rolling
+// area and worker-log lines wrap (boss 0910 spec). The frame is built by
 // renderFrame as a plain multi-line string — the ANSI draw loop prints it
 // in place, and `-tui-screenshot` dumps synthetic frames for the bench
 // (boss acceptance detail: TUI "screenshots" without running a duty loop).
@@ -292,16 +293,22 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 		}
 		fmt.Fprintf(&bld, "%s\n", clampCols(line, w))
 		for _, out := range rollWindow(rolls[r.tag], max2(w-4, 10), rollRows) {
-			fmt.Fprintf(&bld, "  | %s\n", clampCols(out, max2(w-4, 10)))
+			// boss 0910 spec: the rolling two rows are plain right-indent —
+			// separation from line start, no gutter glyph.
+			fmt.Fprintf(&bld, "    %s\n", clampCols(out, max2(w-4, 10)))
 		}
 	}
 	bld.WriteString(sep + "\n")
 	bld.WriteString("[worker-log]\n")
 	for _, l := range logRing {
-		fmt.Fprintf(&bld, "  | %s\n", clampCols(l, max2(w-4, 10)))
+		// boss 0910 spec: log lines wrap instead of truncating — up to 10
+		// entries, each may span multiple physical rows.
+		for _, part := range chunkCols(l, max2(w-4, 10)) {
+			fmt.Fprintf(&bld, "    %s\n", part)
+		}
 	}
 	if logHint != "" {
-		fmt.Fprintf(&bld, "  | full logs: %s\n", clampCols(logHint, max2(w-4, 10)))
+		fmt.Fprintf(&bld, "    full logs: %s\n", clampCols(logHint, max2(w-4, 10)))
 	}
 	return strings.TrimRight(bld.String(), "\n")
 }

@@ -8,7 +8,7 @@ import (
 // DumpTUIScreenshots prints synthetic TUI frames to stdout — the bench
 // acceptance artifacts for the v0.2.8 TUI upgrade (boss: "不跑 worker 直接
 // 看到效果"). Covers the four states, the two-line rolling area, the
-// worker-log pane with its hint line, and long-line truncation.
+// worker-log pane with its hint line, and long-line wrapping.
 func DumpTUIScreenshots(width int, version string) {
 	if width < 40 {
 		width = 40
@@ -16,7 +16,7 @@ func DumpTUIScreenshots(width int, version string) {
 	started := time.Now().Add(-15*time.Minute - 17*time.Second)
 	since := time.Now().Add(-40 * time.Second)
 
-	longDetail := "wake failed: provider quota/429 · insufficient_balance: 您的余额不足请充值后再试 (this line is deliberately long to prove truncation at the frame width)"
+	longDetail := "wake failed: provider quota/429 · insufficient_balance: 您的余额不足请充值后再试 (this line is deliberately long to prove wrapping at the frame width)"
 	longRoll := "这是一条超长内容。甲乙丙丁戊己庚辛壬癸ABCDEFGHIJK LMNOPQRSTUVWXYZ0123456789甲乙丙丁戊己庚辛壬癸（boss 原例：验证超长内容跨两行滚动换行）"
 
 	mkrows := func() []*statusRow {
@@ -45,7 +45,7 @@ func DumpTUIScreenshots(width int, version string) {
 			"bravo": {"digest: [addr] 2 封未读（新→旧）…"},
 		}, ring, hint))
 
-	fmt.Printf("\n=== frame 2: long-line truncation (CJK wide runes + ASCII, %d cols) ===\n", width)
+	fmt.Printf("\n=== frame 2: long-line wrapping (CJK wide runes + ASCII, %d cols) ===\n", width)
 	longRows := []*statusRow{
 		{tag: "alpha", state: "error", detail: longDetail, since: since, started: started},
 	}

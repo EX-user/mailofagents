@@ -43,10 +43,10 @@ func TestRenderFrameStatesAndPanes(t *testing.T) {
 func TestRenderFrameRollCap(t *testing.T) {
 	rolls := map[string][]string{"a": {"1", "2", "3", "4", "5"}}
 	frame := renderFrame(100, time.Now(), "v", []*statusRow{{tag: "a", state: "working", started: time.Now()}}, rolls, nil, "")
-	if strings.Contains(frame, "\n  | 1\n") || strings.Contains(frame, "\n  | 2\n") {
+	if strings.Contains(frame, "\n    1\n") || strings.Contains(frame, "\n    2\n") {
 		t.Error("roll area must cap at the newest 2 lines")
 	}
-	if !strings.Contains(frame, "  | 4") || !strings.Contains(frame, "  | 5") {
+	if !strings.Contains(frame, "    4") || !strings.Contains(frame, "    5") {
 		t.Error("roll area must keep the newest lines")
 	}
 }
@@ -54,13 +54,34 @@ func TestRenderFrameRollCap(t *testing.T) {
 func TestRenderFrameLogRingCap(t *testing.T) {
 	ring := []string{"l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "l11", "l12"}
 	frame := renderFrame(100, time.Now(), "v", nil, map[string][]string{}, ring, "")
-	for _, dead := range []string{"| l1\n", "| l2\n"} {
+	for _, dead := range []string{"    l1\n", "    l2\n"} {
 		if strings.Contains(frame, dead) {
 			t.Errorf("log ring must drop oldest: %s found", dead)
 		}
 	}
 	if !strings.Contains(frame, "l12") || !strings.Contains(frame, "l10") {
 		t.Error("log ring must keep the newest 10")
+	}
+}
+
+// boss 0910 spec: log lines wrap instead of truncating, and both the
+// rolling rows and log lines are right-indented (no gutter glyph).
+func TestRenderFrameIndentAndWrap(t *testing.T) {
+	long := strings.Repeat("word ", 30) // 150 cols — must wrap at width 100
+	ring := []string{long}
+	rolls := map[string][]string{"a": {"<event content that is quite long and keeps going past the pane width for wrapping>"}}
+	frame := renderFrame(100, time.Now(), "v",
+		[]*statusRow{{tag: "a", state: "working", started: time.Now()}}, rolls, ring, "errors-*.log")
+	if strings.Count(frame, "\n    ") < 2 {
+		t.Errorf("long log line must wrap to multiple indented rows:\n%s", frame)
+	}
+	if strings.Contains(frame, "  | ") {
+		t.Errorf("gutter glyph must be gone (right-indent form):\n%s", frame)
+	}
+	for _, line := range strings.Split(frame, "\n") {
+		if cols := visualCols(line); cols > 100 {
+			t.Errorf("line exceeds 100 cols (%d): %q", cols, line)
+		}
 	}
 }
 
