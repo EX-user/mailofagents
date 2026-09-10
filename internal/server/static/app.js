@@ -569,7 +569,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       '<td data-label="' + t("col.tags") + '"><span class="badge-listed">you</span>' + (ownVisible ? ' <span class="badge-listed">listed</span>' : "") + "</td>" +
       '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(ownSig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(ownSig) + "</span></span></td>" +
       "<td data-label=\"Created\"></td>" +
-      '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" id="btn-change-pw">' + t("act.changePw") + '</button></td>' +
+      '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" id="btn-change-pw">' + t("act.changePw") + '</button><button class="row-action" data-limits="' + esc(selfAddr) + '">' + t("limits.open") + "</button></td>" +
       "</tr>"
     );
     // Mobile one-screen plan: the own account renders as a compact card
@@ -581,7 +581,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       '<div class="ct-addr mq"><span class="sig-track"><span class="sig-txt"><strong>' + esc(selfAddr) + '</strong></span><span class="sig-dup" aria-hidden="true"><strong>' + esc(selfAddr) + "</strong></span></span></div>" +
       '<span class="badge-listed">you</span></div>' +
       (ownSig ? '<div class="ct-sig mq"><span class="sig-track"><span class="sig-txt">' + esc(ownSig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(ownSig) + "</span></span></div>" : "") +
-      '<div class="ct-foot"><button class="row-action pill-btn" id="btn-change-pw-m">' + t("act.changePw") + '</button></div>' +
+      '<div class="ct-foot"><button class="row-action pill-btn" id="btn-change-pw-m">' + t("act.changePw") + '</button><button class="row-action pill-btn" data-limits="' + esc(selfAddr) + '">' + t("limits.open") + "</button></div>" +
       "</div>";
     // Subordinates render TWICE from one pass (superior feedback round 3):
     // PC = leading table rows right after the own row (no container; the

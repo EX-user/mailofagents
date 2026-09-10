@@ -869,7 +869,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       loadComposeThread();
     } catch (e) {
       status.textContent = t("common.error", { msg: e.message });
-      toast(t("toast.sendFailed"), "error");
+      // v0.2.8.1 (1021): the server's plain-text reason (e.g. "too many
+      // recipients: N given, limit is M") belongs in the toast — the
+      // user's point of gaze — instead of a generic send-failed line.
+      const msg = String((e && e.message) || "");
+      if (/too many (recipients|cc)/i.test(msg) || (/limit/i.test(msg) && /\d/.test(msg))) {
+        toast(msg, "error");
+      } else {
+        toast(t("toast.sendFailed"), "error");
+      }
     }
   });
 
