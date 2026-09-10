@@ -3,13 +3,19 @@ package worker
 import (
 	"fmt"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // DumpTUIScreenshots prints synthetic TUI frames to stdout — the bench
 // acceptance artifacts for the v0.2.8 TUI upgrade (boss: "不跑 worker 直接
-// 看到效果"). Covers the four states, the two-line rolling area, the
-// worker-log pane with its hint line, and long-line wrapping.
+// 看到效果"). Covers the four states, the rolling text box, the
+// worker-log box with its hint line, and long-line wrapping. Color is
+// forced ON (ANSI256) so the frames can be rasterized to images for
+// boss review — regular stdout piping would otherwise disable color.
 func DumpTUIScreenshots(width int, version string) {
+	lipgloss.SetColorProfile(termenv.ANSI256)
 	if width < 40 {
 		width = 40
 	}

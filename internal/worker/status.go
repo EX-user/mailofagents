@@ -31,6 +31,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wrap"
+	"github.com/muesli/termenv"
 )
 
 const (
@@ -96,6 +101,11 @@ func init() {
 	// WORKER_TUI_DUMP: frame dumps on state changes even without a TTY —
 	// the bench captures REAL-run frames through it (boss acceptance).
 	board.dumpDir = os.Getenv("WORKER_TUI_DUMP")
+	// Bench dump frames stay plain text (grep-able, diff-able) — color
+	// only travels to a real terminal or the forced-profile screenshot.
+	if board.dumpDir != "" && !board.enabled {
+		lipgloss.SetColorProfile(termenv.Ascii)
+	}
 }
 
 // AddRow registers one account line at board creation time. ctxWindow /
@@ -262,9 +272,15 @@ func (b *Board) erase() {
 // (draw was folded into render + drawFrame: the frame is built once and
 // either printed in place or dumped to WORKER_TUI_DUMP.)
 
-// renderFrame builds the whole board as a plain string (no ANSI) — the
-// single source of the layout, shared by the live draw loop and the
+// renderFrame builds the whole board as a string — the single source of
+// the layout, shared by the live draw loop, WORKER_TUI_DUMP and the
 // -tui-screenshot dumps (boss acceptance: bench-viewable frames).
+// Library form per boss 0910 directive: the rolling area and the
+// worker-log pane are text-box widgets (bubbles viewport inside a
+// lipgloss rounded border, content wrapped by reflow — grapheme-correct
+// CJK), overflow scrolls up out of the window; the status line carries a
+// state-colored dot (green waiting / blue working / yellow compact /
+// red error).
 func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rolls map[string][]string, logRing []string, logHint string) string {
 	// Defensive caps: renderFrame is the layout authority even when callers
 	// bypass Set/Logf.
@@ -279,88 +295,108 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 		capped[k] = v
 	}
 	rolls = capped
-	sep := strings.Repeat("-", min2(w, 100))
+
+	sep := strings.Repeat("─", min2(w, 100))
 	var bld strings.Builder
 	fmt.Fprintf(&bld, "%s\n", clampCols(fmt.Sprintf("worker launch at %s. version: %s",
 		launch.Format("2006/01/02 15:04:05"), version), w))
 	bld.WriteString(sep + "\n")
 	for _, r := range rows {
-		up := time.Since(r.started).Round(time.Second)
-		line := fmt.Sprintf("[%s] %s · up %s", r.tag, strings.ToUpper(r.state), up)
-		if r.detail != "" {
-			line += " | " + r.detail
-		}
-		if r.ctxTokens > 0 {
-			line += " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
-		}
-		fmt.Fprintf(&bld, "%s\n", clampEllipsis(line, w))
-		for _, out := range rollWindow(rolls[r.tag], max2(w-4, 10), rollRows) {
-			// boss 0910 spec: the rolling two rows are plain right-indent —
-			// separation from line start, no gutter glyph.
-			fmt.Fprintf(&bld, "    %s\n", clampCols(out, max2(w-4, 10)))
-		}
+		fmt.Fprintf(&bld, "%s\n", statusLine(r, w))
+		fmt.Fprintf(&bld, "%s\n", indentBlock(textBox(rollContent(rolls[r.tag]), rollRows, w-2), 2))
 	}
 	bld.WriteString(sep + "\n")
 	bld.WriteString("[worker-log]\n")
-	for _, l := range logRing {
-		// boss 0910 correction: log lines do NOT wrap — one line each,
-		// hard cut with a trailing "…" when over width.
-		fmt.Fprintf(&bld, "    %s\n", clampEllipsis(l, max2(w-4, 10)))
-	}
+	fmt.Fprintf(&bld, "%s\n", textBox(strings.Join(logRing, "\n"), logRingSize, w))
 	if logHint != "" {
-		fmt.Fprintf(&bld, "    full logs: %s\n", clampCols(logHint, max2(w-4, 10)))
+		fmt.Fprintf(&bld, "    %s\n", clampCols("full logs: "+logHint, max2(w-4, 10)))
 	}
 	return strings.TrimRight(bld.String(), "\n")
 }
 
-// rollWindow renders the two-line rolling area as a horizontal
-// continuation window over recent stream events (boss feedback
-// 2026-09-08; cut form per boss 0910 letter: wrap what fits, then a hard
-// cut with a trailing "…" — head shown, tail elided). Metering lines
-// that merely duplicate the row's ctx readout are skipped.
-func rollWindow(events []string, width, rows int) []string {
-	var pieces []string
-	for i := len(events) - 1; i >= 0 && len(pieces) < rows; i-- {
-		ev := strings.ReplaceAll(events[i], "\n", " ")
-		if strings.HasPrefix(ev, "step_finish") {
-			continue // metering: duplicates the row's ctx readout
-		}
-		chunks := chunkCols(ev, width)
-		room := rows - len(pieces)
-		if len(chunks) > room {
-			// hard cut: clamp the whole item to room*width columns with a
-			// trailing "…" (the ellipsis is part of the clamp budget), then
-			// re-chunk so every row still fits the width exactly.
-			ev = clampEllipsis(ev, room*width)
-			chunks = chunkCols(ev, width)
-		}
-		pieces = append(chunks, pieces...)
-		if len(pieces) >= rows {
-			break
-		}
+// statusLine renders one account row: a state-colored dot plus the
+// uppercase state, with detail/ctx clamped so the line never exceeds w.
+func statusLine(r *statusRow, w int) string {
+	st := stateStyle(r.state)
+	head := fmt.Sprintf("%s [%s] %s · up %s",
+		st.Render("●"), r.tag, st.Render(strings.ToUpper(r.state)),
+		time.Since(r.started).Round(time.Second))
+	tail := ""
+	if r.ctxTokens > 0 {
+		tail = " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
 	}
-	for len(pieces) < rows {
-		pieces = append(pieces, "")
+	detail := r.detail
+	if detail == "" {
+		if lipgloss.Width(head+tail) > w {
+			return clampCols(head, w)
+		}
+		return head + tail
 	}
-	return pieces[:rows]
+	budget := w - lipgloss.Width(head) - lipgloss.Width(tail) - 3 // " | "
+	if budget < 4 {
+		return clampCols(head+tail, w)
+	}
+	return head + " | " + clampEllipsis(detail, budget) + tail
 }
 
-// chunkCols splits s into width-column chunks (wide-rune aware).
-func chunkCols(s string, w int) []string {
-	if w < 10 {
-		w = 10
+// stateStyle maps a board state to its color (boss 0910: green waiting,
+// blue working; compact yellow, error red).
+func stateStyle(state string) lipgloss.Style {
+	var c lipgloss.Color
+	switch state {
+	case "waiting":
+		c = lipgloss.Color("2")
+	case "working":
+		c = lipgloss.Color("4")
+	case "compact":
+		c = lipgloss.Color("3")
+	case "error":
+		c = lipgloss.Color("1")
+	default:
+		c = lipgloss.Color("7")
 	}
-	var out []string
-	cur, used := 0, 0
-	for i, r := range s {
-		cw := runeWidth(r)
-		if used+cw > w {
-			out = append(out, s[cur:i])
-			cur, used = i, 0
+	return lipgloss.NewStyle().Foreground(c).Bold(true)
+}
+
+// textBox renders content as a text-box widget: a viewport of the given
+// height inside a lipgloss rounded border. Content wraps at the box's
+// inner width (reflow — grapheme-correct CJK widths); overflow lines
+// scroll up out of the window, newest lines stay visible.
+func textBox(content string, height, outerW int) string {
+	inner := outerW - 4 // border(2) + padding(0,1)(2)
+	if inner < 10 {
+		inner = 10
+	}
+	vp := viewport.New(inner, height)
+	vp.SetContent(wrap.String(content, inner))
+	vp.GotoBottom()
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("8")).
+		Padding(0, 1).
+		Width(outerW - 2).
+		Render(vp.View())
+}
+
+// indentBlock prefixes every line with n spaces (right-indent for the
+// per-account rolling box).
+func indentBlock(s string, n int) string {
+	pad := strings.Repeat(" ", n)
+	return pad + strings.ReplaceAll(s, "\n", "\n"+pad)
+}
+
+// rollContent selects the rolling pane's content: recent stream events,
+// newest last, metering lines skipped (they duplicate the row's ctx
+// readout). Wrapping and windowing are the text box's job now.
+func rollContent(events []string) string {
+	var keep []string
+	for _, ev := range events {
+		if strings.HasPrefix(ev, "step_finish") {
+			continue
 		}
-		used += cw
+		keep = append(keep, strings.ReplaceAll(ev, "\n", " "))
 	}
-	return append(out, s[cur:])
+	return strings.Join(keep, "\n")
 }
 
 func min2(a, b int) int {

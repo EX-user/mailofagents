@@ -6,38 +6,6 @@ import (
 	"unicode/utf8"
 )
 
-func TestRollWindowWrap(t *testing.T) {
-	long := "这是一条超长内容。甲乙丙丁戊己庚辛壬癸ABCDEFGHIJK LMNOPQRSTUVWXYZ0123456789甲乙丙丁戊己庚辛壬癸"
-	got := rollWindow([]string{long}, 30, 2)
-	for _, l := range got {
-		t.Logf("row: %q (cols=%d)", l, visualCols(l))
-	}
-	if len(got) != 2 {
-		t.Fatalf("want 2 rows")
-	}
-	for _, l := range got {
-		if visualCols(l) > 30 {
-			t.Errorf("row exceeds width: %q", l)
-		}
-	}
-	if !strings.HasSuffix(got[1], "…") {
-		t.Error("over-long item must hard-cut with a trailing … (boss 0910: head shown, tail elided)")
-	}
-	if !strings.HasPrefix(got[0], "这是一条超长内容") {
-		t.Errorf("head must be shown from the start: %q", got[0])
-	}
-	// multi short events: one per row, newest last
-	got = rollWindow([]string{"first event", "second event"}, 30, 2)
-	if got[0] != "first event" || got[1] != "second event" {
-		t.Errorf("short events: got %v", got)
-	}
-	// metering lines skipped (they duplicate the row's ctx readout)
-	got = rollWindow([]string{"step_finish | ctx 8k", "real output"}, 30, 2)
-	if got[0] != "real output" || got[1] != "" {
-		t.Errorf("metering line should be skipped: %v", got)
-	}
-}
-
 // truncate must cut at rune boundaries: byte-exact slicing of CJK leaves
 // an invalid continuation byte that renders as U+FFFD in board frames
 // (caught by real-run frame capture 2026-09-10).
@@ -55,5 +23,27 @@ func TestTruncateRuneSafe(t *testing.T) {
 	}
 	if got := truncate("short", 100); got != "short" {
 		t.Fatalf("short string altered: %q", got)
+	}
+}
+
+// clampEllipsis: over-width strings carry a visible trailing … within
+// the column budget; exact-fit and short strings pass through untouched.
+func TestClampEllipsis(t *testing.T) {
+	if got := clampEllipsis("short", 100); got != "short" {
+		t.Fatalf("short string altered: %q", got)
+	}
+	exact := strings.Repeat("a", 100)
+	if got := clampEllipsis(exact, 100); got != exact {
+		t.Fatalf("exact-fit string altered")
+	}
+	over := strings.Repeat("a", 120)
+	got := clampEllipsis(over, 100)
+	if !strings.HasSuffix(got, "…") || visualCols(got) != 100 {
+		t.Fatalf("want 100 cols ending with …, got %q (%d cols)", got, visualCols(got))
+	}
+	cjk := strings.Repeat("汉", 60) // 120 cols
+	got = clampEllipsis(cjk, 100)
+	if !utf8.ValidString(got) || !strings.HasSuffix(got, "…") || visualCols(got) > 100 || visualCols(got) < 98 {
+		t.Fatalf("CJK clamp: %q (%d cols)", got, visualCols(got))
 	}
 }
