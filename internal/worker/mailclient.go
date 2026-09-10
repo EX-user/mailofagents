@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"unicode/utf8"
 )
 
 // MailClient is the read-only-ish server API surface the MVP worker needs:
@@ -147,6 +148,12 @@ func (m *MailClient) SendMail(to, subject, body string) error {
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	// Cut at a rune boundary: board frames and mail digests carry CJK, and
+	// a byte-exact slice leaves an invalid continuation byte behind (seen
+	// as U+FFFD garbage in captured TUI frames).
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n] + "…"
 }

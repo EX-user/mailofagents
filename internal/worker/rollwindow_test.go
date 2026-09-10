@@ -3,6 +3,7 @@ package worker
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestRollWindowWrap(t *testing.T) {
@@ -31,5 +32,25 @@ func TestRollWindowWrap(t *testing.T) {
 	got = rollWindow([]string{"step_finish | ctx 8k", "real output"}, 30, 2)
 	if got[0] != "real output" || got[1] != "" {
 		t.Errorf("metering line should be skipped: %v", got)
+	}
+}
+
+// truncate must cut at rune boundaries: byte-exact slicing of CJK leaves
+// an invalid continuation byte that renders as U+FFFD in board frames
+// (caught by real-run frame capture 2026-09-10).
+func TestTruncateRuneSafe(t *testing.T) {
+	s := "工作记忆" + strings.Repeat("x", 120)
+	got := truncate(s, 100)
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncate produced invalid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("want ellipsis suffix, got %q", got)
+	}
+	if len(got) > 100+len("…") {
+		t.Fatalf("over budget: %d bytes", len(got))
+	}
+	if got := truncate("short", 100); got != "short" {
+		t.Fatalf("short string altered: %q", got)
 	}
 }
