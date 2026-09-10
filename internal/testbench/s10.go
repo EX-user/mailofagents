@@ -21,8 +21,8 @@ import (
 // 断言（成功在 worker 里是静默的——无 log 行，证据在盘面）：
 //   ①会话绑定：state 文件落 session_id（唤醒成功的硬证据）；
 //   ②零错误归档：errors-alpha.log 不存在（无失败）；
-//   ③唤醒在真实时延内完成（fake 件秒回，真模型秒级~数十秒——timeout
-//     120s/窗口 90s）。
+//   ③唤醒在真实时延内完成（fake 件秒回，真模型秒级~分钟级——
+//     timeout 300s/观察窗 300s，0910 起与 CLI 预算对齐）。
 //
 // key 通道同 s8：config.json(deepseek.funded_key) → bench root auth.json
 // (0600)，env 面零密钥。成本：每轮一次真实小请求（"reply ok" 级）。
@@ -33,7 +33,7 @@ func (s10realsuccess) Name() string { return "s10-real-success" }
 func (s10realsuccess) Desc() string {
 	return "s10 真成功路径（opt-in TESTBENCH_REAL=1）：真 opencode×有余额 key，会话绑定+零错误"
 }
-func (s10realsuccess) Timeout() time.Duration { return 4 * time.Minute }
+func (s10realsuccess) Timeout() time.Duration { return 6 * time.Minute }
 
 func (s s10realsuccess) Run(ctx context.Context, env *Env) Result {
 	res := Result{Scenario: s.Name(), OK: true, StartedAt: time.Now()}
@@ -129,9 +129,11 @@ func (s s10realsuccess) Run(ctx context.Context, env *Env) Result {
 		return res
 	}
 	// 观察窗：轮询 state 文件出现（真实生成时延秒级~分钟级——引导模板
-	// token 量大，90s 实测不够）。至多 ~200s，超时按失败诊断。
+	// token 量大，90s 实测不够）。至多 ~300s，与 worker 给 CLI 的
+	// timeout_sec 预算对齐：观察先于 CLI 预算掐断会把慢成功错杀成假
+	// 失败（0910 三败甄别后定式：慢≠坏，帧档案甄别）。
 	statePath := filepath.Join(env.RunDir, "config.alpha.state.json")
-	deadline := time.Now().Add(200 * time.Second)
+	deadline := time.Now().Add(300 * time.Second)
 	bound := false
 	for time.Now().Before(deadline) {
 		select {
