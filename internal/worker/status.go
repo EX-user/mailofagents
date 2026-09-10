@@ -60,7 +60,8 @@ type Board struct {
 	rows         []*statusRow
 	enabled      bool
 	drawn        int
-	dumpDir      string // WORKER_TUI_DUMP: write frames as files even without a TTY (bench capture)
+	lastLines    []string // previous frame's lines (differential repaint, flicker fix)
+	dumpDir      string   // WORKER_TUI_DUMP: write frames as files even without a TTY (bench capture)
 	launch       time.Time
 	version      string
 	logHint      string              // full-log path hint line (boss detail #3)
@@ -154,7 +155,10 @@ func (b *Board) Set(tag, state, detail string) {
 			}
 			row.state = state
 			row.detail = detail
-			delete(b.rowEvents, tag) // state change: stale stream fragments go
+			// boss 0910: content stays resident across state changes —
+			// the rolling pane keeps its last output, only NEW stream
+			// events scroll it. (The old wipe made waiting rows look
+			// empty even right after a working phase.)
 		}
 	}
 	b.mu.Unlock()
@@ -215,15 +219,34 @@ func (b *Board) render() {
 	b.dumpFrame(frame)
 }
 
-// drawFrame prints a frame in place (erase previous + repaint).
+// drawFrame prints a frame in place. Flicker fix (boss 0910 feedback:
+// 终端频闪严重): instead of erase-everything-then-redraw — which visibly
+// blanks the whole board on every 500ms tick — only lines whose content
+// changed are rewritten in place. A full repaint happens solely when the
+// board's shape (line count) changes.
 func (b *Board) drawFrame(frame string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.erase()
-	for _, line := range strings.Split(frame, "\n") {
-		fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", line)
-		b.drawn++
+	newLines := strings.Split(frame, "\n")
+	if b.drawn == 0 || b.lastLines == nil || len(newLines) != len(b.lastLines) {
+		b.erase()
+		for _, line := range newLines {
+			fmt.Fprintf(os.Stdout, "\r\033[2K%s\n", line)
+			b.drawn++
+		}
+		b.lastLines = newLines
+		return
 	}
+	total := b.drawn // board height; the cursor parks on the line below
+	for i, line := range newLines {
+		if line == b.lastLines[i] {
+			continue
+		}
+		up := total - i
+		fmt.Fprintf(os.Stdout, "\r\033[%dA\033[2K%s\r\033[%dB", up, line, up)
+		b.lastLines[i] = line
+	}
+	fmt.Fprint(os.Stdout, "\r")
 }
 
 // dumpFrame writes the frame to WORKER_TUI_DUMP when its content changed —

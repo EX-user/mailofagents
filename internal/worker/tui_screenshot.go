@@ -47,8 +47,10 @@ func DumpTUIScreenshots(width int, version string) {
 	fmt.Printf("=== frame 1: four states (working/waiting/compact/error) @ %d cols ===\n", width)
 	fmt.Println(renderFrame(width, time.Date(2026, 9, 8, 9, 46, 2, 0, time.Local), version,
 		mkrows(), map[string][]string{
-			"alpha": {"step_start · reading internal/worker/duty.go", "tool · bash · go test ./internal/worker/"},
-			"bravo": {"digest: [addr] 2 封未读（新→旧）…"},
+			"alpha":   {"step_start · reading internal/worker/duty.go", "tool · bash · go test ./internal/worker/"},
+			"bravo":   {"digest: [addr] 2 封未读（新→旧）…"},
+			"charlie": {"compact done: 41k→9.2k tokens, session kept"},
+			"delta":   {"wake failed: provider quota/429 · retry in backoff 2/5"},
 		}, ring, hint))
 
 	fmt.Printf("\n=== frame 2: long-line wrapping (CJK wide runes + ASCII, %d cols) ===\n", width)
