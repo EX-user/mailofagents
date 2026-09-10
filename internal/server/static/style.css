@@ -2608,3 +2608,20 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   font-size: 12px; color: var(--muted); cursor: pointer; }
 .board-muted-badge { color: var(--error); font-size: 11px;
   border: 1px solid var(--error); border-radius: 8px; padding: 0 6px; }
+/* Recipient/cc sending limits (v0.2.8): card in the accounts table. */
+.limits-cell { padding: 10px 6px; }
+.limits-title { font-weight: 600; font-size: 12px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.limits-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.limits-row:last-child { border-bottom: none; }
+.limits-addr { flex: 0 0 auto; min-width: 180px; font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px; word-break: break-all; }
+.limits-fld { display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--muted); }
+.limits-num { width: 70px; height: 24px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 0 6px;
+  background: var(--panel-2); color: var(--text); }
+@media (max-width: 800px) {
+  .limits-addr { min-width: 0; flex: 1 1 100%; }
+}

@@ -389,6 +389,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         if (a.is_admin) tags += ' <span class="badge-admin">admin</span>';
         if (a.visible) tags += ' <span class="badge-listed">listed</span>';
         if (a.disabled) tags += ' <span class="badge-disabled">disabled</span>';
+        // recipient/cc limits at a glance (0/absent = unlimited)
+        tags += ' <span class="badge-listed">' + esc(t("limits.short", { r: (a.max_recipients || 0), c: (a.max_cc || 0) })) + "</span>";
         const toggleBtn = a.is_admin
           ? "" // admin cannot be disabled (lockout guard), so no toggle button
           : a.disabled
@@ -419,8 +421,70 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         btn.addEventListener("click", function () { setDisabled(btn.dataset.enable, false); });
       });
       maybeMarqueeSigs();
+      const limCard = $("#limits-card");
+      if (limCard) limCard.addEventListener("click", function (ev) {
+        const b = ev.target.closest("[data-lssave]");
+        if (b) saveLimits(b.dataset.lssave, limCard);
+      });
     } catch (e) {
       tbody.innerHTML = '<tr><td colspan="5">Error: ' + esc(e.message) + "</td></tr>";
+    }
+  }
+
+  // ---- recipient/cc sending limits (v0.2.8, boss directive) ----
+  // Self + each direct subordinate get one row: two number inputs and a
+  // save button. Empty input = keep current; explicit 0 = unlimited
+  // (server contract 239655b: range [0,1000], self/superior/admin may
+  // write, everyone may read own).
+  function limitsRowHtml(addr, lim) {
+    return '<div class="limits-row" data-lsaddr="' + esc(addr) + '">' +
+      '<span class="limits-addr">' + esc(addr) + "</span>" +
+      '<label class="limits-fld">' + t("limits.recipients") +
+      ' <input type="number" min="0" max="1000" class="limits-num" data-lsf="max_recipients" value="' + (lim && lim.max_recipients != null ? lim.max_recipients : "") + '" placeholder="' + t("limits.none") + '" /></label>' +
+      '<label class="limits-fld">' + t("limits.cc") +
+      ' <input type="number" min="0" max="1000" class="limits-num" data-lsf="max_cc" value="' + (lim && lim.max_cc != null ? lim.max_cc : "") + '" placeholder="' + t("limits.none") + '" /></label>' +
+      '<button class="row-action" data-lssave="' + esc(addr) + '">' + t("limits.save") + "</button>" +
+      "</div>";
+  }
+
+  async function loadLimits(selfAddr, subAddrs) {
+    const card = $("#limits-card");
+    if (!card) return;
+    card.innerHTML = '<div class="muted" style="font-size:12px;">' + t("limits.loading") + "</div>";
+    const targets = [selfAddr].concat(subAddrs || []);
+    const lims = {};
+    await Promise.all(targets.map(async function (a) {
+      try {
+        const q = a === selfAddr ? "" : "?address=" + encodeURIComponent(a);
+        lims[a] = await api("/api/account/limits" + q, { keepSession: true });
+      } catch (_) { lims[a] = null; }
+    }));
+    var html = '<div class="limits-title">' + t("limits.title") + '</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">' + t("limits.hint") + "</div>";
+    targets.forEach(function (a) {
+      html += limitsRowHtml(a, lims[a]);
+    });
+    card.innerHTML = html;
+  }
+
+  async function saveLimits(addr, card) {
+    const row = card.querySelector('.limits-row[data-lsaddr="' + CSS.escape(addr) + '"]');
+    if (!row) return;
+    const patch = { address: addr };
+    const r = row.querySelector('input[data-lsf="max_recipients"]');
+    const c = row.querySelector('input[data-lsf="max_cc"]');
+    if (r && r.value !== "") patch.max_recipients = parseInt(r.value, 10);
+    if (c && c.value !== "") patch.max_cc = parseInt(c.value, 10);
+    if (patch.max_recipients == null && patch.max_cc == null) return;
+    try {
+      const d = await api("/api/account/limits", { method: "POST", body: JSON.stringify(patch), keepSession: true });
+      if (r && d && d.max_recipients != null) r.value = d.max_recipients;
+      if (c && d && d.max_cc != null) c.value = d.max_cc;
+      toast(t("board.saved"), "success");
+    } catch (e) {
+      const msg = String((e && e.message) || "");
+      if (msg.indexOf("too many recipients") >= 0 || msg.indexOf("limit") >= 0) toast(msg, "error");
+      else toast(t("common.error", { msg: msg }), "error");
     }
   }
 
@@ -520,6 +584,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     });
     rows.push(pcSubRows);
     rows.push(
+      '<tr class="limits-row"><td colspan="5" class="limits-cell"><div id="limits-card"></div></td></tr>');
+    rows.push(
       '<tr class="agentreg-row">' +
       '<td colspan="5" class="agentreg-cell">' +
       '<div class="agentreg-card">' +
@@ -569,6 +635,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // Subordinate accounts render ONLY inside the register card's zone
     // (approved two-zone layout) — nothing about them joins the main list.
     tbody.innerHTML = rows.join("");
+    loadLimits(selfAddr, subsList.map(function (e) { return e.address; }));
     const btn = $("#btn-change-pw");
     if (btn) btn.addEventListener("click", openChangePassword);
     $$("[data-compose]", tbody).forEach(function (b) {
