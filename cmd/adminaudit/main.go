@@ -40,6 +40,8 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: adminaudit <agentmail.db> [address-filter]")
 		fmt.Fprintln(os.Stderr, "  read-only: prints address/is_admin/disabled/created_at per row")
+		fmt.Fprintln(os.Stderr, "  LIVE DB: bolt takes an exclusive lock — STOP the server before copying,")
+		fmt.Fprintln(os.Stderr, "  then audit the copy (a hot cp tears the file and will be rejected)")
 		os.Exit(2)
 	}
 	filter := ""
@@ -58,7 +60,13 @@ func main() {
 	admins := 0
 	total := 0
 	err = db.View(func(tx *bolt.Tx) error {
-		return tx.Bucket([]byte("accounts")).ForEach(func(k, v []byte) error {
+		bucket := tx.Bucket([]byte("accounts"))
+		if bucket == nil {
+			// A torn copy (cp of a live db mid-write, Sam hit it twice) or
+			// a foreign file: report instead of nil-dereferencing.
+			return fmt.Errorf("no accounts bucket — file is not a complete agentmail db (torn copy? audit a stop-copy-start snapshot)")
+		}
+		return bucket.ForEach(func(k, v []byte) error {
 			var r row
 			if err := json.Unmarshal(v, &r); err != nil {
 				return nil // skip undecodable rows silently; audit never dies on one bad record
