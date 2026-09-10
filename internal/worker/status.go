@@ -1,25 +1,27 @@
 package worker
 
 // StatusBoard TUI (v0.2.8 upgrade, boss ASCII spec = acceptance baseline;
-// rolling/log wrap + indent form per boss letter 2026-09-10):
+// right-indent form + hard-cut "…" per boss letter 2026-09-10):
 //
 //	worker launch at <ts>. version: <buildTag>
 //	--------------------------------------------------
 //	[addr] waiting up 15m17s | 3 unread | ctx ≈97k
-//	    <rolling output, latest last (2 wrappable lines, right-indent)>
+//	    <rolling output, latest last (2 wrappable lines, right-indent,
+//	     over-long content hard-cut with trailing …)>
 //	[addr2] working up … | thinking… | ctx ≈196k
 //	    …
 //	--------------------------------------------------
 //	[worker-log]
-//	    <up to 10 rolling log lines, each may wrap>
+//	    <up to 10 rolling log lines, one line each, hard-cut with …>
 //	    full logs: <path>            (hint line, not counted in the 10)
 //
 // States: waiting | working | compact | error (error = quota/network/wake
-// failures — boss detail #2). Status rows stay on one line; the rolling
-// area and worker-log lines wrap (boss 0910 spec). The frame is built by
-// renderFrame as a plain multi-line string — the ANSI draw loop prints it
-// in place, and `-tui-screenshot` dumps synthetic frames for the bench
-// (boss acceptance detail: TUI "screenshots" without running a duty loop).
+// failures — boss detail #2). Status rows stay on one line; rolling rows
+// wrap within the two-row window, log lines do not wrap. The frame is
+// built by renderFrame as a plain multi-line string — the ANSI draw loop
+// prints it in place, and `-tui-screenshot` dumps synthetic frames for
+// the bench (boss acceptance detail: TUI "screenshots" without running a
+// duty loop).
 
 import (
 	"context"
@@ -301,11 +303,9 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 	bld.WriteString(sep + "\n")
 	bld.WriteString("[worker-log]\n")
 	for _, l := range logRing {
-		// boss 0910 spec: log lines wrap instead of truncating — up to 10
-		// entries, each may span multiple physical rows.
-		for _, part := range chunkCols(l, max2(w-4, 10)) {
-			fmt.Fprintf(&bld, "    %s\n", part)
-		}
+		// boss 0910 correction: log lines do NOT wrap — one line each,
+		// hard cut with a trailing "…" when over width.
+		fmt.Fprintf(&bld, "    %s\n", clampEllipsis(l, max2(w-4, 10)))
 	}
 	if logHint != "" {
 		fmt.Fprintf(&bld, "    full logs: %s\n", clampCols(logHint, max2(w-4, 10)))
@@ -315,10 +315,9 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 
 // rollWindow renders the two-line rolling area as a horizontal
 // continuation window over recent stream events (boss feedback
-// 2026-09-08): a longer-than-width item WRAPS across both rows (its
-// hidden earlier part marked with a leading "…"); shorter items show one
-// per row, newest last. Metering lines that merely duplicate the row's
-// ctx readout are skipped.
+// 2026-09-08; cut form per boss 0910 letter: wrap what fits, then a hard
+// cut with a trailing "…" — head shown, tail elided). Metering lines
+// that merely duplicate the row's ctx readout are skipped.
 func rollWindow(events []string, width, rows int) []string {
 	var pieces []string
 	for i := len(events) - 1; i >= 0 && len(pieces) < rows; i-- {
@@ -329,10 +328,11 @@ func rollWindow(events []string, width, rows int) []string {
 		chunks := chunkCols(ev, width)
 		room := rows - len(pieces)
 		if len(chunks) > room {
-			chunks = chunks[len(chunks)-room:]
-			if len(chunks) > 0 {
-				chunks[0] = "…" + chunks[0]
-			}
+			// hard cut: clamp the whole item to room*width columns with a
+			// trailing "…" (the ellipsis is part of the clamp budget), then
+			// re-chunk so every row still fits the width exactly.
+			ev = clampEllipsis(ev, room*width)
+			chunks = chunkCols(ev, width)
 		}
 		pieces = append(chunks, pieces...)
 		if len(pieces) >= rows {
@@ -401,6 +401,27 @@ func clampCols(s string, w int) string {
 			return s[:i]
 		}
 		used += cw
+	}
+	return s
+}
+
+// clampEllipsis is clampCols with a visible cut: an over-width string is
+// hard-truncated and a trailing "…" marks the elision (boss 0910 spec:
+// 硬截断+"…"). Fits rune and the ellipsis inside w columns.
+func clampEllipsis(s string, w int) string {
+	total := 0
+	for _, r := range s {
+		total += runeWidth(r)
+	}
+	if total <= w {
+		return s
+	}
+	used := 0
+	for i, r := range s {
+		if used+runeWidth(r) > w-1 { // reserve one column for "…"
+			return s[:i] + "…"
+		}
+		used += runeWidth(r)
 	}
 	return s
 }

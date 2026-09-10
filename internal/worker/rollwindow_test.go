@@ -20,8 +20,11 @@ func TestRollWindowWrap(t *testing.T) {
 			t.Errorf("row exceeds width: %q", l)
 		}
 	}
-	if !strings.Contains(got[0], "…") && !strings.Contains(got[1], "…") {
-		t.Error("over-long item should mark its hidden head with …")
+	if !strings.HasSuffix(got[1], "…") {
+		t.Error("over-long item must hard-cut with a trailing … (boss 0910: head shown, tail elided)")
+	}
+	if !strings.HasPrefix(got[0], "这是一条超长内容") {
+		t.Errorf("head must be shown from the start: %q", got[0])
 	}
 	// multi short events: one per row, newest last
 	got = rollWindow([]string{"first event", "second event"}, 30, 2)

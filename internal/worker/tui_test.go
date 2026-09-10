@@ -64,19 +64,24 @@ func TestRenderFrameLogRingCap(t *testing.T) {
 	}
 }
 
-// boss 0910 spec: log lines wrap instead of truncating, and both the
-// rolling rows and log lines are right-indented (no gutter glyph).
-func TestRenderFrameIndentAndWrap(t *testing.T) {
-	long := strings.Repeat("word ", 30) // 150 cols — must wrap at width 100
+// boss 0910 spec + correction: rolling area wraps to two right-indented
+// rows with a trailing "…" hard cut; worker-log lines do NOT wrap — one
+// indented line each, hard cut with trailing "…".
+func TestRenderFrameIndentAndCut(t *testing.T) {
+	long := strings.Repeat("word ", 30) // 150 cols — must cut, not wrap
 	ring := []string{long}
 	rolls := map[string][]string{"a": {"<event content that is quite long and keeps going past the pane width for wrapping>"}}
 	frame := renderFrame(100, time.Now(), "v",
 		[]*statusRow{{tag: "a", state: "working", started: time.Now()}}, rolls, ring, "errors-*.log")
-	if strings.Count(frame, "\n    ") < 2 {
-		t.Errorf("long log line must wrap to multiple indented rows:\n%s", frame)
-	}
 	if strings.Contains(frame, "  | ") {
 		t.Errorf("gutter glyph must be gone (right-indent form):\n%s", frame)
+	}
+	if !strings.Contains(frame, "…") {
+		t.Errorf("over-width content must carry a trailing …:\n%s", frame)
+	}
+	// the log line must be a single row (no wrap): exactly one indented row starts with "word"
+	if n := strings.Count(frame, "\n    word "); n != 1 {
+		t.Errorf("log line must not wrap (want 1 row, got %d):\n%s", n, frame)
 	}
 	for _, line := range strings.Split(frame, "\n") {
 		if cols := visualCols(line); cols > 100 {
