@@ -2285,13 +2285,19 @@ document.addEventListener("manage:entered", function () {
   (function inboxIncremental() {
     // Rebuild the inbox list HTML from an array of MessageSummary objects.
     function renderItem(m) {
+      // 与 loadInbox 全量路径同构（boss 产线报告：增量插入的新信此前用
+      // mail-sender/mail-subject 等私有类名，CSS 只认 subj/meta/prev，
+      // 导致新信渲染样式与真信不同）——统一复用同一份标记，含未读点与
+      // 发件模式下的 To 行。
       const item = document.createElement("div");
       item.className = "mail-item" + (m.unread ? " unread" : "");
       item.innerHTML =
-        '<div class="mail-sender">' + esc(m.from || "") + "</div>" +
-        '<div class="mail-subject">' + esc(m.subject || "") + "</div>" +
-        '<div class="mail-preview">' + esc(m.preview || "") + "</div>" +
-        '<span class="mail-time">' + fmtTime(m.received_at) + "</span>";
+        (m.unread ? '<span class="unread-dot" title="unread">●</span>' : "") +
+        '<div class="subj">' + esc(m.subject || "(no subject)") + "</div>" +
+        '<div class="meta"><b>' + t("mail.from") + "</b> '" + esc(m.from) +
+        " · <small>" + fmtTime(m.received_at) + "</small></div>" +
+        (inboxMode !== "in" && m.to && m.to.length ? '<div class="meta"><b>To:</b> ' + esc(m.to.join(", ")) + "</div>" : "") +
+        '<div class="prev">' + esc(m.preview || "") + "</div>";
       item.addEventListener("click", function () { showInboxDetail(m.id, item, false); });
       return item;
     }
