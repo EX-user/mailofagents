@@ -2686,4 +2686,10 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     overflow-y: auto; overflow-x: hidden;
   }
   #tab-compose.split > #thread-holder { display: none; }
+  /* v0.2.8.2 (boss live feedback): main caps at 1100px, which squeezed each
+     column to ~1/4 of a wide window. While split, let main stretch so the
+     two columns genuinely take half the viewport each (capped for sanity). */
+  body:has(#tab-compose.split) main {
+    max-width: min(1680px, calc(100vw - 48px));
+  }
 }

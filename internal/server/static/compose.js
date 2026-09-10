@@ -998,11 +998,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     var sec = document.getElementById("tab-compose");
     if (!sec) return;
     var has = !!($("#compose-to").value || "").trim();
-    sec.classList.toggle("split", has);
-    sec.classList.toggle("solo", !has);
+    // v0.2.8.2 merge (boss cursor idea + alice ruling): focusing subject or
+    // body also opens the two-column view — the caret itself is a trigger,
+    // so the wide layout is up before the first keystroke lands.
+    var fa = document.activeElement;
+    var focused = !!fa && (fa.id === "compose-subject" || fa.id === "compose-body");
+    var split = has || focused;
+    sec.classList.toggle("split", split);
+    sec.classList.toggle("solo", !split);
   }
   $("#compose-to").addEventListener("input", syncComposeSplit);
   syncComposeSplit();
+  // v0.2.8.2 (boss live feedback): input events alone missed transitions
+  // sometimes (value changed by autofill/other code paths). The split state
+  // now reconciles against the To value on a fixed tick — the value is the
+  // single source of truth, events only make it instant.
+  setInterval(syncComposeSplit, 400);
+  document.addEventListener("focusin", syncComposeSplit);
+  document.addEventListener("focusout", function () { setTimeout(syncComposeSplit, 0); });
 
   // Toggle a thread item's full body (lazy-load the message on first expand).
   // Admins read via /admin/message (any account's mail); regular accounts read
