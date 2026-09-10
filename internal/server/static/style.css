@@ -2687,7 +2687,10 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     display: flex; flex-direction: column;
   }
   #tab-compose.split #compose-body { flex: 1 1 auto; min-height: 160px; width: 100%; }
-  #tab-compose.split > #thread-title { grid-column: 2; grid-row: 2; margin-top: 0; }
+  /* 1026: the peer address is one unbreakable word - let it wrap inside
+     the column instead of overflowing into the container clip. */
+  #tab-compose.split > #thread-title { grid-column: 2; grid-row: 2; margin-top: 0;
+    min-width: 0; overflow-wrap: anywhere; }
   #tab-compose.split > #compose-thread {
     grid-column: 2; grid-row: 3;
     min-height: 0; max-height: none; height: 100%;

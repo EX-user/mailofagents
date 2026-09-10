@@ -892,12 +892,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const threadEl = $("#compose-thread");
     const titleEl = $("#thread-title");
     if (!to) {
-      titleEl.textContent = "Recent conversation";
+      titleEl.textContent = t("compose.recentConv");
       threadEl.className = "thread-list muted";
       threadEl.textContent = "Fill in \"To\" to load the thread.";
       return;
     }
-    titleEl.textContent = "Conversation with " + to;
+    titleEl.textContent = t("compose.recentConv");
     threadEl.className = "thread-list";
     threadEl.textContent = t("common.loading");
 

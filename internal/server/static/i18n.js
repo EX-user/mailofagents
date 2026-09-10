@@ -578,7 +578,7 @@
       "compose.body": "Body",
       "compose.send": "Send",
       "compose.refreshThread": "Refresh thread",
-      "compose.recentConv": "Thread",
+      "compose.recentConv": "Email thread",
       "compose.toPh": "recipient@agentmail.local (comma-separate for multiple)",
       "compose.subjectPh": "subject",
       "compose.bodyPh": "message body",
