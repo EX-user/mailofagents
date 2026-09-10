@@ -217,7 +217,13 @@ func (d *Duty) compactOnce(ctx context.Context) error {
 		return nil
 	}
 	start := time.Now()
-	d.logf("compact: compressing session %s in place…", sess)
+	tag := localPart(d.cfg.Address)
+	// The board's COMPACT state is only meaningful while a compression is
+	// actually in flight (boss report 0911: -compact-before-wake showed
+	// WAITING throughout). Standalone -compact has no board row → Set
+	// no-ops there.
+	board.Set(tag, "compact", "compressing session in place…")
+	d.hb("compact", "compacting session in place")
 	budget := d.compactBudget
 	if budget <= 0 {
 		budget = compactTimeout
@@ -229,9 +235,11 @@ func (d *Duty) compactOnce(ctx context.Context) error {
 		// (early failures leave it untouched; a summarize that returned
 		// but whose summary went undetected does NOT)
 		d.logf("compact FAILED after %s: %v", time.Since(start).Round(time.Second), err)
+		board.Set(tag, "waiting", "compact failed — session kept")
 		return err
 	}
 	d.logf("compact ok in %s: session %s continues with its summary", time.Since(start).Round(time.Second), sess)
+	board.Set(tag, "waiting", "compact done: session continues")
 	return nil
 }
 
@@ -705,8 +713,10 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		// discarding the whole context loses more than it buys.
 		if c, ok := d.adapter.(Compacter); ok && d.sessionID != "" {
 			d.mu.Unlock()
-			board.Set(tag, "working", "compacting session in place…")
-			d.hb("working", "compacting session in place")
+			// boss 0911: the four-state board's COMPACT belongs to exactly
+			// this window — a compression in flight (was "working").
+			board.Set(tag, "compact", "compacting session in place…")
+			d.hb("compact", "compacting session in place")
 			d.logf("compact: summarizing session %s in place", d.sessionID)
 			cctx, ccancel := context.WithTimeout(ctx, 3*time.Minute)
 			err := c.CompactSession(cctx, d.cfg, d.sessionID)
