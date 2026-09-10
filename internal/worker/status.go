@@ -293,7 +293,7 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 		if r.ctxTokens > 0 {
 			line += " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
 		}
-		fmt.Fprintf(&bld, "%s\n", clampCols(line, w))
+		fmt.Fprintf(&bld, "%s\n", clampEllipsis(line, w))
 		for _, out := range rollWindow(rolls[r.tag], max2(w-4, 10), rollRows) {
 			// boss 0910 spec: the rolling two rows are plain right-indent —
 			// separation from line start, no gutter glyph.

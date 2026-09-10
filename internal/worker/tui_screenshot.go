@@ -17,7 +17,7 @@ func DumpTUIScreenshots(width int, version string) {
 	since := time.Now().Add(-40 * time.Second)
 
 	longDetail := "wake failed: provider quota/429 · insufficient_balance: 您的余额不足请充值后再试 (this line is deliberately long to prove wrapping at the frame width)"
-	longRoll := "这是一条超长内容。甲乙丙丁戊己庚辛壬癸ABCDEFGHIJK LMNOPQRSTUVWXYZ0123456789甲乙丙丁戊己庚辛壬癸（boss 原例：验证超长内容跨两行滚动换行）"
+	longRoll := "这是一条超长内容。甲乙丙丁戊己庚辛壬癸ABCDEFGHIJK LMNOPQRSTUVWXYZ0123456789甲乙丙丁戊己庚辛壬癸（boss 原例：验证超长内容跨两行滚动换行，再补一段确保越过两行窗口触发硬截断的尾部省略号展示，这段再加长一些让窗口必截无疑尾部从此处起被省略）"
 
 	mkrows := func() []*statusRow {
 		return []*statusRow{
