@@ -2625,3 +2625,44 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 @media (max-width: 800px) {
   .limits-addr { min-width: 0; flex: 1 1 100%; }
 }
+
+/* ============================================================
+   v0.2.8 compose two-column (boss-approved 2026-09-10, mock v4):
+   PC only. Recipient filled -> split: left = compose form (full
+   height, send row pinned to bottom), right = conversation list
+   (internal scroller). No recipient -> solo: right column hidden,
+   form centered. Mobile (<961px) keeps the thread-pane overlay.
+   ============================================================ */
+@media (min-width: 961px) {
+  #tab-compose.solo #thread-title,
+  #tab-compose.solo #thread-holder,
+  #tab-compose.solo #compose-thread { display: none; }
+  #tab-compose.solo > .compose-form { margin-left: auto; margin-right: auto; }
+
+  #tab-compose.split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 28px;
+    align-items: start;
+    height: var(--compose-2col, calc(100dvh - 170px));
+    overflow: hidden;
+  }
+  #tab-compose.split > h2 { grid-column: 1 / -1; grid-row: 1; }
+  #tab-compose.split > .compose-form {
+    grid-column: 1; grid-row: 2 / span 2;
+    max-width: none; min-height: 0; height: 100%;
+  }
+  #tab-compose.split #compose-body-label {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column;
+  }
+  #tab-compose.split #compose-body { flex: 1 1 auto; min-height: 160px; width: 100%; }
+  #tab-compose.split > #thread-title { grid-column: 2; grid-row: 2; margin-top: 0; }
+  #tab-compose.split > #compose-thread {
+    grid-column: 2; grid-row: 3;
+    min-height: 0; max-height: none; height: 100%;
+    overflow-y: auto; overflow-x: hidden;
+  }
+  #tab-compose.split > #thread-holder { display: none; }
+}

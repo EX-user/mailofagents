@@ -952,6 +952,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           renderInReplyTo();
           $("#compose-body").focus();
           $("#compose-status").textContent = "Replying to " + btn.dataset.target;
+          syncComposeSplit();
         });
       });
       // Click-to-expand anywhere on the item; but once expanded, the content
@@ -981,6 +982,19 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // Reload the thread when the user leaves the To field (covers typing a peer
   // manually then tabbing away).
   $("#compose-to").addEventListener("change", loadComposeThread);
+
+  // v0.2.8 compose two-column (boss-approved): PC only (CSS gates <961px).
+  // Recipient present -> split (left form / right thread); empty -> solo
+  // (right column hidden, form centered).
+  function syncComposeSplit() {
+    var sec = document.getElementById("tab-compose");
+    if (!sec) return;
+    var has = !!($("#compose-to").value || "").trim();
+    sec.classList.toggle("split", has);
+    sec.classList.toggle("solo", !has);
+  }
+  $("#compose-to").addEventListener("input", syncComposeSplit);
+  syncComposeSplit();
 
   // Toggle a thread item's full body (lazy-load the message on first expand).
   // Admins read via /admin/message (any account's mail); regular accounts read
