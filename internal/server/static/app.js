@@ -20,6 +20,25 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // login screen lives here, so wire it once at module eval.
   setUnauthorizedHandler(function () { showLogin(); });
 
+  // Sending-limits wiring (v0.2.8 round 2, Felix blocker 01M25N4QJ):
+  // ONE document-level delegated listener covers the PC table, the mobile
+  // cards and the modal's own buttons — re-renders can never orphan a
+  // listener again (the dead data-lssave save button came from exactly
+  // that: a listener attached to a node the re-render replaced).
+  document.addEventListener("click", function (ev) {
+    const t = ev.target;
+    if (!t || !t.closest) return;
+    if (t.id === "btn-limits-close") {
+      const m = $("#limits-modal");
+      if (m) m.classList.add("hidden");
+      return;
+    }
+    if (t.id === "btn-limits-save") { saveLimitsModal(); return; }
+    if (t === $("#limits-modal")) { m = $("#limits-modal"); if (m) m.classList.add("hidden"); return; }
+    const opener = t.closest("[data-limits]");
+    if (opener) openLimitsModal(opener.dataset.limits);
+  });
+
 
   // i18n shortcut (v0.4.12): dynamic strings go through the dictionary;
   // before i18n.js loads or if unavailable, fall back to the key.
@@ -235,7 +254,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         api("/api/inbox?limit=1").catch(function () { return null; }),
         api("/api/sent?limit=1").catch(function () { return null; }),
         api("/api/mygrowth").catch(function () { return null; }),
-        api("/api/profile/self", { keepSession: true }).catch(function () { return null; }),
+        api("/api/profile/self", { keepSession: true }).catch(function (e) {
+          // Felix 01M25N4QJ: the first profile fetch right after login can
+          // 401 once (session/token not yet settled); one delayed retry
+          // heals it. Anything else degrades silently as before.
+          if (String((e && e.message) || "").indexOf("401") < 0) return null;
+          return new Promise(function (done) { setTimeout(done, 300); }).then(function () {
+            return api("/api/profile/self", { keepSession: true }).catch(function () { return null; });
+          });
+        }),
         api("/api/info?query=settings", { keepSession: true }).catch(function () { return null; }),
       ]);
       const allTime = [];
@@ -421,11 +448,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         btn.addEventListener("click", function () { setDisabled(btn.dataset.enable, false); });
       });
       maybeMarqueeSigs();
-      const limCard = $("#limits-card");
-      if (limCard) limCard.addEventListener("click", function (ev) {
-        const b = ev.target.closest("[data-lssave]");
-        if (b) saveLimits(b.dataset.lssave, limCard);
-      });
+
     } catch (e) {
       tbody.innerHTML = '<tr><td colspan="5">Error: ' + esc(e.message) + "</td></tr>";
     }
@@ -436,51 +459,58 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // save button. Empty input = keep current; explicit 0 = unlimited
   // (server contract 239655b: range [0,1000], self/superior/admin may
   // write, everyone may read own).
-  function limitsRowHtml(addr, lim) {
-    return '<div class="limits-row" data-lsaddr="' + esc(addr) + '">' +
-      '<span class="limits-addr">' + esc(addr) + "</span>" +
-      '<label class="limits-fld">' + t("limits.recipients") +
-      ' <input type="number" min="0" max="1000" class="limits-num" data-lsf="max_recipients" value="' + (lim && lim.max_recipients != null ? lim.max_recipients : "") + '" placeholder="' + t("limits.none") + '" /></label>' +
-      '<label class="limits-fld">' + t("limits.cc") +
-      ' <input type="number" min="0" max="1000" class="limits-num" data-lsf="max_cc" value="' + (lim && lim.max_cc != null ? lim.max_cc : "") + '" placeholder="' + t("limits.none") + '" /></label>' +
-      '<button class="row-action" data-lssave="' + esc(addr) + '">' + t("limits.save") + "</button>" +
-      "</div>";
-  }
+  // v0.2.8 round 2 (boss-approved): limits moved from an inline card into a
+  // per-account "Sending limits" button + modal. Modal opens prefilled with
+  // the current effective values — leaving without changes keeps them.
+  // Recipients limit: 1-1000 (0 is illegal). CC limit: empty submit = 0
+  // (unlimited). Badges in the accounts table stay authoritative for the
+  // at-a-glance view.
+  var limitsCache = {};
 
-  async function loadLimits(selfAddr, subAddrs) {
-    const card = $("#limits-card");
-    if (!card) return;
-    card.innerHTML = '<div class="muted" style="font-size:12px;">' + t("limits.loading") + "</div>";
+  async function preloadLimits(selfAddr, subAddrs) {
     const targets = [selfAddr].concat(subAddrs || []);
-    const lims = {};
     await Promise.all(targets.map(async function (a) {
       try {
         const q = a === selfAddr ? "" : "?address=" + encodeURIComponent(a);
-        lims[a] = await api("/api/account/limits" + q, { keepSession: true });
-      } catch (_) { lims[a] = null; }
+        limitsCache[a] = await api("/api/account/limits" + q, { keepSession: true });
+      } catch (_) { limitsCache[a] = null; }
     }));
-    var html = '<div class="limits-title">' + t("limits.title") + '</div>' +
-      '<div class="muted" style="font-size:12px; margin-bottom:6px;">' + t("limits.hint") + "</div>";
-    targets.forEach(function (a) {
-      html += limitsRowHtml(a, lims[a]);
-    });
-    card.innerHTML = html;
   }
 
-  async function saveLimits(addr, card) {
-    const row = card.querySelector('.limits-row[data-lsaddr="' + CSS.escape(addr) + '"]');
-    if (!row) return;
-    const patch = { address: addr };
-    const r = row.querySelector('input[data-lsf="max_recipients"]');
-    const c = row.querySelector('input[data-lsf="max_cc"]');
-    if (r && r.value !== "") patch.max_recipients = parseInt(r.value, 10);
-    if (c && c.value !== "") patch.max_cc = parseInt(c.value, 10);
-    if (patch.max_recipients == null && patch.max_cc == null) return;
+  function openLimitsModal(addr) {
+    const modal = $("#limits-modal");
+    if (!modal) return;
+    $("#limits-modal-title").textContent = t("limits.title") + " \u2014 " + addr;
+    const cur = limitsCache[addr] || {};
+    $("#limits-to").value = cur.max_recipients != null ? cur.max_recipients : "";
+    $("#limits-cc").value = cur.max_cc != null ? cur.max_cc : "";
+    $("#limits-modal-status").textContent = "";
+    modal.dataset.lsaddr = addr;
+    modal.classList.remove("hidden");
+  }
+
+  async function saveLimitsModal() {
+    const modal = $("#limits-modal");
+    const addr = modal && modal.dataset.lsaddr;
+    if (!addr) return;
+    const st = $("#limits-modal-status");
+    const toRaw = $("#limits-to").value.trim();
+    const ccRaw = $("#limits-cc").value.trim();
+    const toN = parseInt(toRaw, 10);
+    const ccN = ccRaw === "" ? 0 : parseInt(ccRaw, 10);
+    if (!/^\d+$/.test(toRaw) || isNaN(toN) || toN < 1 || toN > 1000) {
+      st.textContent = t("limits.err.recipients"); return;
+    }
+    if (ccRaw !== "" && (!/^\d+$/.test(ccRaw) || isNaN(ccN) || ccN < 0 || ccN > 1000)) {
+      st.textContent = t("limits.err.cc"); return;
+    }
     try {
-      const d = await api("/api/account/limits", { method: "POST", body: JSON.stringify(patch), keepSession: true });
-      if (r && d && d.max_recipients != null) r.value = d.max_recipients;
-      if (c && d && d.max_cc != null) c.value = d.max_cc;
+      const d = await api("/api/account/limits", { method: "POST",
+        body: JSON.stringify({ address: addr, max_recipients: toN, max_cc: ccN }), keepSession: true });
+      limitsCache[addr] = d;
+      document.dispatchEvent(new CustomEvent("accounts:refresh"));
       toast(t("board.saved"), "success");
+      modal.classList.add("hidden");
     } catch (e) {
       const msg = String((e && e.message) || "");
       if (msg.indexOf("too many recipients") >= 0 || msg.indexOf("limit") >= 0) toast(msg, "error");
@@ -569,7 +599,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         '<td data-label="' + t("col.tags") + '">' + badge + "</td>" +
         '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span></td>" +
         "<td data-label=\"Created\"></td>" +
-        '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" data-compose="' + esc(e.address) + '">' + t("act.compose") + '</button><button class="row-action" data-remove-sub="' + esc(e.address) + '">' + t("subs.removeBtn") + "</button></td>" +
+        '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" data-compose="' + esc(e.address) + '">' + t("act.compose") + '</button><button class="row-action" data-remove-sub="' + esc(e.address) + '">' + t("subs.removeBtn") + '</button><button class="row-action" data-limits="' + esc(e.address) + '">' + t("limits.open") + "</button></td>" +
         "</tr>";
       // Mobile container card (one-screen plan): badges + address share one
       // line (address marquees on overflow), signature max one line (same),
@@ -579,12 +609,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         '<div class="sub-meta">' + badge + "</div>" +
         '<div class="sub-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(e.address) + '</span><span class="sig-dup" aria-hidden="true">' + esc(e.address) + "</span></span></div>" +
         '<div class="sub-sig mq">' + (sig ? '<span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span>" : "") + "</div>" +
-        '<div class="sub-foot"><button class="row-action pill-btn" data-compose="' + esc(e.address) + '">' + "✉ " + t("act.compose") + '</button><button class="row-action pill-btn" data-remove-sub="' + esc(e.address) + '">' + "✕ " + t("subs.removeBtn") + "</button></div>" +
+        '<div class="sub-foot"><button class="row-action pill-btn" data-compose="' + esc(e.address) + '">' + "✉ " + t("act.compose") + '</button><button class="row-action pill-btn" data-remove-sub="' + esc(e.address) + '">' + "✕ " + t("subs.removeBtn") + '</button><button class="row-action pill-btn" data-limits="' + esc(e.address) + '">' + t("limits.open") + "</button></div>" +
         "</div>";
     });
     rows.push(pcSubRows);
-    rows.push(
-      '<tr class="limits-row"><td colspan="5" class="limits-cell"><div id="limits-card"></div></td></tr>');
+
     rows.push(
       '<tr class="agentreg-row">' +
       '<td colspan="5" class="agentreg-cell">' +
@@ -635,7 +664,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // Subordinate accounts render ONLY inside the register card's zone
     // (approved two-zone layout) — nothing about them joins the main list.
     tbody.innerHTML = rows.join("");
-    loadLimits(selfAddr, subsList.map(function (e) { return e.address; }));
+    preloadLimits(selfAddr, subsList.map(function (e) { return e.address; }));
     const btn = $("#btn-change-pw");
     if (btn) btn.addEventListener("click", openChangePassword);
     $$("[data-compose]", tbody).forEach(function (b) {
@@ -646,6 +675,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $$("[data-remove-sub]", tbody).forEach(function (b) {
       b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("subs:remove", { detail: { address: b.dataset.removeSub, role: "superior" } })); });
     });
+
     // Mobile one-screen plan: the phone-only contacts list mirrors the
     // contact rows (which hide via CSS); compose wiring included.
     var ctBox = $("#acc-m-contacts");
@@ -657,6 +687,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       $$("#acc-m-contacts [data-remove-sub]").forEach(function (b) {
         b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("subs:remove", { detail: { address: b.dataset.removeSub, role: "superior" } })); });
       });
+
     }
     var ownBox = $("#acc-m-own");
     if (ownBox) {

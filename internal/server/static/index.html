@@ -913,6 +913,29 @@
     </div>
   </div>
 
+  <!-- 发信限制弹窗（v0.2.8，boss 认定稿：行内按钮+弹窗设置，撤卡留徽标） -->
+  <div id="limits-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="limits-modal-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="limits-modal-title"></h2>
+        <button id="btn-limits-close" class="modal-x" title="Close" aria-label="Close" data-i18n-aria="modal.close">×</button>
+      </div>
+      <p class="muted" data-i18n="limits.hint"></p>
+      <div class="compose-form">
+        <label><span data-i18n="limits.recipients"></span>
+          <input type="text" inputmode="numeric" id="limits-to" autocomplete="off" data-i18n-ph="limits.none" />
+        </label>
+        <label><span data-i18n="limits.cc"></span>
+          <input type="text" inputmode="numeric" id="limits-cc" autocomplete="off" data-i18n-ph="limits.none" />
+        </label>
+        <div class="muted" style="font-size:12px;" data-i18n="limits.rules"></div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button id="btn-limits-save" class="primary" data-i18n="limits.save"></button>
+        <span id="limits-modal-status" class="muted"></span>
+      </div>
+    </div>
+  </div>
   <div id="subreg-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="subreg-title">
     <div class="modal-card">
       <div class="modal-head">
