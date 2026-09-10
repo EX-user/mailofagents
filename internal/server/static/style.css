@@ -973,6 +973,14 @@ nav .tab { flex: 0 0 auto; }
   #tab-accounts.acc-admin #accounts-table td.actions-cell { margin-top: 6px; }
   #tab-accounts.acc-admin #acc-m-own,
   #tab-accounts.acc-admin #acc-m-contacts { display: none; }
+  /* v0.2.8.2 (boss live report: admin list cannot scroll on phones): the
+     document lock above assumes the regular one-screen plan's inner
+     scroller (#acc-m-contacts). The reverted admin view has none — its
+     many account cards must scroll the document itself, so exempt
+     .acc-admin from the lock entirely. */
+  #tab-accounts.acc-admin:not(.hidden) {
+    height: auto; min-height: 0; overflow: visible;
+  }
 }
 
 /* Agent-mailbox register zone (superior feedback round 3): on DESKTOP the
