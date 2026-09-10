@@ -395,6 +395,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       return;
     }
     // Admin view has global tools; the subordinate manager is regular-only.
+    // v0.2.8-r1 (boss ruling): phones drop the one-screen plan for admins —
+    // the merged-card zones are never populated here, so the plain
+    // data-label card rows render instead (CSS scoped to .acc-admin).
+    const accSecAdmin = document.getElementById("tab-accounts");
+    if (accSecAdmin) accSecAdmin.classList.add("acc-admin");
     const subsSectionAdmin = $("#subs-section");
     if (subsSectionAdmin) subsSectionAdmin.classList.add("hidden");
     const subregPcAdmin = $("#subreg-pc");
@@ -524,6 +529,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // and not relevant to a personal view.
   async function loadAccountsRegular(selfAddr) {
     // The "+ Register new account" button is admin-only.
+    const accSecRegular = document.getElementById("tab-accounts");
+    if (accSecRegular) accSecRegular.classList.remove("acc-admin");
     const regBtn = $("#btn-register");
     if (regBtn) regBtn.classList.add("hidden");
     const invBtnRegular = $("#btn-invalid");

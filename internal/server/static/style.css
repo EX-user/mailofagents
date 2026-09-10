@@ -952,6 +952,27 @@ nav .tab { flex: 0 0 auto; }
   }
   #acc-m-contacts .sub-card:last-child { border-bottom: none; }
   .ct-groups-sep { height: 1px; background: var(--border); margin: 6px 0; }
+
+  /* ---- v0.2.8-r1 (boss ruling 01M259Y5B): revert the one-screen plan
+     for ADMIN sessions on phones — the plan was built for the regular
+     accounts view and renders the admin table broken. With .acc-admin
+     the pre-plan card layout (rows -> plain cards with data-labels)
+     applies again, the empty mobile zones disappear and the page title
+     returns. Regular users keep the plan unchanged. ---- */
+  #tab-accounts.acc-admin > h2 { display: block; }
+  #tab-accounts.acc-admin #accounts-table tr {
+    display: block; width: 100%; box-sizing: border-box;
+    padding: 12px 14px;
+  }
+  #tab-accounts.acc-admin #accounts-table td[data-label]::before {
+    content: attr(data-label); display: block;
+    font-size: 10px; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--muted); margin-bottom: 1px;
+  }
+  #tab-accounts.acc-admin #accounts-table td { padding: 4px 0; }
+  #tab-accounts.acc-admin #accounts-table td.actions-cell { margin-top: 6px; }
+  #tab-accounts.acc-admin #acc-m-own,
+  #tab-accounts.acc-admin #acc-m-contacts { display: none; }
 }
 
 /* Agent-mailbox register zone (superior feedback round 3): on DESKTOP the
