@@ -106,9 +106,32 @@ func (selfcheck) Run(ctx context.Context, env *Env) Result {
 	res := Result{Scenario: "selfcheck", OK: true, StartedAt: time.Now()}
 	defer func() { res.Duration = time.Since(res.StartedAt) }()
 
-	info, err := env.Obs.Info(ctx)
+	// Reachability probe with short retries (adopted 2026-09-11, Devi
+	// proposal): a single GET rides the direct-connect flap family (same
+	// env class as the s10/s13 stalls) and costs a false red plus triage
+	// time. Retrying a reachability probe does not mask real problems —
+	// the business scenarios keep their single-shot semantics; every
+	// failed attempt lands in the timeline.
+	var info ServiceInfo
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		info, err = env.Obs.Info(ctx)
+		if err == nil {
+			break
+		}
+		_ = env.TL.Add("note", fmt.Sprintf("selfcheck: info attempt %d/3 failed: %v", attempt, err), nil)
+		if attempt == 3 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			res.add("info_reachable", false, "budget hit during reachability retries: %v", ctx.Err())
+			return res
+		case <-time.After(2 * time.Second):
+		}
+	}
 	if err != nil {
-		res.add("info_reachable", false, "GET /api/info: %v", err)
+		res.add("info_reachable", false, "GET /api/info after 3 attempts: %v", err)
 		return res
 	}
 	res.add("info_reachable", true, "domain=%q version=%q initialized=%v", info.Domain, info.Version, info.Initialized)
