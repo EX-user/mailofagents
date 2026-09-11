@@ -294,7 +294,15 @@ var mgmtNodeSet = null;
         interaction: { hover: true, dragView: true, zoomView: true },
         edges: { selectionWidth: 2 }
       });
+      // 1027 (boss, real-data feedback): with live communication data the
+      // simulation never fully converges on its own — nodes kept drifting /
+      // jittering indefinitely. The layout is decided during the initial
+      // stabilization pass; after that we FREEZE the engine. Deterministic
+      // stillness for any data shape; dragging a node still moves it (the
+      // edges just follow, no re-simulation), and the in-place restyles
+      // (linear/log, numbers, playback tiers) no longer jiggle anything.
       mgmtNetwork.once("stabilizationIterationsDone", function () {
+        mgmtNetwork.setOptions({ physics: false });
         try { mgmtNetwork.fit({ animation: false }); } catch (_) {}
       });
       mgmtNetwork.on("click", function (params) {
