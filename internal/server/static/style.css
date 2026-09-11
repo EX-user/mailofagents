@@ -2707,3 +2707,8 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     max-width: min(1680px, calc(100vw - 48px));
   }
 }
+
+/* v0.2.9: the brand mark doubles as the Overview entry (boss directive) —
+   clickable affordance without shouting. */
+#brand-home { cursor: pointer; }
+#brand-home:hover span { text-decoration: underline; text-underline-offset: 3px; }

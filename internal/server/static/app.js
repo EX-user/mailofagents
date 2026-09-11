@@ -181,6 +181,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     b.addEventListener("click", function () { activateTab(b.dataset.tab); });
   });
 
+  // v0.2.9 (boss directive): Overview left the nav — the header brand is
+  // its entry now. The page itself is unchanged.
+  const brandHome = document.getElementById("brand-home");
+  if (brandHome) brandHome.addEventListener("click", function () { activateTab("overview"); });
+
 
   // S2 protocol: the manage module owns subordinate edges; other domains
   // request them through the DOM event bus (resolve never rejects).
