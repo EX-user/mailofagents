@@ -15,8 +15,9 @@ package worker
 //	    <up to 10 rolling log lines, one line each, hard-cut with …>
 //	    full logs: <path>            (hint line, not counted in the 10)
 //
-// States: waiting | working | compact | error (error = quota/network/wake
-// failures — boss detail #2). Status rows stay on one line; rolling rows
+// States: waiting | working | compact | error | arming (error = quota/network/wake
+// failures — boss detail #2; arming = mail accepted, awaiting first
+// downstream output — boss 0912). Status rows stay on one line; rolling rows
 // wrap within the two-row window, log lines do not wrap. The frame is
 // built by renderFrame as a plain multi-line string — the ANSI draw loop
 // prints it in place, and `-tui-screenshot` dumps synthetic frames for
@@ -142,7 +143,13 @@ func (b *Board) Set(tag, state, detail string) {
 	if row != nil {
 		if state == "" {
 			// streaming output: keep recent raw events; the render chunks
-			// them into the two-line horizontal continuation window
+			// them into the two-line horizontal continuation window.
+			// First downstream output promotes DANGLING → WORKING (boss
+			// 0912: working = receiving downstream / running tools).
+			if row.state == "arming" {
+				row.state = "working"
+				row.since = time.Now()
+			}
 			evs := append(b.rowEvents[tag], detail)
 			if len(evs) > rollEvents {
 				evs = evs[len(evs)-rollEvents:]
@@ -373,6 +380,8 @@ func stateStyle(state string) lipgloss.Style {
 		c = lipgloss.Color("4")
 	case "compact":
 		c = lipgloss.Color("3")
+	case "arming":
+		c = lipgloss.Color("6")
 	case "error":
 		c = lipgloss.Color("1")
 	default:

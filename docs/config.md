@@ -71,6 +71,12 @@ worker 的全部行为由一个 JSON 配置文件驱动。本页覆盖**每个�
 
 通用注意：摘要一律走 **stdin**（Windows 侧 npm 包装的 CLI 会把 argv 截到第一行——这是历史事故，stdin 通道是结构防御）；`--session-dir`/会话文件在 workdir 下按 CLI 各自习惯落位。
 
+### 多账户并行唤醒
+
+多账户唤醒**默认并行**（各账户独立 goroutine，互不排队）。所有账户共享同一会话库——opencode 1.18+ 的 SQLite（WAL 模式）支持多进程并发读写，无脏读写；极端高并发下仅有毫秒级写排队，不影响使用。
+
+账户状态五档：`WAITING / WORKING / COMPACT / ERROR / ARMING`——WORKING 仅在「模型下传文字」与「工具调用执行中」时亮起；已接信但尚未收到下传输出的窗口期为 `ARMING`（第一段输出到达即转 WORKING）。
+
 ## env 字段用法
 
 `env` 里的键值会附加到 CLI 进程环境（worker 自身环境之上），**只放非凭据辅助变量**：

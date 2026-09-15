@@ -6,7 +6,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -34,8 +33,9 @@ var buildTag = "unversioned"
 
 func main() {
 	cfgPath := flag.String("config", "worker.json", "path to worker config JSON")
-	fresh := flag.Bool("fresh", false, "start a brand-new session: drop the stored session id and CLEAR the workdir contents (asks per account; see -yes)")
-	yes := flag.Bool("yes", false, "assume yes for -fresh confirmations (for scripts; required when stdin is not a terminal)")
+	fresh := flag.Bool("fresh", false, "start a brand-new session: drop the stored session id and start over (workdir contents are never touched)")
+	yes := flag.Bool("yes", false, "accepted for script compatibility; -fresh is no longer destructive so no confirmation is needed")
+	_ = yes
 	agentSel := flag.String("switch_address", "", "only run the matching account (address prefix, local-part, or 1-based index); default runs all")
 	showVer := flag.Bool("version", false, "print build tag and exit")
 	plan := flag.String("plan", "", "print the exact invocation(s) the wake would build for the matching account(s), then exit — no CLI is run (argv-shape debugging; same matching as -switch_address)")
@@ -111,29 +111,12 @@ func main() {
 		return
 	}
 
-	// -fresh clears workdirs — destructive, so confirm per account unless
-	// -yes. Non-interactive stdin without -yes refuses to run at all.
+	// -fresh only drops the stored session id (boss 0912: workdir
+	// contents are never touched), so the old destructive-confirmation
+	// flow is gone. -yes stays accepted for script compatibility.
 	freshList := make([]bool, len(cfgs))
 	for i := range cfgs {
 		freshList[i] = *fresh
-	}
-	if *fresh {
-		if !*yes && !isTerminal(os.Stdin) {
-			log.Fatalf("-fresh clears workdirs; refusing without -yes when stdin is not a terminal")
-		}
-		in := bufio.NewReader(os.Stdin)
-		for i, c := range cfgs {
-			if *yes {
-				continue
-			}
-			fmt.Printf("Clear workdir %s for %s? [y/N] ", c.Workdir, c.Address)
-			line, _ := in.ReadString('\n')
-			line = strings.TrimSpace(strings.ToLower(line))
-			if line != "y" && line != "yes" {
-				freshList[i] = false
-				fmt.Println("  kept (will resume existing session)")
-			}
-		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

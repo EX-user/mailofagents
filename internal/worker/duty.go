@@ -54,10 +54,6 @@ type Duty struct {
 	hbState    string       // last uploaded state (mu)
 }
 
-// cliWakeLocks serializes wakes per CLI id within this worker process (see
-// the comment at the Wake call site in checkOnce).
-var cliWakeLocks sync.Map // cli id -> *sync.Mutex
-
 func NewDuty(cfg *Config, fresh, compactBeforeWake bool) *Duty {
 	d := &Duty{
 		cfg:               cfg,
@@ -301,7 +297,7 @@ func (d *Duty) Run(ctx context.Context) {
 		d.logf("workdir: %v", err)
 	}
 	if d.fresh {
-		d.cleanWorkdir()
+		d.resetBinding()
 	} else {
 		d.loadState()
 	}
@@ -385,23 +381,14 @@ func (d *Duty) urgentNow() {
 // workdir. CLI-internal session stores (e.g. opencode's global
 // ~/.local/share/opencode) are not touched — clearing the binding already
 // guarantees a fresh session.
-func (d *Duty) cleanWorkdir() {
-	d.logf("fresh: dropping session binding and clearing workdir contents")
+// resetBinding drops the session binding so -fresh starts a new session.
+// boss 0912: NEVER delete anything beyond what the worker itself created —
+// the old "clear the whole workdir" behavior is gone; the workdir's
+// contents are the agent's turf and stay untouched.
+func (d *Duty) resetBinding() {
+	d.logf("fresh: dropping session binding (workdir contents untouched)")
 	_ = os.Remove(d.statePath())
 	_ = os.Remove(filepath.Join(d.cfg.Workdir, ".worker-state.json")) // legacy location
-	entries, err := os.ReadDir(d.cfg.Workdir)
-	if err != nil {
-		d.logf("fresh: read workdir: %v", err)
-		d.sessionID = ""
-		return
-	}
-	for _, e := range entries {
-		if err := os.RemoveAll(filepath.Join(d.cfg.Workdir, e.Name())); err != nil {
-			d.logf("fresh: remove %s: %v", e.Name(), err)
-		} else {
-			d.logf("fresh: removed %s", e.Name())
-		}
-	}
 	d.sessionID = ""
 }
 
@@ -554,8 +541,8 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	} else if verboseEnabled() {
 		d.logf("wake: time beat (session %q)", d.sessionID)
 	}
-	board.Set(tag, "working", "digest sent, model is on it…")
-	d.hb("working", "digest sent")
+	board.Set(tag, "arming", "digest sent, model is on it…")
+	d.hb("arming", "digest sent")
 
 	var timeBeat string
 	switch {
@@ -601,14 +588,6 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		beatDone = make(chan struct{})
 		go d.watchBeat(wakeCtx, cancel, func() { close(beatDone) })
 	}
-	// Serialize wakes per CLI within this worker process: opencode keeps a
-	// single global SQLite session store per user, so two concurrent
-	// spawns collide on "database is locked" at init (multi-account
-	// same-poll wake). Cross-process collisions are out of scope — run one
-	// worker per host, or give each account its own XDG data dir.
-	muAny, _ := cliWakeLocks.LoadOrStore(d.cfg.CLI, &sync.Mutex{})
-	wakeMu := muAny.(*sync.Mutex)
-	wakeMu.Lock()
 	// Wake heartbeat (0.2.5.1 #7): one line per minute while the CLI runs,
 	// so a long wake shows life signs instead of a static row. The line
 	// distinguishes "model is streaming" (events advancing) from "no
@@ -634,10 +613,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			}
 		}
 	}()
-	newID, wakeTokens, err := func() (string, int64, error) {
-		defer wakeMu.Unlock()
-		return d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
-	}()
+	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
 	close(hbStop)
 	<-hbDone
 	if urgentDone != nil {

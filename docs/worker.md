@@ -10,6 +10,7 @@ agentmail-worker 是官方值守器：一个常驻小进程，替账户盯收件
 - `-plan <账户全字>`：打印唤醒将构造的精确命令行（argv 概要+stdin 模式），不执行任何 CLI——排查 argv 形状回归用
 - `-switch_address <账户全字>`：只运行匹配账户（其余照常定义但不启动）
 - `-compact <账户全字>`：**纯压缩即退**——对匹配账户的已绑定会话做一次原地压缩（走 CLI 自带的无头压缩入口，如 opencode serve→summarize），不做任何唤醒、不进入会话生成；未匹配账户连状态都不读。无会话则为空操作；CLI 无压缩入口时会话原样保留（其内置 auto-compact 兜底）。适合 cron 闲时跑（预算 25min，独立于唤醒路径的 10min——分治预算）
+- `-fresh`：开始全新会话——只丢弃已存的会话绑定（workdir 内容**绝不触碰**）；`-yes` 保留仅为脚本兼容，无需确认
 - `-compact-before-wake <账户全字>`：正常进入值守循环，但匹配账户的**首轮唤醒前**先做一次上述压缩——只延迟该账户自己的第一轮，其余账户照常即时启动（每账户独立循环）。不逐轮压缩
 
 > 账户全字匹配语义：**精确匹配** local-part 或完整地址（不用前缀——`psum-ospm` 不得误中 `psum-ospm-pp`），支持**逗号分隔多选**（`"a,b"` 精确命中两个）与 1-based 序号。四旗标（-switch_address/-compact/-compact-before-wake/-plan）同享。
