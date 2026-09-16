@@ -634,9 +634,9 @@
       // ---- panel nav ----
       "nav.overview": "总览",
       "nav.accounts": "账户",
-      "nav.inbox": "收发件",
-      "nav.compose": "写邮件",
-      "nav.mail": "邮件管理",
+      "nav.inbox": "收发",
+      "nav.compose": "写信",
+      "nav.mail": "管理",
       "nav.directory": "通讯录",
       "nav.profile": "偏好与设置",
       "nav.settings": "设置",

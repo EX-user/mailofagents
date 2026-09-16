@@ -815,7 +815,13 @@ nav {
   -ms-overflow-style: none;
 }
 nav::-webkit-scrollbar { display: none; }
-nav .tab { flex: 0 0 auto; }
+/* v0.3 (boss v2): PC tabs equalize to the WIDEST label's width — an
+   inline grid with 1fr columns; the bar itself stays content-sized.
+   Mobile keeps its own wrap rules below (untouched flex plan). */
+@media (min-width: 961px) {
+  nav { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; width: max-content; }
+  nav .tab { text-align: center; min-width: 0; white-space: nowrap; }
+}
 
 /* Tables: scroll within themselves only on narrow screens. On wide screens
    the scroll treatment squeezed columns into an inner scrollbar (v0.4.2
