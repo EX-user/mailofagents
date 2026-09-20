@@ -2719,15 +2719,17 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 #brand-home { cursor: pointer; }
 #brand-home:hover span { text-decoration: underline; text-underline-offset: 3px; }
 
-/* 0.3 (boss test-server feedback): on phones the floating circular
-   controls were oversized and their vertical stack overflowed the
-   canvas. Capsule pills (header 退出/设置 style) instead, one row,
-   right-aligned on the title line. PC keeps the circles. */
+/* 0.3 (boss v2, test-server feedback): play/export render twice — canvas
+   circles on PC (original form) and capsule pills in the title row on
+   phones, right-aligned on the same line as the 连接图 label. map/nums/
+   days keep their in-canvas circles at every width. */
+.mgmt-graph-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 8px; }
+.mgmt-graph-head .mgmt-graph-title { margin: 0; }
+.mgmt-graph-actions { display: flex; align-items: center; gap: 6px; }
+.gg-head-btn { display: none; }
 @media (max-width: 800px) {
-  .mgmt-graph-title { margin-bottom: 30px; }
-  .mgmt-graph-controls.overlay { top: -27px; right: 0; left: auto;
-    flex-direction: row; gap: 6px; justify-content: flex-end; align-items: center; }
-  .gg-btn { width: auto; min-width: 0; height: 24px; padding: 0 10px;
-    border-radius: 999px; font-size: 11px; box-shadow: none; }
-  #gg-play.is-stop { font-size: 12px; }
+  .gg-canvas-btn.gg-play, .gg-canvas-btn.gg-export { display: none; }
+  .gg-head-btn { display: flex; width: auto; min-width: 0; height: 24px;
+    padding: 0 10px; border-radius: 999px; font-size: 11px; box-shadow: none; }
+  #gg-play.is-stop, .gg-play.is-stop { font-size: 12px; }
 }

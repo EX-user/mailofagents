@@ -96,17 +96,27 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     // Floating circular controls (superior request): the buttons sit ON the
     // canvas, overlaid above the graph, outside the pan/zoom transform —
     // a DOM layer on top of the vis-network canvas.
-    box += '<h4 class="mgmt-graph-title">' + t("mgmt.graphTitle") + "</h4>" +
+    // 0.3 (boss v2, test-server feedback): play/export ALSO render in the
+    // title row as capsule pills on phones — same line as the 连接图 label,
+    // right-aligned. Two class-wired instances; CSS shows head pills on
+    // phones and canvas circles on PC. Download glyph ⬇ (⤓ read too thin).
+    box += '<div class="mgmt-graph-head">' +
+      '<h4 class="mgmt-graph-title">' + t("mgmt.graphTitle") + "</h4>" +
+      '<div class="mgmt-graph-actions">' +
+      '<button type="button" class="gg-btn gg-head-btn gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
+      '<button type="button" class="gg-btn gg-head-btn gg-export" title="' + esc(t("mgmt.gExport")) + '">⬇</button>' +
+      '</div>' +
+      '</div>' +
       '<div id="mgmt-graph-wrap" class="mgmt-graph-wrap">' +
       '<div class="mgmt-graph-controls overlay">' +
       '<button type="button" class="gg-btn" id="gg-map" title="' + esc(t("mgmt.gMap")) + '"></button>' +
       '<button type="button" class="gg-btn" id="gg-nums" title="' + esc(t("mgmt.gNums")) + '"></button>' +
       '<button type="button" class="gg-btn gg-btn-days" id="gg-days"></button>' +
-      '<button type="button" class="gg-btn" id="gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
-      '<button type="button" class="gg-btn" id="gg-export" title="' + esc(t("mgmt.gExport")) + '">⤓</button>' +
-      "</div>" +
+      '<button type="button" class="gg-btn gg-canvas-btn gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
+      '<button type="button" class="gg-btn gg-canvas-btn gg-export" title="' + esc(t("mgmt.gExport")) + '">⬇</button>' +
+      '</div>' +
       '<div id="mgmt-graph" class="mgmt-graph"></div>' +
-      "</div>";
+      '</div>';
     return box;
   }
 
@@ -585,6 +595,15 @@ var mgmtNodeSet = null;
     playState.idx++;
     if (playBadge) playBadge.textContent = playBadgeLabel("");
   }
+  function syncPlayButtons(txt, stop, big) {
+    $$(".gg-play").forEach(function (b) {
+      b.textContent = txt;
+      b.classList.toggle("is-stop", !!stop);
+      if (big) { b.style.fontSize = "16px"; b.style.lineHeight = "1"; }
+      else { b.style.fontSize = ""; b.style.lineHeight = ""; }
+    });
+  }
+
   function stopPlay() {
     if (playState && playState.timer) clearInterval(playState.timer);
     playState = null;
@@ -599,8 +618,7 @@ var mgmtNodeSet = null;
     playNodeOrig = null;
     if (playBadge) { playBadge.remove(); playBadge = null; }
     if (mgmtNetwork) mgmtNetwork.setOptions({ interaction: { dragNodes: true, dragView: true, selectable: true, hover: true } });
-    var bp = $("#gg-play");
-    if (bp) { bp.textContent = "▶"; bp.classList.remove("is-stop"); }
+    syncPlayButtons("▶", false, false);
   }
   var playLoading = false;
   async function startPlay() {
@@ -636,9 +654,8 @@ var mgmtNodeSet = null;
         arrows: { to: { enabled: true, scaleFactor: 0.15 } } };
     }));
     playBadgeEnsure();
-    var bp = $("#gg-play");
     // 三态循环（上级 09-03）：▶ 待播 → ▶▶ 一倍速播放中（点进二倍速）→ ■(大) 二倍速播放中（点停）
-    if (bp) { bp.textContent = "▶▶"; bp.classList.remove("is-stop"); }
+    syncPlayButtons("▶▶", false, false);
     playLoading = false;
     playState.timer = setInterval(playTick, playBeatMs());
   }
@@ -651,12 +668,7 @@ var mgmtNodeSet = null;
     if (playState.speed === 1) { // 1×→2×
       playState.speed = 2;
       if (playState.timer) { clearInterval(playState.timer); playState.timer = setInterval(playTick, playBeatMs()); }
-      var b2 = $("#gg-play");
-      if (b2) {
-        b2.textContent = "■"; b2.classList.add("is-stop");
-        // 内联同款字号（上级 09-03：■ 字形天然小于 ▶，放大一档；内联防 CSS 缓存吞变更）
-        b2.style.fontSize = "16px"; b2.style.lineHeight = "1";
-      }
+      syncPlayButtons("■", true, true);
       return;
     }
     stopPlay(); // 2×→停止
@@ -679,10 +691,8 @@ var mgmtNodeSet = null;
       saveGraphPrefs();
       loadMgmtOverview();
     });
-    var bp = $("#gg-play");
-    if (bp) bp.addEventListener("click", togglePlay);
-    var be = $("#gg-export");
-    if (be) be.addEventListener("click", exportConnectionMatrix);
+    $$(".gg-play").forEach(function (b) { b.addEventListener("click", togglePlay); });
+    $$(".gg-export").forEach(function (b) { b.addEventListener("click", exportConnectionMatrix); });
   }
 
   // 0.3 (boss, 01M2YSWNBT): export the graph as a plain CONNECTION MATRIX
