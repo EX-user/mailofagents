@@ -2733,3 +2733,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     padding: 0 10px; border-radius: 999px; font-size: 11px; box-shadow: none; }
   #gg-play.is-stop, .gg-play.is-stop { font-size: 12px; }
 }
+
+/* 1034 (boss: "抖得不行"): the stabilization pre-pass is violent to watch
+   on real volumes - run it in shadow and fade in already still. */
+.mgmt-graph.is-stabilizing { opacity: 0.18; }
