@@ -103,6 +103,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       '<button type="button" class="gg-btn" id="gg-nums" title="' + esc(t("mgmt.gNums")) + '"></button>' +
       '<button type="button" class="gg-btn gg-btn-days" id="gg-days"></button>' +
       '<button type="button" class="gg-btn" id="gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
+      '<button type="button" class="gg-btn" id="gg-export" title="' + esc(t("mgmt.gExport")) + '">⤓</button>' +
       "</div>" +
       '<div id="mgmt-graph" class="mgmt-graph"></div>' +
       "</div>";
@@ -680,6 +681,42 @@ var mgmtNodeSet = null;
     });
     var bp = $("#gg-play");
     if (bp) bp.addEventListener("click", togglePlay);
+    var be = $("#gg-export");
+    if (be) be.addEventListener("click", exportConnectionMatrix);
+  }
+
+  // 0.3 (boss, 01M2YSWNBT): export the graph as a plain CONNECTION MATRIX
+  // (letter counts, directed) in JSON — no desensitization, single format.
+  // Pure client-side: the overview payload is already in hand.
+  function exportConnectionMatrix() {
+    var d = mgmtOverviewData;
+    var nodes = (d && d.graph && d.graph.nodes) || [];
+    var edges = (d && d.graph && d.graph.edges) || [];
+    if (!nodes.length) { toast(t("mgmt.gExportEmpty"), "error"); return; }
+    var idx = {};
+    nodes.forEach(function (n, i) { idx[String(n.address).toLowerCase()] = i; });
+    var m = nodes.map(function () { return nodes.map(function () { return 0; }); });
+    edges.forEach(function (e) {
+      var i = idx[String(e.a).toLowerCase()], j = idx[String(e.b).toLowerCase()];
+      if (i == null || j == null) return;
+      if (e.a_to_b) m[i][j] += e.a_to_b;
+      if (e.b_to_a) m[j][i] += e.b_to_a;
+    });
+    var out = {
+      version: 1,
+      type: "connection-matrix",
+      days: graphPrefs.days,
+      generated_at: new Date().toISOString(),
+      nodes: nodes.map(function (n) { return String(n.address); }),
+      matrix: m
+    };
+    var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "mgmt-graph-" + new Date().toISOString().slice(0, 10) + "-d" + graphPrefs.days + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+    toast(t("common.saved") || "OK", "success");
   }
 
 
