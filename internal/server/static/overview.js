@@ -183,6 +183,12 @@ var mgmtNodeSet = null;
     if (!nodes.length) { el.textContent = ""; return; }
     var livenessByAddr = {};
     (subs || []).forEach(function (s) { livenessByAddr[String(s.address).toLowerCase()] = mgmtIsActive(s); });
+    // 1032 (boss, real-data rerun): v0.2.9 方案一 restored — node mass maps
+    // outgoing volume; kind map drives the two-tier spring lengths.
+    var mgmtMaxVol = 1;
+    nodes.forEach(function (n) { mgmtMaxVol = Math.max(mgmtMaxVol, n.volume || 0); });
+    var kindByAddr = {};
+    nodes.forEach(function (n) { kindByAddr[String(n.address).toLowerCase()] = n.kind || "external"; });
     el.innerHTML = '<div class="muted">' + t("common.loading") + "</div>";
     loadVisNetwork().then(function () {
       var myAddr = ((getSession() || {}).address || "").toLowerCase();
@@ -210,6 +216,7 @@ var mgmtNodeSet = null;
           color: { background: bg, border: border },
           font: nodeFont,
           value: Math.max(1, n.volume || 1), scaling: nodeScaling,
+          mass: 1 + 3 * Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)),
           title: shortAddr(n.address) + (kind !== "external" ? " · " + wl + " " + (n.volume || 0) : ""),
           _kind: kind
         };
@@ -239,7 +246,8 @@ var mgmtNodeSet = null;
           mgmtEdgeMeta.push({ id: eid0, count: -1 });
           ve.push({ id: eid0, from: e.a, to: e.b, label: (graphPrefs.nums ? "—" : "") + last, dashes: true,
             color: { color: "#c4ccd6" }, width: 0.8, font: { size: 9, face: "Consolas" },
-            smooth: { type: "curvedCW", roundness: 0.16 }, _sub: pickGraphSub(e, myAddr) });
+            smooth: { type: "curvedCW", roundness: 0.16 }, _sub: pickGraphSub(e, myAddr),
+            length: (kindByAddr[String(e.a || "").toLowerCase()] !== "external" || kindByAddr[String(e.b || "").toLowerCase()] !== "external") ? 90 : 260 });
           return;
         }
         // Two directed arcs per pair (superior: arrows in both directions,
@@ -250,6 +258,10 @@ var mgmtNodeSet = null;
       function mgmtGraphEdge(from, to, count, last, orig, eid) {
         var k = graphScale(count);
         mgmtEdgeMeta.push({ id: eid, count: count, from: from, to: to });
+        // v0.2.9 方案一（1032 恢复）：边长分级——self/从属短弹簧聚内圈，外部边长弹簧外圈。
+        var kA = kindByAddr[String(from || "").toLowerCase()];
+        var kB = kindByAddr[String(to || "").toLowerCase()];
+        var edgeLen = (kA !== "external" || kB !== "external") ? 90 : 260;
         // v0.6.6: alpha rides the same normalization as width — light
         // traffic reads thin AND faint. Label = count only; the
         // last-activity time moved to the hover tooltip (it occluded the
@@ -265,6 +277,7 @@ var mgmtNodeSet = null;
           color: { color: "rgba(91,107,125," + alpha.toFixed(2) + ")", highlight: "#3b82f6" },
           font: { size: 9, face: "Consolas", color: "rgba(35,48,63," + Math.min(1, 0.35 + 0.65 * k).toFixed(2) + ")" },
           smooth: { type: "curvedCW", roundness: 0.2 },
+          length: edgeLen,
           _sub: pickGraphSub(orig, myAddr)
         };
       }
@@ -287,13 +300,19 @@ var mgmtNodeSet = null;
         // 400 -> 260: visibly faster first paint, layout quality held.
         physics: {
           enabled: true, solver: "barnesHut",
-          barnesHut: { gravitationalConstant: -6000, springLength: 160, springConstant: 0.04, damping: 0.12 },
+          barnesHut: { gravitationalConstant: -8000, springLength: 160, springConstant: 0.04, damping: 0.15, avoidOverlap: 1 },
           stabilization: { iterations: 260, fit: true }
         },
         interaction: { hover: true, dragView: true, zoomView: true },
         edges: { selectionWidth: 2 }
       });
+      // 1032 (boss, real-data evidence): the v3 force field never self-
+      // settles on real volumes (19k px/s sustained wobble measured) — the
+      // layout is decided in the initial stabilization pass, then the
+      // engine is FROZEN. Deterministic stillness for any data shape;
+      // dragging, restyles and playback all keep working (no re-sim).
       mgmtNetwork.once("stabilizationIterationsDone", function () {
+        mgmtNetwork.setOptions({ physics: false });
         try { mgmtNetwork.fit({ animation: false }); } catch (_) {}
       });
       mgmtNetwork.on("click", function (params) {
