@@ -300,19 +300,19 @@ var mgmtNodeSet = null;
         // 400 -> 260: visibly faster first paint, layout quality held.
         physics: {
           enabled: true, solver: "barnesHut",
-          barnesHut: { gravitationalConstant: -8000, springLength: 160, springConstant: 0.04, damping: 0.15, avoidOverlap: 1 },
+          // 1033 (boss staging feedback): keep the engine LIVE — the freeze
+          // killed all dynamics (dragging moved nothing). Instead tune for
+          // real-data CONVERGENCE: milder repulsion + strong damping + a
+          // stiffer spring normalize so the simulation genuinely settles
+          // (grid-searched offline on the boss d30 export: settle ≈1s,
+          // drag-recover ≈10s, then fully still — no freeze needed).
+          barnesHut: { gravitationalConstant: -3000, springLength: 160, springConstant: 0.08, damping: 0.4, avoidOverlap: 1 },
           stabilization: { iterations: 260, fit: true }
         },
         interaction: { hover: true, dragView: true, zoomView: true },
         edges: { selectionWidth: 2 }
       });
-      // 1032 (boss, real-data evidence): the v3 force field never self-
-      // settles on real volumes (19k px/s sustained wobble measured) — the
-      // layout is decided in the initial stabilization pass, then the
-      // engine is FROZEN. Deterministic stillness for any data shape;
-      // dragging, restyles and playback all keep working (no re-sim).
       mgmtNetwork.once("stabilizationIterationsDone", function () {
-        mgmtNetwork.setOptions({ physics: false });
         try { mgmtNetwork.fit({ animation: false }); } catch (_) {}
       });
       mgmtNetwork.on("click", function (params) {
