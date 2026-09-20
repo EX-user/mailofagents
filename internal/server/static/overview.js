@@ -707,7 +707,8 @@ var mgmtNodeSet = null;
       type: "connection-matrix",
       days: graphPrefs.days,
       generated_at: new Date().toISOString(),
-      nodes: nodes.map(function (n) { return String(n.address); }),
+      // 0.3.1 (boss): per-node outgoing volume rides along in the export.
+      nodes: nodes.map(function (n) { return { address: String(n.address), volume: n.volume || 0 }; }),
       matrix: m
     };
     var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
