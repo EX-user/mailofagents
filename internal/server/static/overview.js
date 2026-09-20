@@ -115,7 +115,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       '<button type="button" class="gg-btn gg-canvas-btn gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
       '<button type="button" class="gg-btn gg-canvas-btn gg-export" title="' + esc(t("mgmt.gExport")) + '">⬇</button>' +
       '</div>' +
-      '<div id="mgmt-graph" class="mgmt-graph is-stabilizing"></div>' +
+      '<div id="mgmt-graph" class="mgmt-graph"></div>' +
       '</div>';
     return box;
   }
@@ -306,20 +306,14 @@ var mgmtNodeSet = null;
           // stiffer spring normalize so the simulation genuinely settles
           // (grid-searched offline on the boss d30 export: settle ≈1s,
           // drag-recover ≈10s, then fully still — no freeze needed).
-          barnesHut: { gravitationalConstant: -3000, springLength: 160, springConstant: 0.08, damping: 0.55, avoidOverlap: 1 },
+          barnesHut: { gravitationalConstant: -3000, springLength: 160, springConstant: 0.08, damping: 0.4, avoidOverlap: 1 },
           stabilization: { iterations: 260, fit: true }
         },
         interaction: { hover: true, dragView: true, zoomView: true },
         edges: { selectionWidth: 2 }
       });
-      // 1034 (boss: "抖得不行"): the layout pre-pass itself is violent to
-      // watch, so run it in shadow - the canvas stays dimmed until the sim
-      // has settled, then fades in already still. Physics stays live for
-      // drag dynamics; damping 0.55 makes the settle quick and quiet.
       mgmtNetwork.once("stabilizationIterationsDone", function () {
         try { mgmtNetwork.fit({ animation: false }); } catch (_) {}
-        var el = $("#mgmt-graph");
-        if (el) el.classList.remove("is-stabilizing");
       });
       mgmtNetwork.on("click", function (params) {
         // 播放/暂停期间：canvas 点按=暂停↔继续（上级 0.2.5），不触发跳转
