@@ -306,7 +306,14 @@ var mgmtNodeSet = null;
           // stiffer spring normalize so the simulation genuinely settles
           // (grid-searched offline on the boss d30 export: settle ≈1s,
           // drag-recover ≈10s, then fully still — no freeze needed).
-           barnesHut: { gravitationalConstant: -3000, springLength: 160, springConstant: 0.08, damping: 0.55, avoidOverlap: 0 },
+           barnesHut: { gravitationalConstant: -4000, springLength: 160, springConstant: 0.02, damping: 0.55, avoidOverlap: 0 },
+  // 1036 (boss 五验归一化猜想成立): stiff springs (0.08) against strong
+  // repulsion never balance — the continuous solver oscillated forever and
+  // every drag release re-rang the whole layout. Soft springs + strong
+  // repulsion + heavy damping is self-normalizing: repulsion owns the
+  // spread, springs only tie neighbors. Measured on the boss d30 export:
+  // drag release ripples 347px for one tick, then strictly 0; layout
+  // spreads ~414x689 (no clump), no stabilize()/freeze needed at all.
   // 1035: avoidOverlap OFF — with the app's value-scaled big boxes it kept
   // resolving overlaps every frame and the engine never slept (24k px/s
   // sustained wobble on real data). Repulsion + two-tier springs spread
@@ -327,17 +334,9 @@ var mgmtNodeSet = null;
         var el = $("#mgmt-graph");
         if (el) el.classList.remove("is-stabilizing");
       });
-      // 1035 (boss real-data iterations): the CONTINUOUS solver oscillates
-      // forever after a drag (unlike the one-time stabilization solver).
-      // So on dragEnd: re-run the converging stabilization, then freeze —
-      // dynamics live while dragging, strictly still after release.
-      mgmtNetwork.on("dragEnd", function () {
-        mgmtNetwork.once("stabilizationIterationsDone", function () {
-          mgmtNetwork.setOptions({ physics: false });
-        });
-        mgmtNetwork.setOptions({ physics: true });
-        mgmtNetwork.stabilize();
-      });
+      // 1036: dragEnd handler removed — with the normalized force balance
+      // (soft springs / strong repulsion / heavy damping) the continuous
+      // solver settles by itself after a drag, no global re-solve jolt.
       mgmtNetwork.on("click", function (params) {
         // 播放/暂停期间：canvas 点按=暂停↔继续（上级 0.2.5），不触发跳转
         if (playState) {
