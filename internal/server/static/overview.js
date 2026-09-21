@@ -306,7 +306,11 @@ var mgmtNodeSet = null;
           // stiffer spring normalize so the simulation genuinely settles
           // (grid-searched offline on the boss d30 export: settle ≈1s,
           // drag-recover ≈10s, then fully still — no freeze needed).
-          barnesHut: { gravitationalConstant: -3000, springLength: 160, springConstant: 0.08, damping: 0.55, avoidOverlap: 1 },
+           barnesHut: { gravitationalConstant: -3000, springLength: 160, springConstant: 0.08, damping: 0.55, avoidOverlap: 0 },
+  // 1035: avoidOverlap OFF — with the app's value-scaled big boxes it kept
+  // resolving overlaps every frame and the engine never slept (24k px/s
+  // sustained wobble on real data). Repulsion + two-tier springs spread
+  // nodes well enough without it.
           // 静息阈值上调：速度低于 0.5 即休眠（Sam 建议），拖拽自动唤醒
           minVelocity: 0.5,
           stabilization: { iterations: 260, fit: true }
@@ -322,6 +326,17 @@ var mgmtNodeSet = null;
         try { mgmtNetwork.fit({ animation: false }); } catch (_) {}
         var el = $("#mgmt-graph");
         if (el) el.classList.remove("is-stabilizing");
+      });
+      // 1035 (boss real-data iterations): the CONTINUOUS solver oscillates
+      // forever after a drag (unlike the one-time stabilization solver).
+      // So on dragEnd: re-run the converging stabilization, then freeze —
+      // dynamics live while dragging, strictly still after release.
+      mgmtNetwork.on("dragEnd", function () {
+        mgmtNetwork.once("stabilizationIterationsDone", function () {
+          mgmtNetwork.setOptions({ physics: false });
+        });
+        mgmtNetwork.setOptions({ physics: true });
+        mgmtNetwork.stabilize();
       });
       mgmtNetwork.on("click", function (params) {
         // 播放/暂停期间：canvas 点按=暂停↔继续（上级 0.2.5），不触发跳转
