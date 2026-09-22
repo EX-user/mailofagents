@@ -72,6 +72,7 @@ type Board struct {
 	lastDump     string              // last dumped frame content (dump mode dedup)
 	lastDumpTime int64               // unix nano of last dump (throttle)
 	dumped       []string            // dumped frame contents
+	renderMu     sync.Mutex          // serializes whole render cycles: hover-triggered renders race the tick otherwise (boss demo v3 feedback: interleaved draws corrupted layout)
 	resized      bool                // SIGWINCH seen: next drawFrame does a full screen clear + repaint
 	winch        chan os.Signal      // resize notifications (nil where unavailable)
 	mouse        bool                // mouse controls on (config `mouse`, file-level; boss sign-off 2026-09-22)
@@ -80,6 +81,7 @@ type Board struct {
 	hoverTag     atomic.Value        // account row currently under the pointer (string, "" = none)
 	lastW, lastH int                 // last seen console size (resize detector)
 	cprCh        chan int            // cursor-position replies from the tty reader
+	inputCount   atomic.Int64        // total input events seen (remote diagnostics)
 	actionsMu    sync.Mutex          // guards actionSubs
 	actionSubs   map[string][]chan boardAction
 }
@@ -121,6 +123,7 @@ func SetCtx(tag string, tokens int64)                    { board.SetCtx(tag, tok
 func AddRow(tag string, started time.Time, ctxW, noticeT int64) { board.AddRow(tag, started, ctxW, noticeT) }
 func Logf(tag, format string, args ...any)               { board.Logf(tag, format, args...) }
 func SubscribeActions(tag string) <-chan boardAction     { return board.SubscribeActions(tag) }
+func InputCount() int64                                   { return board.inputCount.Load() }
 
 func init() {
 	// Enabled only on a TTY; WORKER_PLAIN=1 force-disables (files, pipes,
@@ -236,6 +239,8 @@ func (b *Board) Logf(tag, format string, args ...any) {
 
 // render redraws the board (locks; for use outside Logf).
 func (b *Board) render() {
+	b.renderMu.Lock()
+	defer b.renderMu.Unlock()
 	b.mu.Lock()
 	w := consoleWidth()
 	if w < 20 {

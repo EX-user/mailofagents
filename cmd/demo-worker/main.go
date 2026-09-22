@@ -96,6 +96,22 @@ func main() {
 		}
 	}()
 
+	// input diagnostics (remote debugging): the worker-log line reports
+	// how many raw input events arrived, so a screenshot tells whether the
+	// terminal's event channel is live
+	go func() {
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				worker.Logf("input", "raw input events so far: %d", worker.InputCount())
+			}
+		}
+	}()
+
 	// the carousel: every few seconds one account advances its state and
 	// rolls a fake stream line, so the board keeps living
 	go func() {

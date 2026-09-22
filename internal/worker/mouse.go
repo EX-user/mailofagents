@@ -166,6 +166,7 @@ func (b *Board) readTty(ctx context.Context, tty *os.File, restore func()) {
 // (ESC[<b;x;yM), cursor-position reports (ESC[row;colR). Incomplete tails
 // are held until more bytes arrive.
 func (b *Board) consumeInput(chunk []byte, buf []byte) []byte {
+	b.inputCount.Add(int64(len(chunk)))
 	buf = append(buf, chunk...)
 	for {
 		s := string(buf)

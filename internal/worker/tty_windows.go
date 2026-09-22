@@ -80,9 +80,13 @@ func readConsoleEvents(ctx context.Context, b *Board) {
 		if r == 0 {
 			return
 		}
-		if read == 0 || rec.EventType != winMouseEvent {
+		if read == 0 {
 			continue
 		}
+		if rec.EventType != winMouseEvent {
+			continue
+		}
+		b.inputCount.Add(1)
 		var me mouseEventRecord
 		copy((*[16]byte)(unsafe.Pointer(&me))[:], rec.Event[:])
 		col, row := int(me.X)+1, int(me.Y)+1
