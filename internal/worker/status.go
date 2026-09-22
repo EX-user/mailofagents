@@ -73,9 +73,28 @@ type Board struct {
 	dumped       []string            // dumped frame contents
 	resized      bool                // SIGWINCH seen: next drawFrame does a full screen clear + repaint
 	winch        chan os.Signal      // resize notifications (nil where unavailable)
+	mouse        bool                // mouse controls on (config `mouse`, file-level; boss sign-off 2026-09-22)
+	topRow       int                 // absolute screen row of the board's first line (0 = unknown)
+	hitRows      map[string]rowHit   // per-account button hit boxes (mouse frames)
+	cprCh        chan int            // cursor-position replies from the tty reader
+	actionsMu    sync.Mutex          // guards actionSubs
+	actionSubs   map[string][]chan boardAction
 }
 
-var board = &Board{launch: time.Now(), rowEvents: map[string][]string{}}
+var board = &Board{
+	launch:     time.Now(),
+	rowEvents:  map[string][]string{},
+	hitRows:    map[string]rowHit{},
+	actionSubs: map[string][]chan boardAction{},
+	cprCh:      make(chan int, 4),
+}
+
+// SetMouse enables the TUI mouse control plane (config `mouse`, file-level).
+func SetMouse(on bool) {
+	board.mu.Lock()
+	board.mouse = on
+	board.mu.Unlock()
+}
 
 // SetMeta feeds the header/version and the full-log hint line (called from
 // main before the duty loop).
@@ -237,6 +256,12 @@ func (b *Board) drawFrame(frame string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	newLines := strings.Split(frame, "\n")
+	if b.mouse {
+		// buttons' columns ride the prefix width (uptime ticks every
+		// frame), so the hit map refreshes every frame, not just on
+		// full repaints
+		b.hitRows = computeHits(newLines)
+	}
 	if b.resized {
 		// Post-resync: the terminal reflowed prior output, so cursor-
 		// relative moves are unreliable — clear the entire screen and
@@ -365,6 +390,11 @@ func statusLine(r *statusRow, w int) string {
 	tail := ""
 	if r.ctxTokens > 0 {
 		tail = " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
+	}
+	// mouse controls (boss 0.2.10 pool): ride the row's tail so the
+	// clamping below always preserves them
+	if board.mouse && board.enabled {
+		tail += ctlText
 	}
 	detail := r.detail
 	if detail == "" {
@@ -535,6 +565,7 @@ func (b *Board) renderLoop(ctx context.Context) {
 		return
 	}
 	b.winch = winchChan()
+	b.EnableMouse(ctx)
 	t := time.NewTicker(500 * time.Millisecond)
 	defer t.Stop()
 	for {

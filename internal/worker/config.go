@@ -35,6 +35,7 @@ type Config struct {
 	Model               string            `json:"model"`                   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
 	Env                 map[string]string `json:"env"`                     // non-credential auxiliary env for the CLI process
 	FullPerm            *bool             `json:"full_perm"`               // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
+	Mouse               bool              `json:"mouse"`                   // TUI mouse controls (file-level; the board is process-global): SGR click tracking off by default — enabling costs Shift-drag text selection in most terminals (boss sign-off 2026-09-22)
 	StateFile           string            `json:"state_file"`              // session binding store; default = config sibling (<config>.state.json). Kept OUT of the workdir: the workdir is the agent's turf
 	Emergency           Emergency         `json:"emergency"`
 }
@@ -323,6 +324,7 @@ type fileConfig struct {
 	Model               string            `json:"model"`
 	Env                 map[string]string `json:"env"`
 	FullPerm            *bool             `json:"full_perm"`
+	Mouse               bool              `json:"mouse"` // TUI mouse controls (file-level; board is process-global): SGR click tracking off by default — enabling costs Shift-drag text selection in most terminals (boss sign-off 2026-09-22)
 	StateFile           string            `json:"state_file"`
 	Emergency           Emergency         `json:"emergency"`
 
@@ -353,6 +355,7 @@ type agentConfig struct {
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
 	ContextWindow       int64             `json:"context_window"`
 	FullPerm            *bool             `json:"full_perm"`
+	Mouse               bool              `json:"mouse"`
 	Emergency           Emergency         `json:"emergency"`
 }
 
@@ -370,6 +373,7 @@ func (f *fileConfig) globalRuntime(path string) *Config {
 		Model:               f.Model,
 		Env:                 mergeEnv(f.Env, nil),
 		FullPerm:            f.FullPerm,
+		Mouse:               f.Mouse,
 		Emergency:           f.Emergency,
 		StateFile:           f.StateFile,
 	}

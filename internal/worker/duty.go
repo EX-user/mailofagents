@@ -34,7 +34,10 @@ type Duty struct {
 	urgentHit      atomic.Bool   // set when an urgent mail interrupted the current wake
 	urgentCh       chan struct{} // capacity-1: fires an immediate re-check after an urgent interrupt
 	superiors      []string      // fallback escalation addresses: declared superiors via /api/subs (refreshed every 10 min)
-	compactPending bool          // notice due: next wake carries the persist-memory notice; compact in place after it
+	compactPending atomic.Bool  // notice due: next wake carries the persist-memory notice; compact in place after it (atomic: also written by watchActions)
+	stopHit        atomic.Bool   // a board 停止 click cancelled the CURRENT wake (skip failure accounting)
+	currentCancel  atomic.Value  // context.CancelFunc of the in-flight wake (may be nil between wakes)
+	actCh          <-chan boardAction // board mouse actions for this account
 
 	// time_beat (clock-scheduled beats, boss spec 2026-09-05): slots are
 	// minutes-of-day; a slot crossing sets beatPending (the [报时] line
@@ -286,6 +289,44 @@ func (d *Duty) saveState() {
 	_ = os.Rename(tmp, d.statePath()) // atomic swap
 }
 
+// watchActions consumes board mouse actions for this account (boss 0.2.10
+// pool). 停止 cancels the in-flight wake — the queued mail re-wakes on the
+// next poll, but the interrupted run stops now (operator intent, not a
+// failure: stopHit keeps it out of the failure streak). 压缩 forces the
+// persist-memory notice + in-place compaction on the next round.
+func (d *Duty) watchActions(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case a, ok := <-d.actCh:
+			if !ok {
+				return
+			}
+			switch a.kind {
+			case "stop":
+				d.stopHit.Store(true)
+				if c, ok := d.currentCancel.Load().(context.CancelFunc); ok && c != nil {
+					d.logf("board: stop requested — cancelling wake")
+					c()
+				}
+			case "compact":
+				d.compactPending.Store(true)
+				d.logf("board: compact requested — notice rides the next round")
+				d.urgentNow()
+			case "copy":
+				d.mu.Lock()
+				sess := d.sessionID
+				d.mu.Unlock()
+				if sess != "" {
+					board.copySession(sess)
+					d.logf("board: session id copied to clipboard (OSC52)")
+				}
+			}
+		}
+	}
+}
+
 // Run polls until ctx is cancelled (SIGTERM → graceful stop).
 func (d *Duty) Run(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
@@ -317,6 +358,11 @@ func (d *Duty) Run(ctx context.Context) {
 	d.lastSlotCheck.Store(time.Now().UnixNano())
 	go d.refreshContacts(ctx)
 	go d.heartbeatLoop(ctx)
+	// board 停止/压缩 buttons (boss 0.2.10 pool): actions ride a dedicated
+	// channel; watchActions holds no per-wake state — it reads the current
+	// wake's cancel out of currentCancel, so it can live for the whole Run.
+	d.actCh = board.SubscribeActions(tag)
+	go d.watchActions(ctx)
 
 	t := time.NewTicker(time.Duration(d.cfg.PollIntervalSec) * time.Second)
 	defer t.Stop()
@@ -525,7 +571,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// session id forces the bootstrap round — onboarding with no mail yet,
 	// so the agent orients itself and builds its memory file ahead of the
 	// first real mail.
-	if len(unread) == 0 && !dutyDue && !d.compactPending && !d.beatPending.Load() && d.sessionID != "" {
+	if len(unread) == 0 && !dutyDue && !d.compactPending.Load() && !d.beatPending.Load() && d.sessionID != "" {
 		d.failStreak = 0
 		return
 	}
@@ -559,7 +605,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// delivered on the round AFTER the token threshold was crossed;
 	// compaction (in place or built-in) happens when this round completes.
 	var compactNotice string
-	if d.compactPending {
+	if d.compactPending.Load() {
 		compactNotice = ("[压缩预告 / Session compaction notice] 本次唤醒结束后，会话将被压缩。" +
 			"The session will be compacted right after this wake. 请先把需要延续的信息" +
 			"写入并更新你的记忆文件（memory file in the workdir），再正常结束本轮。\n" +
@@ -568,6 +614,9 @@ func (d *Duty) checkOnce(ctx context.Context) {
 
 	wakeCtx, cancel := context.WithTimeout(ctx, time.Duration(d.cfg.TimeoutSec)*time.Second)
 	defer cancel()
+	// board 停止 clicks read this out of currentCancel (stays set between
+	// wakes — cancelling a spent ctx is a no-op)
+	d.currentCancel.Store(context.CancelFunc(cancel))
 	resumed := d.sessionID != ""
 	// volume snapshot for the fresh-session digest (two light calls; a
 	// failure just omits the stats block)
@@ -639,6 +688,15 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			d.mu.Unlock()
 			_ = salvaged
 		}
+		if d.stopHit.Swap(false) {
+			// board 停止 click: operator intent — not a failure (no streak
+			// note, no error row beyond the waiting notice). The queued mail
+			// re-wakes on the next poll.
+			d.logf("board: wake stopped by operator (mail re-queued)")
+			board.Set(tag, "waiting", "stopped by operator · mail re-queued")
+			d.hb("waiting", "stopped by operator")
+			return
+		}
 		if d.urgentHit.Load() {
 			// urgent interrupt: interrupt landed; re-wake at once with the
 			// urgent mail first in the digest (newest unread)
@@ -680,7 +738,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	}
 	noticeDone := false
 	d.mu.Lock()
-	if d.compactPending {
+	if d.compactPending.Load() {
 		noticeDone = true
 		// notice round done (agent persisted memory). Compact in place when
 		// the adapter exposes an entry point (opencode summarize); otherwise
@@ -706,7 +764,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		} else {
 			d.logf("compact: session kept — built-in compaction reduces it in place")
 		}
-		d.compactPending = false
+		d.compactPending.Store(false)
 	}
 	d.sessionID = newID // resume chain: id is stable per phase 0, capture anyway
 	d.saveState()
@@ -723,7 +781,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// to the CLI's built-in compaction — never rotated. 0 = rely on the
 	// CLI's built-in compaction only.
 	if !noticeDone && d.cfg.CompactNoticeTokens > 0 && wakeTokens >= d.cfg.CompactNoticeTokens {
-		d.compactPending = true
+		d.compactPending.Store(true)
 		d.logf("compact: context tokens %d >= notice threshold %d — notice round next", wakeTokens, d.cfg.CompactNoticeTokens)
 	}
 }

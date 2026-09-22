@@ -46,6 +46,7 @@ worker 的全部行为由一个 JSON 配置文件驱动。本页覆盖**每个�
 | `model` | 空（用 CLI 默认） | 显式模型钉：把唤醒钉到指定模型（如 `"deepseek/deepseek-chat"`）。写法随 CLI：`provider/id` 形态（pi）或 CLI 自身模型名（opencode/claude/codex） |
 | `env` | 空 | 给 CLI 进程的**非凭据**辅助环境变量（见下节） |
 | `full_perm` | `true` | 全工具权限：claude/codex 走旁路旗标；opencode 需要它自己的 opencode.json permission 块配合。值守 agent 无人点批准，默认放开 |
+| `mouse` | 关 | TUI 鼠标控件（仅文件级，状态板进程全局）：开启后每账户行出现「停止/压缩/复制」按钮（点击停止当前唤醒/下轮触发压缩/OSC52 复制 session id）。开启的代价：多数终端里文本选区复制要按住 Shift 拖。需要真实 TTY（管道/文件下按钮不渲染） |
 | `state_file` | `<config文件名>.<local-part>.state.json`（与配置同目录） | 会话绑定存储。特意放 workdir **外**：workdir 是 agent 地盘，worker 的记账不混进去 |
 | `emergency` | 见下 | 紧急升级通道（打断唤醒用） |
 
