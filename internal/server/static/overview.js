@@ -228,12 +228,6 @@ var mgmtNodeSet = null;
       // LOG compresses contrast so a wide range stays readable.
       var maxCount = 1;
       mgmtEdgeMeta = [];
-      // 1040 (boss): sender capacity lookup — graph nodes carry the 30d
-      // outgoing volume; spring tiers key on count / sender volume.
-      var volByAddr = {};
-      nodes.forEach(function (n) {
-        volByAddr[String(n.address || "").toLowerCase()] = n.volume || 0;
-      });
       edges.forEach(function (e) {
         maxCount = Math.max(maxCount, e.a_to_b || 0, e.b_to_a || 0);
       });
@@ -252,7 +246,7 @@ var mgmtNodeSet = null;
           mgmtEdgeMeta.push({ id: eid0, count: -1 });
           ve.push({ id: eid0, from: e.a, to: e.b, label: (graphPrefs.nums ? "—" : "") + last, dashes: true,
             color: { color: "#c4ccd6" }, width: 0.8, font: { size: 9, face: "Consolas" },
-            physics: false, smooth: { type: "curvedCW", roundness: 0.1 }, _sub: pickGraphSub(e, myAddr),
+            smooth: { type: "curvedCW", roundness: 0.16 }, _sub: pickGraphSub(e, myAddr),
             length: (kindByAddr[String(e.a || "").toLowerCase()] !== "external" || kindByAddr[String(e.b || "").toLowerCase()] !== "external") ? 90 : 260 });
           return;
         }
@@ -267,25 +261,7 @@ var mgmtNodeSet = null;
         // v0.2.9 方案一（1032 恢复）：边长分级——self/从属短弹簧聚内圈，外部边长弹簧外圈。
         var kA = kindByAddr[String(from || "").toLowerCase()];
         var kB = kindByAddr[String(to || "").toLowerCase()];
-        var base = ((kA !== "external" || kB !== "external") ? 90 : 260) * 3;
-        // 1040 (boss): SENDER-SHARE tiers — tie strength = count / sender's
-        // outgoing volume. A channel that dominates the SENDER's activity
-        // condenses (small clusters pull together), while a busy hub's
-        // diffuse fan stays soft. Decade cutoffs 0.5 / 0.25 / 0.10; below
-        // 0.10 the edge renders with the same visual mapping but exerts
-        // zero force (edge-level physics off).
-        var s = count / Math.max(1, volByAddr[String(from || "").toLowerCase()] || count);
-        var edgeLen, mult, dead = false;
-        if (s >= 0.5)       { edgeLen = base * 0.4; mult = 4; }
-        else if (s >= 0.25) { edgeLen = base * 0.8; mult = 2; }
-        else if (s >= 0.10) { edgeLen = base * 1.4; mult = 1; }
-        else                { edgeLen = base * 1.4; dead = true; }
-        for (var hi = 1; hi < mult; hi++) ve.push({
-          id: eid + "h" + hi, from: from, to: to,
-          color: { color: "rgba(0,0,0,0)", highlight: "rgba(0,0,0,0)", hover: "rgba(0,0,0,0)" },
-          width: 0.1, smooth: { type: "curvedCW", roundness: 0.1 },
-          length: edgeLen
-        });
+        var edgeLen = (kA !== "external" || kB !== "external") ? 90 : 260;
         // v0.6.6: alpha rides the same normalization as width — light
         // traffic reads thin AND faint. Label = count only; the
         // last-activity time moved to the hover tooltip (it occluded the
@@ -300,9 +276,8 @@ var mgmtNodeSet = null;
           width: 0.3 + 2.5 * k,
           color: { color: "rgba(91,107,125," + alpha.toFixed(2) + ")", highlight: "#3b82f6" },
           font: { size: 9, face: "Consolas", color: "rgba(35,48,63," + Math.min(1, 0.35 + 0.65 * k).toFixed(2) + ")" },
-          smooth: { type: "curvedCW", roundness: 0.1 },
+          smooth: { type: "curvedCW", roundness: 0.2 },
           length: edgeLen,
-          physics: !dead,
           _sub: pickGraphSub(orig, myAddr)
         };
       }
@@ -331,7 +306,7 @@ var mgmtNodeSet = null;
           // stiffer spring normalize so the simulation genuinely settles
           // (grid-searched offline on the boss d30 export: settle ≈1s,
           // drag-recover ≈10s, then fully still — no freeze needed).
-           barnesHut: { gravitationalConstant: -8000, springLength: 160, springConstant: 0.02, damping: 0.55, avoidOverlap: 0 },
+           barnesHut: { gravitationalConstant: -4000, springLength: 160, springConstant: 0.02, damping: 0.55, avoidOverlap: 0 },
   // 1036 (boss 五验归一化猜想成立): stiff springs (0.08) against strong
   // repulsion never balance — the continuous solver oscillated forever and
   // every drag release re-rang the whole layout. Soft springs + strong
