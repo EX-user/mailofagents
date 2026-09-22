@@ -107,7 +107,13 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-tick.C:
-				worker.Logf("input", "raw input events so far: %d", worker.InputCount())
+				recs, keys, mouse, mode := worker.WinDiag()
+				if recs < 0 {
+					worker.Logf("input", "raw input events so far: %d", worker.InputCount())
+				} else {
+					worker.Logf("input", "recs=%d keys=%d mouse=%d mode=0x%x | raw=%d",
+						recs, keys, mouse, mode, worker.InputCount())
+				}
 			}
 		}
 	}()

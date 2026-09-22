@@ -34,3 +34,7 @@ func (b *Board) startInput(ctx context.Context) {
 	}
 	b.readTty(ctx, tty, restore)
 }
+
+// WinDiag is a no-op on unix (no record reader); unix diagnostics ride the
+// byte counter.
+func WinDiag() (recs, keys, mouse int64, mode int64) { return -1, -1, -1, -1 }

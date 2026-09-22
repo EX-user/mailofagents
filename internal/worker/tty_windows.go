@@ -5,6 +5,7 @@ package worker
 import (
 	"context"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
@@ -40,6 +41,17 @@ type mouseEventRecord struct {
 	EventFlags      uint32
 }
 
+// diagnostic counters (boss demo round 3: events=0 while Shift-select was
+// active — need to see whether records arrive at all and of which type)
+var (
+	recCount  = new(int64)
+	keyCount  = new(int64)
+	mouseIn   = new(int64)
+	modeSeen  = new(int64)
+)
+
+func addi(p *int64, v int64) { for { c := *p; if atomic.CompareAndSwapInt64(p, c, c+v) { return } } }
+
 var (
 	kernel32           = syscall.NewLazyDLL("kernel32.dll")
 	procReadConsoleIn  = kernel32.NewProc("ReadConsoleInputW")
@@ -62,6 +74,7 @@ func readConsoleEvents(ctx context.Context, b *Board) {
 	if r, _, _ := procGetConsoleMode.Call(fd, uintptr(unsafe.Pointer(&mode))); r == 0 {
 		return
 	}
+	addi(modeSeen, int64(mode))
 	want := (mode &^ winQuickEditMode) | winEnableMouseInput | winEnableWindowInput | winEnableExtendedOpts
 	if r, _, _ := procSetConsoleMode.Call(fd, uintptr(want)); r == 0 {
 		return
@@ -83,9 +96,14 @@ func readConsoleEvents(ctx context.Context, b *Board) {
 		if read == 0 {
 			continue
 		}
+		addi(recCount, 1)
+		if rec.EventType == winKeyEvent {
+			addi(keyCount, 1)
+		}
 		if rec.EventType != winMouseEvent {
 			continue
 		}
+		addi(mouseIn, 1)
 		b.inputCount.Add(1)
 		var me mouseEventRecord
 		copy((*[16]byte)(unsafe.Pointer(&me))[:], rec.Event[:])
@@ -101,3 +119,10 @@ func readConsoleEvents(ctx context.Context, b *Board) {
 
 // startInput is the EnableMouse hook (platform dispatch).
 func (b *Board) startInput(ctx context.Context) { readConsoleEvents(ctx, b) }
+
+// WinDiag exposes the record-level counters for the demo driver's
+// diagnostics line (recs/keys/mouse counts and the console mode we saw).
+func WinDiag() (recs, keys, mouse int64, mode int64) {
+	return atomic.LoadInt64(recCount), atomic.LoadInt64(keyCount),
+		atomic.LoadInt64(mouseIn), atomic.LoadInt64(modeSeen)
+}
