@@ -101,12 +101,8 @@ func (b *Board) EnableMouse(ctx context.Context) {
 		return
 	}
 	fmt.Fprint(os.Stdout, mouseEnable)
-	tty, restore, err := openTty()
-	if err != nil {
-		return // no controlling terminal: buttons render but stay inert
-	}
 	go b.resolveTopRow(ctx)
-	go b.readTty(ctx, tty, restore)
+	go b.startInput(ctx)
 }
 
 // resolveTopRow waits for the first frame, then asks the terminal where the

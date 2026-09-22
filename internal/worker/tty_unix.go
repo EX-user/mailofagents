@@ -3,6 +3,7 @@
 package worker
 
 import (
+	"context"
 	"os"
 
 	"github.com/charmbracelet/x/term"
@@ -22,4 +23,14 @@ func openTty() (*os.File, func(), error) {
 		return nil, nil, err
 	}
 	return tty, func() { term.Restore(tty.Fd(), old) }, nil
+}
+
+// startInput is the EnableMouse hook (platform dispatch): raw-mode byte
+// reader over /dev/tty.
+func (b *Board) startInput(ctx context.Context) {
+	tty, restore, err := openTty()
+	if err != nil {
+		return
+	}
+	b.readTty(ctx, tty, restore)
 }
