@@ -71,6 +71,8 @@ type Board struct {
 	lastDump     string              // last dumped frame content (dump mode dedup)
 	lastDumpTime int64               // unix nano of last dump (throttle)
 	dumped       []string            // dumped frame contents
+	resized      bool                // SIGWINCH seen: next drawFrame does a full screen clear + repaint
+	winch        chan os.Signal      // resize notifications (nil where unavailable)
 }
 
 var board = &Board{launch: time.Now(), rowEvents: map[string][]string{}}
@@ -235,6 +237,15 @@ func (b *Board) drawFrame(frame string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	newLines := strings.Split(frame, "\n")
+	if b.resized {
+		// Post-resync: the terminal reflowed prior output, so cursor-
+		// relative moves are unreliable — clear the entire screen and
+		// repaint from the home position.
+		b.resized = false
+		fmt.Fprint(os.Stdout, "\r\033[2J\033[H")
+		b.drawn = 0
+		b.lastLines = nil
+	}
 	if b.drawn == 0 || b.lastLines == nil || len(newLines) != len(b.lastLines) {
 		b.erase()
 		for _, line := range newLines {
@@ -523,12 +534,21 @@ func (b *Board) renderLoop(ctx context.Context) {
 	if !b.enabled {
 		return
 	}
+	b.winch = winchChan()
 	t := time.NewTicker(500 * time.Millisecond)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-b.winch:
+			// resize 根治 (boss 0.2.10 池): the terminal reflowed already-
+			// printed text, so the board's cursor-relative anchor is stale —
+			// the next drawFrame must clear the whole screen and repaint
+			// from home instead of differential line patching.
+			b.mu.Lock()
+			b.resized = true
+			b.mu.Unlock()
 		case <-t.C:
 			b.render()
 		}

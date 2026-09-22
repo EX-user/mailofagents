@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"io"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -142,4 +144,34 @@ func visualCols(s string) int {
 		n += runeWidth(r)
 	}
 	return n
+}
+
+// TestDrawFrameResizeFullRepaint (boss 0.2.10 pool: resize 根治): a SIGWINCH
+// must force a whole-screen clear + home + full repaint — differential line
+// patching is unreliable after the terminal reflowed prior output.
+func TestDrawFrameResizeFullRepaint(t *testing.T) {
+	b := &Board{launch: time.Now(), rowEvents: map[string][]string{}}
+	// Prime the differential state as if a frame were already on screen.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	b.drawFrame("first\nframe")
+	b.resized = true
+	b.drawFrame("second\nframe")
+	w.Close()
+	os.Stdout = old
+	out, _ := io.ReadAll(r)
+	s := string(out)
+	if !strings.Contains(s, "\x1b[2J\x1b[H") {
+		t.Fatal("resize did not trigger full-screen clear + home")
+	}
+	if b.resized {
+		t.Fatal("resize flag not consumed")
+	}
+	if b.lastLines == nil || len(b.lastLines) != 2 || b.lastLines[1] != "frame-after" && b.lastLines[1] != "frame" {
+		t.Fatalf("unexpected post-resize lastLines: %q", b.lastLines)
+	}
 }
