@@ -3442,5 +3442,68 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // Populate the Compose To-field dropdown with known recipients (admins get
   // every account; regular accounts get their contacts). Builds a custom
   // dropdown (not a native datalist) so clicking a recipient clears the input
-  // and fills it — the behavior admin requested.
+  // and fills it — the behavior admin requested.
+  // ---- 0.3.2 系统更新弹窗（0.3.1 方案放行；契约定稿=Devi 0922：推送表
+  // {id,version,title,body_md,published_at,published}+last_read_push_id+四端点。
+  // 触发=进系统总览页后取最新已发布推送，未读则弹；关闭即上报已读、不阻塞；
+  // latest 失败/未上线=静默不弹零打扰；文案经数据面下发、前端一字不改） ----
+  (function updatesModalInit() {
+    function mdLite(s) {
+      if (window.marked && window.DOMPurify) {
+        try {
+          return DOMPurify.sanitize(window.marked.parse(s || "", { breaks: true }), {
+            FORBID_TAGS: ["style", "img", "audio", "video", "iframe"], FORBID_ATTR: ["style"]
+          });
+        } catch (_) { /* fall through to plain */ }
+      }
+      return "<pre>" + esc(s || "") + "</pre>";
+    }
+    // 落位定稿（0922 呈审图）：title=内容标题块；body 逐行渲染，间隔号/符点开头
+    // 行为悬挂缩进条目（续行对齐首字），其余行走 markdown
+    function renderPush(title, body) {
+      var out = title ? '<div class="updates-headline">' + esc(title) + "</div>" : "";
+      var lines = String(body || "").split("\n");
+      var parts = [];
+      for (var i = 0; i < lines.length; i++) {
+        var ln = lines[i];
+        var c = ln.charAt(0);
+        if ((c === "\u00b7" || c === "\u2022" || c === "\u30fb") && ln.charAt(1) === " ")
+          parts.push('<p class="updates-item">' + esc(ln) + "</p>");
+        else if (ln.replace(/\s/g, "") !== "") parts.push(mdLite(ln));
+      }
+      return out + parts.join("");
+    }
+    var shownId = null;
+    function maybeShowUpdates() {
+      if (!getSession() || shownId !== null) return;
+      api("/api/updates/latest", { keepSession: true }).then(function (d) {
+        if (!d || !d.unread || !d.push || shownId !== null) return;
+        shownId = d.push.id;
+        $("#updates-modal-title").textContent = t("updates.title") + " \u00b7 " + (d.push.version || "");
+        $("#updates-body").innerHTML = renderPush(d.push.title, d.push.body_md) +
+          (d.unread_more > 0 ? '<p class="updates-more muted">' + esc(t("updates.more", { n: d.unread_more })) + "</p>" : "");
+        $("#btn-updates-ok").textContent = t("updates.ok");
+        $("#updates-modal").classList.remove("hidden");
+      }).catch(function () { }); // 数据面未上线/失败=零打扰
+    }
+    function markUpdatesRead() {
+      var m = $("#updates-modal");
+      if (m && !m.classList.contains("hidden")) m.classList.add("hidden");
+      if (shownId !== null) {
+        var pid = shownId; shownId = null;
+        api("/api/updates/read", { method: "POST", body: JSON.stringify({ id: pid }), keepSession: true }).catch(function () {});
+      }
+    }
+    document.addEventListener("click", function (ev) {
+      var id = ev.target && ev.target.id;
+      if (id === "btn-updates-ok" || id === "btn-updates-close") markUpdatesRead();
+      else if (ev.target && ev.target.id === "updates-modal") markUpdatesRead(); // 同限额弹窗：点遮罩关
+    });
+    // 触发：进系统总览页（brand 标识 / 概览 tab；仅进入时查一次，不跨页追弹）
+    document.addEventListener("click", function (ev) {
+      var b = ev.target && ev.target.closest && ev.target.closest("#brand-home, .tab[data-tab='overview']");
+      if (b) setTimeout(maybeShowUpdates, 400);
+    }, true);
+  })();
+
 })();

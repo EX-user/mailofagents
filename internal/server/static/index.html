@@ -937,6 +937,19 @@
       </div>
     </div>
   </div>
+  <!-- 系统更新弹窗（0.3.2：触发=进系统总览页；文案经推送数据面下发，前端一字不改） -->
+  <div id="updates-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="updates-modal-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="updates-modal-title"></h2>
+        <button id="btn-updates-close" class="modal-x" title="Close" aria-label="Close" data-i18n-aria="modal.close">×</button>
+      </div>
+      <div id="updates-body" class="updates-body"></div>
+      <div class="row" style="margin-top:12px;">
+        <button id="btn-updates-ok" class="primary" data-i18n="updates.ok"></button>
+      </div>
+    </div>
+  </div>
   <div id="subreg-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="subreg-title">
     <div class="modal-card">
       <div class="modal-head">

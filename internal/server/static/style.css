@@ -2737,3 +2737,9 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 /* 1034 (boss: "抖得不行"): the stabilization pre-pass is violent to watch
    on real volumes - run it in shadow and fade in already still. */
 .mgmt-graph.is-stabilizing { opacity: 0.18; }
+
+/* 0.3.2 系统更新弹窗：内容标题块＋条目悬挂缩进（落位定稿 0922 呈审图） */
+.updates-body { font-size: 14px; line-height: 1.7; color: #1f2937; }
+.updates-headline { font-weight: 700; font-size: 16px; line-height: 1.5; color: #111827; margin: 0 0 10px; }
+.updates-item { margin: 0 0 6px; padding-left: 8px; text-indent: -8px; }
+.updates-more { font-size: 12px; margin: 8px 0 0; }
