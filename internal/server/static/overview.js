@@ -50,6 +50,33 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     return "idle";
   }
 
+  // 0.3.1 worker 心跳特显胶囊（boss 终态 0917：working 绿填充 / waiting 静置蓝 /
+  // compact 琥珀 / error 红 / ARMING 蓝呼吸；TTL 过期即隐回落现状；pill 免点击、
+  // 仅悬停 tooltip；与活跃度黄绿灰圆点并列不混色——形制区分）。
+  // 数据面（Devi rc7 定稿）：subs-overview 行两字段 worker_state / worker_seen_at
+  // （秒级 epoch；>1e12 按毫秒兜底折算）。
+  var HB_TTL_SEC = 180; // 2×90s 上报周期为过期线（常数，候与 worker 上报频率对表）
+  (function hbInjectCss() {
+    var css = ".hb-pill{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;" +
+      "font-size:11px;line-height:16px;font-weight:600;color:#fff;vertical-align:1px;white-space:nowrap}" +
+      ".hb-working{background:#16a34a}.hb-waiting{background:#2563eb}.hb-compact{background:#b45309}" +
+      ".hb-error{background:#dc2626}.hb-arming{background:#2563eb;animation:hbBreath 1.6s ease-in-out infinite}" +
+      "@keyframes hbBreath{0%,100%{opacity:1}50%{opacity:.55}}";
+    var st = document.createElement("style");
+    st.textContent = css;
+    document.head.appendChild(st);
+  })();
+  var HB_STATES = { working: 1, waiting: 1, compact: 1, error: 1, arming: 1 };
+  function hbPillHtml(s) {
+    var hst = s && s.worker_state;
+    if (!hst) return "";
+    var at = +s.worker_seen_at || 0;
+    if (at > 1e12) at = at / 1000; // 毫秒时间戳兜底
+    if (!at || Date.now() / 1000 - at > HB_TTL_SEC) return ""; // TTL 过期即隐
+    var key = hst.toLowerCase();
+    if (!HB_STATES[key]) return ""; // 未知状态=不显（前瞻兼容 worker 新态）
+    return '<span class="hb-pill hb-' + key + '" title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
+  }
   function mgmtOverviewHtml(d) {
     var subs = (d && d.subs) || [];
     var box = "";
@@ -82,7 +109,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       // column wrapped at five characters); the dot keeps its meaning via
       // the hover title.
       box += '<tr data-mgmt-acct="' + esc(s.address) + '">' +
-        '<td data-label="' + esc(t("mgmt.colAccount")) + '"><span class="dot ' + dotCls + '" title="' + esc(liveTxt) + '"></span><span class="mono">' + esc(s.address) + '</span>' +
+        '<td data-label="' + esc(t("mgmt.colAccount")) + '"><span class="dot ' + dotCls + '" title="' + esc(liveTxt) + '"></span><span class="mono">' + esc(s.address) + '</span>' + hbPillHtml(s) +
         (s.signature ? '<div class="ovw-sig mq"><span class="sig-track"><span class="sig-txt">' + esc(s.signature) + '</span><span class="sig-dup" aria-hidden="true">' + esc(s.signature) + "</span></span></div>" : "") + "</td>" +
         '<td data-label="' + esc(t("mgmt.colCounts")) + '" class="mono">' + (s.count_in_7d || 0) + " / " + (s.count_out_7d || 0) + "</td>" +
         '<td data-label="' + esc(t("mgmt.colAvg")) + '" class="mono">' + fmtAvg(s.avg_len_in) + " / " + fmtAvg(s.avg_len_out) + "</td>" +
