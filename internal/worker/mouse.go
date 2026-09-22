@@ -21,8 +21,8 @@ import (
 // (ESC[6n) round-trip right after the first frame is drawn.
 
 type boardAction struct {
-	tag  string
-	kind string // "stop" | "compact"
+	Tag  string // account local-part
+	Kind string // "stop" | "compact" | "copy"
 }
 
 const (
@@ -66,7 +66,7 @@ func (b *Board) SubscribeActions(tag string) <-chan boardAction {
 func (b *Board) RequestAction(tag, kind string) {
 	b.actionsMu.Lock()
 	defer b.actionsMu.Unlock()
-	a := boardAction{tag: tag, kind: kind}
+	a := boardAction{Tag: tag, Kind: kind}
 	subs := append(append([]chan boardAction{}, b.actionSubs[tag]...), b.actionSubs["*"]...)
 	for _, ch := range subs {
 		select {
@@ -300,3 +300,7 @@ func rowTagWithControls(ln string) (string, bool) {
 	}
 	return rest[:end], true
 }
+
+// BoardAction exposes the action payload type to external Board drivers
+// (demo-worker) via a type alias.
+type BoardAction = boardAction

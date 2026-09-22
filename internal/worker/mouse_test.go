@@ -58,7 +58,7 @@ func TestRequestActionFanOut(t *testing.T) {
 	b.RequestAction("alpha", "stop")
 	select {
 	case a := <-ch:
-		if a.tag != "alpha" || a.kind != "stop" {
+		if a.Tag != "alpha" || a.Kind != "stop" {
 			t.Fatalf("got %+v", a)
 		}
 	case <-time.After(time.Second):
@@ -91,7 +91,7 @@ func TestConsumeInputMouseAndCPR(t *testing.T) {
 	}
 	select {
 	case a := <-ch:
-		if a.kind != "stop" || a.tag != "alpha" {
+		if a.Kind != "stop" || a.Tag != "alpha" {
 			t.Fatalf("got %+v", a)
 		}
 	case <-time.After(time.Second):
@@ -136,7 +136,7 @@ func TestClickMapsToButtons(t *testing.T) {
 	b.click(32, 4)
 	select {
 	case a := <-ch:
-		if a.kind != "stop" {
+		if a.Kind != "stop" {
 			t.Fatalf("got %+v", a)
 		}
 	case <-time.After(time.Second):
@@ -146,7 +146,7 @@ func TestClickMapsToButtons(t *testing.T) {
 	b.click(40, 4)
 	select {
 	case a := <-ch:
-		if a.kind != "compact" {
+		if a.Kind != "compact" {
 			t.Fatalf("got %+v", a)
 		}
 	case <-time.After(time.Second):
@@ -157,7 +157,7 @@ func TestClickMapsToButtons(t *testing.T) {
 	b.click(47, 4)
 	select {
 	case a := <-ch:
-		if a.kind != "copy" {
+		if a.Kind != "copy" {
 			t.Fatalf("got %+v", a)
 		}
 	case <-time.After(time.Second):

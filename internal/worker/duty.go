@@ -303,7 +303,7 @@ func (d *Duty) watchActions(ctx context.Context) {
 			if !ok {
 				return
 			}
-			switch a.kind {
+			switch a.Kind {
 			case "stop":
 				d.stopHit.Store(true)
 				if c, ok := d.currentCancel.Load().(context.CancelFunc); ok && c != nil {

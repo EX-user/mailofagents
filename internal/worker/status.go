@@ -112,6 +112,13 @@ func RenderLoop(ctx context.Context) { board.renderLoop(ctx) }
 // (package-level entry, called from main before the duty loop).
 func SetMeta(version, logHint string) { board.SetMeta(version, logHint) }
 
+// Package-level wrappers for external boards drivers (demo-worker):
+func Set(tag, state, detail string)                      { board.Set(tag, state, detail) }
+func SetCtx(tag string, tokens int64)                    { board.SetCtx(tag, tokens) }
+func AddRow(tag string, started time.Time, ctxW, noticeT int64) { board.AddRow(tag, started, ctxW, noticeT) }
+func Logf(tag, format string, args ...any)               { board.Logf(tag, format, args...) }
+func SubscribeActions(tag string) <-chan boardAction     { return board.SubscribeActions(tag) }
+
 func init() {
 	// Enabled only on a TTY; WORKER_PLAIN=1 force-disables (files, pipes,
 	// awkward terminals).
