@@ -12,7 +12,9 @@ import (
 )
 
 // workerBeatStates are the valid heartbeat states; anything else is 400.
-var workerBeatStates = map[string]bool{"waiting": true, "working": true}
+// The five faces match the TUI board (0.3.1 heartbeat pills): arming and
+// compact are transition states, error reports a failed wake.
+var workerBeatStates = map[string]bool{"waiting": true, "working": true, "compact": true, "arming": true, "error": true}
 
 // workerBeatDetailMaxRunes caps the free-form detail tail.
 const workerBeatDetailMaxRunes = 500
@@ -37,7 +39,7 @@ func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !workerBeatStates[req.State] {
-			badRequest(w, "state must be waiting or working")
+			badRequest(w, "state must be waiting/working/compact/arming/error")
 			return
 		}
 		if len([]rune(req.Detail)) > workerBeatDetailMaxRunes {

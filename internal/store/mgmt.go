@@ -36,6 +36,12 @@ type MgmtSubSummary struct {
 	AvgLenOut   int              `json:"avg_len_out"`  // mean body runes, 7d window; 0 = no mail
 	TopContacts []MgmtTopContact `json:"top_contacts"` // ≤3, 7d window, in+out combined
 	LastReadAt  int64            `json:"last_read_at"` // latest unread->read transition, unix s, 0 = never (ALL TIME; liveness weak evidence)
+	// 0.3.1 heartbeat pills (boss directive): the subordinate's latest
+	// worker beat, as uploaded to /api/worker/heartbeat. Empty state =
+	// never uploaded (staleness/TTL is a client-side call against
+	// worker_seen_at).
+	WorkerState  string `json:"worker_state,omitempty"`
+	WorkerSeenAt int64  `json:"worker_seen_at,omitempty"` // server receipt, unix s
 }
 
 // MgmtNode is one graph node. Kind: self | sub | external.
@@ -256,6 +262,10 @@ func (s *Store) MgmtSubsOverviewWindow(me string, days int) (*MgmtOverview, erro
 			subs[i].AvgLenOut = a.sumOut / a.countOut
 		}
 		subs[i].TopContacts = top(subs[i].Address)
+		if beat, ok, err := s.WorkerBeatByAddress(subs[i].Address); err == nil && ok {
+			subs[i].WorkerState = beat.State
+			subs[i].WorkerSeenAt = beat.At
+		}
 		// Liveness weak evidence: the sub's own latest inbox read. Looked
 		// up per sub (≤10) outside the message scan; misses stay 0.
 		if acc, err := s.GetAccount(subs[i].Address); err == nil {
