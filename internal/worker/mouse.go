@@ -31,7 +31,7 @@ const (
 	ctlCopy    = "[复制]"
 	ctlText    = "  " + ctlStop + " " + ctlCompact + " " + ctlCopy
 
-	mouseEnable  = "\x1b[?1000h\x1b[?1006h"
+	mouseEnable  = "\x1b[?1000h\x1b[?1003h\x1b[?1006h" // click + any-motion (hover highlight)
 	mouseDisable = "\x1b[?1000l\x1b[?1006l"
 	cprQuery     = "\x1b[6n" // terminal replies ESC[row;colR on the tty
 )
@@ -101,12 +101,12 @@ func (b *Board) EnableMouse(ctx context.Context) {
 		return
 	}
 	fmt.Fprint(os.Stdout, mouseEnable)
-	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	tty, restore, err := openTty()
 	if err != nil {
 		return // no controlling terminal: buttons render but stay inert
 	}
 	go b.resolveTopRow(ctx)
-	go b.readTty(ctx, tty)
+	go b.readTty(ctx, tty, restore)
 }
 
 // resolveTopRow waits for the first frame, then asks the terminal where the
@@ -143,14 +143,15 @@ func (b *Board) resolveTopRow(ctx context.Context) {
 
 // --- tty input ---
 
-func (b *Board) readTty(ctx context.Context, tty *os.File) {
+func (b *Board) readTty(ctx context.Context, tty *os.File, restore func()) {
 	defer tty.Close()
+	defer restore()
+	defer fmt.Fprint(os.Stdout, mouseDisable)
 	buf := make([]byte, 0, 256)
 	chunk := make([]byte, 64)
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Fprint(os.Stdout, mouseDisable)
 			return
 		default:
 		}
@@ -159,7 +160,6 @@ func (b *Board) readTty(ctx context.Context, tty *os.File) {
 			buf = b.consumeInput(chunk[:n], buf)
 		}
 		if err != nil {
-			fmt.Fprint(os.Stdout, mouseDisable)
 			return
 		}
 	}
@@ -184,8 +184,14 @@ func (b *Board) consumeInput(chunk []byte, buf []byte) []byte {
 				btn, _ := strconv.Atoi(parts[0])
 				col, _ := strconv.Atoi(parts[1])
 				row, _ := strconv.Atoi(parts[2])
-				if btn == 0 {
+				switch {
+				case btn == 0:
 					b.click(col, row)
+				case btn >= 32:
+					// motion without buttons (SGR: 32 = no button): hover
+					// highlight for the row under the pointer (boss demo
+					// feedback 2026-09-22: no hover feedback = feels dead)
+					b.hover(col, row)
 				}
 			}
 			buf = buf[i+end+1:]
@@ -214,6 +220,31 @@ func (b *Board) consumeInput(chunk []byte, buf []byte) []byte {
 		}
 		return buf
 	}
+}
+
+// hover tracks which account row the pointer is over; a change flips the
+// row's buttons into reverse video on the next draw. Non-rows clear it.
+func (b *Board) hover(col, row int) {
+	b.mu.Lock()
+	top := b.topRow
+	hits := b.hitRows
+	b.mu.Unlock()
+	if top <= 0 {
+		return
+	}
+	line := row - top + 1
+	tag := ""
+	for t, h := range hits {
+		if h.line == line {
+			tag = t
+		}
+	}
+	cur, _ := b.hoverTag.Load().(string)
+	if cur == tag {
+		return
+	}
+	b.hoverTag.Store(tag)
+	b.render() // immediate feedback; the tick would catch it anyway
 }
 
 // click maps absolute terminal coordinates to a row button and dispatches.

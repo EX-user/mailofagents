@@ -1,0 +1,25 @@
+//go:build unix
+
+package worker
+
+import (
+	"os"
+
+	"github.com/charmbracelet/x/term"
+)
+
+// openTty opens the controlling terminal and puts it in raw mode (mouse
+// and CPR replies arrive as immediate byte sequences, not lines). The
+// returned restore func MUST run when reading stops.
+func openTty() (*os.File, func(), error) {
+	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	old, err := term.MakeRaw(tty.Fd())
+	if err != nil {
+		tty.Close()
+		return nil, nil, err
+	}
+	return tty, func() { term.Restore(tty.Fd(), old) }, nil
+}

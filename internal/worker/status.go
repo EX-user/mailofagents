@@ -31,6 +31,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -76,6 +77,8 @@ type Board struct {
 	mouse        bool                // mouse controls on (config `mouse`, file-level; boss sign-off 2026-09-22)
 	topRow       int                 // absolute screen row of the board's first line (0 = unknown)
 	hitRows      map[string]rowHit   // per-account button hit boxes (mouse frames)
+	hoverTag     atomic.Value        // account row currently under the pointer (string, "" = none)
+	lastW, lastH int                 // last seen console size (resize detector)
 	cprCh        chan int            // cursor-position replies from the tty reader
 	actionsMu    sync.Mutex          // guards actionSubs
 	actionSubs   map[string][]chan boardAction
@@ -399,9 +402,15 @@ func statusLine(r *statusRow, w int) string {
 		tail = " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
 	}
 	// mouse controls (boss 0.2.10 pool): ride the row's tail so the
-	// clamping below always preserves them
+	// clamping below always preserves them; hovered row's buttons flip to
+	// reverse video (boss demo feedback: no hover feedback = feels dead)
 	if board.mouse && board.enabled {
-		tail += ctlText
+		ht, _ := board.hoverTag.Load().(string)
+		if r.tag == ht {
+			tail += lipgloss.NewStyle().Reverse(true).Render(ctlText)
+		} else {
+			tail += ctlText
+		}
 	}
 	detail := r.detail
 	if detail == "" {
@@ -588,6 +597,14 @@ func (b *Board) renderLoop(ctx context.Context) {
 			b.resized = true
 			b.mu.Unlock()
 		case <-t.C:
+			// cross-platform resize detector: SIGWINCH only fires on unix,
+			// but the terminal size is pollable everywhere (boss demo exe
+			// feedback 2026-09-22: the Windows build never repainted)
+			if w, h := consoleSize(); w != b.lastW || h != b.lastH {
+				b.mu.Lock()
+				b.lastW, b.lastH, b.resized = w, h, true
+				b.mu.Unlock()
+			}
 			b.render()
 		}
 	}
