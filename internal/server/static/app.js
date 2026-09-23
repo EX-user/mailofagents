@@ -607,7 +607,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $$("[data-act-acct]").forEach(function (el) {
       var s = byAddr[String(el.getAttribute("data-act-acct")).toLowerCase()];
       var pill = el.querySelector('[data-act-slot="pill"]');
-      if (pill) pill.innerHTML = s ? hbPillHtml(s) : "";
+      // 1046 纪律（boss 0924 口径：刷新逻辑与原管理-概览从属列表对应）：
+      // 先比对、内容无变化不写 DOM——轮询对滚动零扰。
+      if (pill) {
+        var html = s ? hbPillHtml(s) : "";
+        if (pill.innerHTML !== html) pill.innerHTML = html;
+      }
     });
     var sum = $("#acc-act-sum");
     if (sum) {
