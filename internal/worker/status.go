@@ -125,6 +125,8 @@ func AddRow(tag string, started time.Time, ctxW, noticeT int64) { board.AddRow(t
 func Logf(tag, format string, args ...any)               { board.Logf(tag, format, args...) }
 func SubscribeActions(tag string) <-chan boardAction     { return board.SubscribeActions(tag) }
 func InputCount() int64                                   { return board.inputCount.Load() }
+func TopRow() int                                          { board.mu.Lock(); defer board.mu.Unlock(); return board.topRow }
+func HitRowCount() int                                     { board.mu.Lock(); defer board.mu.Unlock(); return len(board.hitRows) }
 
 func init() {
 	// Enabled only on a TTY; WORKER_PLAIN=1 force-disables (files, pipes,

@@ -108,12 +108,8 @@ func main() {
 				return
 			case <-tick.C:
 				recs, keys, mouse, mode, errText := worker.WinDiag()
-				if recs < 0 {
-					worker.Logf("input", "raw input events so far: %d", worker.InputCount())
-				} else {
-					worker.Logf("input", "recs=%d keys=%d mouse=%d mode=0x%x err=%q | raw=%d",
-						recs, keys, mouse, mode, errText, worker.InputCount())
-				}
+				worker.Logf("input", "recs=%d keys=%d mouse=%d mode=0x%x err=%q top=%d hits=%d raw=%d",
+					recs, keys, mouse, mode, errText, worker.TopRow(), worker.HitRowCount(), worker.InputCount())
 			}
 		}
 	}()
