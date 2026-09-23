@@ -2747,7 +2747,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 /* 0.3.2 概览重构（boss 0924 认定）：账户页从属行活动融合＋非从属标＋偏好页自身卡 */
 .badge-ext {
   display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px;
-  background: #b45309; color: #fff; margin-right: 4px;
+  background: #8b5cf6; color: #fff; margin-right: 4px;
   text-transform: uppercase; letter-spacing: 0.5px; vertical-align: middle;
 }
 #acc-act-sum { margin: 2px 0 6px; }
