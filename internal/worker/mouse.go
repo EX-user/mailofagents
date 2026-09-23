@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -164,6 +166,15 @@ func (b *Board) readTty(ctx context.Context, tty *os.File, restore func()) {
 		}
 		n, err := tty.Read(chunk)
 		if n > 0 {
+			// Raw mode disabled ISIG, so Ctrl+C arrives as the plain byte
+			// 0x03 — deliver it as a real SIGINT (main runs a NotifyContext
+			// on it: this is the graceful-shutdown path, not an abort).
+			if bytes.IndexByte(chunk[:n], 0x03) >= 0 {
+				restore()
+				proc, _ := os.FindProcess(os.Getpid())
+				proc.Signal(syscall.SIGINT)
+				return
+			}
 			buf = b.consumeInput(chunk[:n], buf)
 		}
 		if err != nil {
