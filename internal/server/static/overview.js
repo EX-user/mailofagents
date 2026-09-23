@@ -75,7 +75,6 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     // right-aligned. Two class-wired instances; CSS shows head pills on
     // phones and canvas circles on PC. Download glyph ⬇ (⤓ read too thin).
     box += '<div class="mgmt-graph-head">' +
-      '<h4 class="mgmt-graph-title">' + t("mgmt.graphTitle") + "</h4>" +
       '<div class="mgmt-graph-actions">' +
       '<button type="button" class="gg-btn gg-head-btn gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
       '<button type="button" class="gg-btn gg-head-btn gg-export" title="' + esc(t("mgmt.gExport")) + '">⬇</button>' +
@@ -382,6 +381,18 @@ var mgmtNodeSet = null;
   var mgmtOverviewLoaded = false;
   var mgmtOverviewData = null; // last payload — lets the map/nums buttons
   // re-render without a server round-trip (only the range button refetches).
+  // 1048f（boss 0924：连接图独占后没有充分利用释放的空间）：图区高度=
+  // 视口底 − 图区顶 − 页尾余量，双端自适应；下限 420px（boss 0923 批过的
+  // 手机下限）。vis-network autoResize 跟随容器重绘。
+  function fitLinksGraph() {
+    var wrap = document.getElementById("mgmt-graph-wrap");
+    if (!wrap || wrap.offsetParent === null) return;
+    var h = window.innerHeight - wrap.getBoundingClientRect().top - 14;
+    if (h < 420) h = 420;
+    wrap.style.height = h + "px";
+  }
+  window.addEventListener("resize", fitLinksGraph);
+
   async function loadMgmtOverview() {
     var box = $("#mgmt-overview");
     if (!box) return;
@@ -395,6 +406,7 @@ var mgmtNodeSet = null;
       lastGraphLoad = Date.now();
       syncGraphControlLabels();
       wireGraphControls();
+      fitLinksGraph();
       renderMgmtGraph(d && d.graph, (d && d.subs) || []);
       // S2: the marquee measurer lives in app.js — let it size the new
       // .mq signature lines (accounts one-screen plan shares the grammar).

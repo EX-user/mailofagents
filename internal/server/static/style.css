@@ -1037,6 +1037,11 @@ nav::-webkit-scrollbar { display: none; }
     background: var(--sub-card-bg);
   }
   .sub-meta { order: 2; flex: 0 0 auto; }
+  /* 1048h (boss 0924): badges and the worker pill must share one centerline —
+     the square listed chip and the round pill carried different vertical-aligns. */
+  .sub-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sub-meta .act-pill-slot { display: contents; } /* pill becomes a direct flex item — centers exactly */
+  .sub-meta .hb-pill, .sub-meta .badge-listed, .sub-meta .badge-ext { vertical-align: middle; }
   .sub-addr { order: 1; flex: 1 1 0; font-size: 13px; min-width: 0; }
   .sub-sig { order: 3; flex: 1 1 100%; font-size: 12px; color: var(--muted); margin-top: 2px; }
   .sub-foot { order: 4; flex: 1 1 100%; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
@@ -1683,6 +1688,10 @@ html[data-theme="dark"]  .sc-item { background: rgba(22,27,41,.72); }
 .gg-btn { white-space: nowrap; overflow: hidden; flex: 0 0 auto; }
 .gg-btn.off { opacity: .45; }         /* numbers hidden state */
 .gg-btn-days { font-size: 11px; font-weight: 600; }
+/* 1048f: links page graph fills the freed space — the fit in overview.js
+   sets #mgmt-graph-wrap height to the viewport rest; the fixed heights
+   below remain only as the pre-fit fallback. */
+#mgmt-graph-wrap > .mgmt-graph { height: 100%; }
 .mgmt-graph {
   /* +40% vertical (superior feedback): 380 -> 532 PC, 300 -> 420 phones. */
   height: 532px; border: 1px solid var(--border); border-radius: 8px;
