@@ -11,13 +11,15 @@ import (
 
 // Heartbeat signal upload (boss spec 2026-09-05): the worker POSTs its
 // waiting/working state — the same face the local status board shows — to
-// a dedicated server endpoint every minute (and immediately on state
-// changes). No frontend yet; the endpoint stays OUT of /api/self. Servers
-// without the endpoint answer 404: uploads then disable silently for this
-// duty's lifetime, keeping old server deployments noise-free.
+// a dedicated server endpoint every 20 seconds (boss 0.3.1 ruling 2026-09-23:
+// front-end refresh 10s / worker heartbeat 20s / TTL 60s = 3×20s, so jitter
+// tolerance stays isomorphic with the old minute cadence) and immediately on
+// state changes. No frontend yet; the endpoint stays OUT of /api/self.
+// Servers without the endpoint answer 404: uploads then disable silently for
+// this duty's lifetime, keeping old server deployments noise-free.
 
 const (
-	hbUploadInterval = time.Minute
+	hbUploadInterval = 20 * time.Second
 	hbEndpoint       = "/api/worker/heartbeat"
 )
 
