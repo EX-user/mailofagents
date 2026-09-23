@@ -77,7 +77,17 @@ type consoleScreenBufferInfo struct {
 // key-event records, which round 3 proved unloved: boss demo v7 recs=1136
 // keys=286 mouse=841 err="" with clicks still dead.)
 func (b *Board) resolveTopRowWin(ctx context.Context, fd uintptr) {
-	for attempt := 0; attempt < 20; attempt++ {
+	// screen-buffer info needs a SCREEN handle, not the input handle
+	// (v8 passed CONIN$ — the call failed silently and top-row never
+	// resolved: boss demo round 4, "完全没感觉出来")
+	out, err := os.OpenFile("CONOUT$", os.O_RDWR, 0)
+	if err != nil {
+		winFail("open CONOUT$: " + err.Error())
+		return
+	}
+	defer out.Close()
+	fd = out.Fd()
+	for attempt := 0; attempt < 40; attempt++ {
 		select {
 		case <-ctx.Done():
 			return
@@ -93,8 +103,10 @@ func (b *Board) resolveTopRowWin(ctx context.Context, fd uintptr) {
 		if r, _, _ := procGetConsoleBuf.Call(fd, uintptr(unsafe.Pointer(&csbi))); r == 0 {
 			continue
 		}
+		// viewport-relative: visible window bounds live in srWindow
+		vpTop := int(csbi.srWindow[1]) // top visible row (buffer coords)
 		b.mu.Lock()
-		b.topRow = int(csbi.dwCursorPosition.Y) - drawn + 1
+		b.topRow = (int(csbi.dwCursorPosition.Y) - vpTop) - drawn + 1
 		b.mu.Unlock()
 		return
 	}
