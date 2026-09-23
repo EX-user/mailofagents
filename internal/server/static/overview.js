@@ -892,8 +892,26 @@ var mgmtNodeSet = null;
       var oldSum = box.querySelector(".mgmt-sum"), newSum = fresh.querySelector(".mgmt-sum");
       var oldTb = box.querySelector(".mgmt-ovw"), newTb = fresh.querySelector(".mgmt-ovw");
       if (oldTb && newTb) {
-        // 滚动保护（boss 0923：10s 刷新把列表滑条打回顶部）——替换前后快照恢复
-        // 窗口与 oldTb 各祖先容器的滚动位置；无位移则零写入。
+        // 逐行就地更新（boss 0923：任意周期滑条纹丝不动、滚动中不打断）——
+        // 行集不变时只换各行内部内容（胶囊/圆点/计数随新数据复算），
+        // 行元素本体不动，滚动/悬停零感；行集变化才整表兼容替换（带滑动快照兜底）。
+        var newRows = {}, oldRows = {};
+        var nrs = newTb.querySelectorAll("tbody tr"), ors = oldTb.querySelectorAll("tbody tr");
+        var i;
+        for (i = 0; i < nrs.length; i++) newRows[nrs[i].getAttribute("data-mgmt-acct")] = nrs[i];
+        for (i = 0; i < ors.length; i++) oldRows[ors[i].getAttribute("data-mgmt-acct")] = ors[i];
+        var sameSet = ors.length === nrs.length;
+        if (sameSet) for (var addr in newRows) if (!oldRows[addr]) { sameSet = false; break; }
+        if (sameSet) {
+          if (oldSum && newSum) oldSum.innerHTML = newSum.innerHTML;
+          for (addr in newRows) {
+            var orow = oldRows[addr];
+            if (orow.innerHTML !== newRows[addr].innerHTML) orow.innerHTML = newRows[addr].innerHTML;
+          }
+          document.dispatchEvent(new CustomEvent("ovw:rendered")); // 签名跑马灯复量
+          return true;
+        }
+        // 行集变化：整表兼容替换（滑动快照兜底）
         var snaps = [], n = oldTb, sx = window.scrollX, sy = window.scrollY;
         while (n && n !== document.body) {
           if (n.scrollTop || n.scrollLeft) snaps.push([n, n.scrollTop, n.scrollLeft]);
@@ -903,10 +921,10 @@ var mgmtNodeSet = null;
         oldTb.replaceWith(newTb);
         snaps.forEach(function (s2) { s2[0].scrollTop = s2[1]; s2[0].scrollLeft = s2[2]; });
         if (window.scrollY !== sy || window.scrollX !== sx) window.scrollTo(sx, sy);
-        document.dispatchEvent(new CustomEvent("ovw:rendered")); // 签名跑马灯复量
+        document.dispatchEvent(new CustomEvent("ovw:rendered"));
         return true;
       }
-      loadMgmtOverview(); // 空态↔有表态翻转走整页（图也随之出现/消失）
+      loadMgmtOverview(); // 空态↔有态翻转走整页（图也随之出现/消失）
       return true;
     } catch (_) { return false; }
   }
