@@ -396,11 +396,11 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 	return strings.TrimRight(bld.String(), "\n")
 }
 
-func revIf(on bool, s string) string {
+func btn(on bool, label string) string {
 	if on {
-		return lipgloss.NewStyle().Reverse(true).Render(s)
+		return "[" + lipgloss.NewStyle().Reverse(true).Render(label) + "]"
 	}
-	return s
+	return "[" + label + "]"
 }
 
 // statusLine renders one account row: a state-colored dot plus the
@@ -421,7 +421,11 @@ func statusLine(r *statusRow, w int) string {
 		ht, _ := board.hoverTag.Load().(string)
 		hb, _ := board.hoverBtn.Load().(string)
 		if r.tag == ht {
-			tail += "  " + revIf(hb == "stop", ctlStop) + " " + revIf(hb == "compact", ctlCompact) + " " + revIf(hb == "copy", ctlCopy)
+			// reverse only the INNER label: the visible "[停止] [压缩] [复制]"
+			// sequence stays contiguous so the hit-map scan keeps matching
+			// (v10 regression: wrapping whole buttons split the text and the
+			// hovered row lost its hit box — highlight oscillated off)
+			tail += "  " + btn(hb == "stop", "停止") + " " + btn(hb == "compact", "压缩") + " " + btn(hb == "copy", "复制")
 		} else {
 			tail += ctlText
 		}

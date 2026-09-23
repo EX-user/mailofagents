@@ -297,12 +297,19 @@ func (b *Board) click(col, row int) {
 func computeHits(lines []string) map[string]rowHit {
 	hits := map[string]rowHit{}
 	for i, ln := range lines {
-		tag, ok := rowTagWithControls(ln)
+		// match on the ANSI-stripped text: a hovered row renders its
+		// button labels in reverse video (ANSI INSIDE the brackets), so
+		// the raw line no longer contains the plain control sequence
+		plain := ansiPlain(ln)
+		idx := strings.Index(plain, ctlText)
+		if idx < 0 {
+			continue
+		}
+		tag, ok := rowTagFromPlain(plain)
 		if !ok {
 			continue
 		}
-		prefix := ln[:strings.Index(ln, ctlText)]
-		w := lipgloss.Width(prefix)
+		w := lipgloss.Width(plain[:idx])
 		h := rowHit{line: i + 1}
 		h.stopAt = w + 3 // "  [" — first glyph of 停
 		h.stopEnd = h.stopAt + lipgloss.Width(ctlStop) - 1
@@ -326,13 +333,9 @@ func ansiPlain(s string) string {
 
 var ansiSeqRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-// rowTagWithControls returns the account tag if this line is a status row
-// carrying the control text ("● [tag] STATE …  [停止] [压缩]").
-func rowTagWithControls(ln string) (string, bool) {
-	if !strings.Contains(ln, ctlText) {
-		return "", false
-	}
-	plain := ansiPlain(ln)
+// rowTagFromPlain returns the account tag from an ANSI-stripped status row
+// ("● [tag] STATE …").
+func rowTagFromPlain(plain string) (string, bool) {
 	open := strings.Index(plain, "[") // ASCII: byte index safe (● is 3 bytes)
 	if open < 0 {
 		return "", false
