@@ -79,6 +79,7 @@ type Board struct {
 	topRow       int                 // absolute screen row of the board's first line (0 = unknown)
 	hitRows      map[string]rowHit   // per-account button hit boxes (mouse frames)
 	hoverTag     atomic.Value        // account row currently under the pointer (string, "" = none)
+	hoverBtn     atomic.Value        // which button is under the pointer ("stop"/"compact"/"copy"/"")
 	lastW, lastH int                 // last seen console size (resize detector)
 	cprCh        chan int            // cursor-position replies from the tty reader
 	inputCount   atomic.Int64        // total input events seen (remote diagnostics)
@@ -395,6 +396,13 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 	return strings.TrimRight(bld.String(), "\n")
 }
 
+func revIf(on bool, s string) string {
+	if on {
+		return lipgloss.NewStyle().Reverse(true).Render(s)
+	}
+	return s
+}
+
 // statusLine renders one account row: a state-colored dot plus the
 // uppercase state, with detail/ctx clamped so the line never exceeds w.
 func statusLine(r *statusRow, w int) string {
@@ -411,8 +419,9 @@ func statusLine(r *statusRow, w int) string {
 	// reverse video (boss demo feedback: no hover feedback = feels dead)
 	if board.mouse && board.enabled {
 		ht, _ := board.hoverTag.Load().(string)
+		hb, _ := board.hoverBtn.Load().(string)
 		if r.tag == ht {
-			tail += lipgloss.NewStyle().Reverse(true).Render(ctlText)
+			tail += "  " + revIf(hb == "stop", ctlStop) + " " + revIf(hb == "compact", ctlCompact) + " " + revIf(hb == "copy", ctlCopy)
 		} else {
 			tail += ctlText
 		}

@@ -100,7 +100,12 @@ func (b *Board) EnableMouse(ctx context.Context) {
 	if !on {
 		return
 	}
-	fmt.Fprint(os.Stdout, mouseEnable)
+	fmt.Fprint(os.Stdout, "\x1b[2J\x1b[H"+mouseEnable)
+	// the clear homes the cursor: the board's top row is deterministically
+	// row 1 (kills the whole cursor-math offset class — boss demo round 5)
+	b.mu.Lock()
+	b.topRow = 1
+	b.mu.Unlock()
 	go b.resolveTopRow(ctx)
 	go b.startInput(ctx)
 }
@@ -219,8 +224,8 @@ func (b *Board) consumeInput(chunk []byte, buf []byte) []byte {
 	}
 }
 
-// hover tracks which account row the pointer is over; a change flips the
-// row's buttons into reverse video on the next draw. Non-rows clear it.
+// hover tracks which account row — and which button on it — the pointer
+// is over; changes flip that button into reverse video on the next draw.
 func (b *Board) hover(col, row int) {
 	b.mu.Lock()
 	top := b.topRow
@@ -230,17 +235,28 @@ func (b *Board) hover(col, row int) {
 		return
 	}
 	line := row - top + 1
-	tag := ""
+	tag, btn := "", ""
 	for t, h := range hits {
-		if h.line == line {
-			tag = t
+		if h.line != line {
+			continue
+		}
+		tag = t
+		switch {
+		case col >= h.stopAt && col <= h.stopEnd:
+			btn = "stop"
+		case col >= h.compactAt && col <= h.compactEnd:
+			btn = "compact"
+		case col >= h.copyAt && col <= h.copyEnd:
+			btn = "copy"
 		}
 	}
-	cur, _ := b.hoverTag.Load().(string)
-	if cur == tag {
+	curTag, _ := b.hoverTag.Load().(string)
+	curBtn, _ := b.hoverBtn.Load().(string)
+	if curTag == tag && curBtn == btn {
 		return
 	}
 	b.hoverTag.Store(tag)
+	b.hoverBtn.Store(btn)
 	b.render() // immediate feedback; the tick would catch it anyway
 }
 
