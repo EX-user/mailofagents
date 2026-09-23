@@ -865,7 +865,7 @@ var mgmtNodeSet = null;
     } catch (_) { return false; }
   }
   (function subsPollLoop() {
-    var POLL_MS = 30000; // 30s=å³å¨ keepalive åå¨æï¼alice 30â60s åºé´ä¸éï¼ï¼æµè¯/è°ä¼å¯è¦çï¼ä¸é 5sï¼
+    var POLL_MS = 10000; // 10s（boss 0923 定：30s 嫌久）；测试/调优可覆盖（下限 5s）
     try {
       var o = parseInt(localStorage.getItem("ovw_subs_poll_ms") || "0", 10);
       if (o >= 5000) POLL_MS = o;
