@@ -3207,6 +3207,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var subList = document.querySelector(".sub-list");
     var ctBox = $("#acc-m-contacts");
     if (!ctBox) return;
+    // 1048e（boss rc2c 实测：滑动中被拽回顶部）：列表滚动中严禁重钉——真机滑动时
+    // 地址栏伸缩触发 resize，重钉按页顶几何重算会把滚动清零（maxHeight=none
+    // 未钳位即回落 0）。回到顶部后的下次 fit 自然恢复。
+    if (ctBox.scrollTop > 2) return;
     ctBox.style.maxHeight = "none";
     if (subList) subList.style.maxHeight = "none";
     var ctTop = ctBox.getBoundingClientRect().top;
