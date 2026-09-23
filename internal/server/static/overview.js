@@ -56,27 +56,64 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
   // 数据面（Devi rc7 定稿）：subs-overview 行两字段 worker_state / worker_seen_at
   // （秒级 epoch；>1e12 按毫秒兜底折算）。
   var HB_TTL_SEC = 60; // 3×20s 上报周期为过期线（boss 0923 定口径：前端刷 10s/心跳 20s/TTL 60s）
+  var HB_POLL_SEC = 10; // T1=前端刷新间隔（subsPollLoop 的 POLL_MS 与此同源）
+  var HB_GRAY = [0x9c, 0xa3, 0xaf]; // 渐变灰端 #9ca3af
+  var HB_COLORS = { working: [0x16, 0xa3, 0x4a], waiting: [0x25, 0x63, 0xeb], compact: [0xb4, 0x53, 0x09], error: [0xdc, 0x26, 0x26], arming: [0x25, 0x63, 0xeb] };
   (function hbInjectCss() {
     var css = ".hb-pill{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;" +
       "font-size:11px;line-height:16px;font-weight:600;color:#fff;vertical-align:1px;white-space:nowrap}" +
       ".hb-working{background:#16a34a}.hb-waiting{background:#2563eb}.hb-compact{background:#b45309}" +
       ".hb-error{background:#dc2626}.hb-arming{background:#2563eb;animation:hbBreath 1.6s ease-in-out infinite}" +
-      "@keyframes hbBreath{0%,100%{opacity:1}50%{opacity:.55}}";
+      "@keyframes hbBreath{0%,100%{opacity:1}50%{opacity:.55}}" +
+      ".hb-pill{transition:background-color .9s linear}";
     var st = document.createElement("style");
     st.textContent = css;
     document.head.appendChild(st);
   })();
   var HB_STATES = { working: 1, waiting: 1, compact: 1, error: 1, arming: 1 };
+  // boss 0923 公式：f=max(t-t1-T1,0)/T3 ∈[0,1]，活跃色→灰实时渐变；f>=1 即隐（TTL）。
+  // T1=HB_POLL_SEC（前端刷新间隔）、T3=HB_TTL_SEC（失效时阈）；T2 为 worker 上报侧常数不入式。
+  function hbFreshRatio(at) {
+    var f = (Date.now() / 1000 - at - HB_POLL_SEC) / HB_TTL_SEC;
+    return f < 0 ? 0 : (f > 1 ? 1 : f);
+  }
+  function hbFadeColor(key, f) {
+    var c = HB_COLORS[key];
+    if (!c || f <= 0) return ""; // f=0 交给状态类本色
+    var r = Math.round(c[0] + (HB_GRAY[0] - c[0]) * f);
+    var g = Math.round(c[1] + (HB_GRAY[1] - c[1]) * f);
+    var b2 = Math.round(c[2] + (HB_GRAY[2] - c[2]) * f);
+    return "rgb(" + r + "," + g + "," + b2 + ")";
+  }
   function hbPillHtml(s) {
     var hst = s && s.worker_state;
     if (!hst) return "";
     var at = +s.worker_seen_at || 0;
     if (at > 1e12) at = at / 1000; // 毫秒时间戳兜底
-    if (!at || Date.now() / 1000 - at > HB_TTL_SEC) return ""; // TTL 过期即隐
+    if (!at || Date.now() / 1000 - at >= HB_POLL_SEC + HB_TTL_SEC) return ""; // TTL 过期即隐（T1+T3）
     var key = hst.toLowerCase();
     if (!HB_STATES[key]) return ""; // 未知状态=不显（前瞻兼容 worker 新态）
-    return '<span class="hb-pill hb-' + key + '" title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
+    var f = hbFreshRatio(at);
+    var col = hbFadeColor(key, f);
+    var style = col ? ' style="background-color:' + col + '"' : "";
+    return '<span class="hb-pill hb-' + key + '" data-hb-t1="' + at + '" data-hb-key="' + key + '"' + style + ' title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
   }
+  // 实时走查（1s，仅改样式不动 DOM 结构；页签隐藏时跳过）：渐变到 1 即摘除
+  (function hbFadeLoop() {
+    setInterval(function () {
+      if (document.hidden) return;
+      var pills = document.querySelectorAll(".hb-pill[data-hb-t1]");
+      for (var i = 0; i < pills.length; i++) {
+        var el = pills[i];
+        var at = +el.getAttribute("data-hb-t1") || 0;
+        var f = hbFreshRatio(at);
+        if (f >= 1) { el.remove(); continue; }
+        var col = hbFadeColor(el.getAttribute("data-hb-key"), f);
+        if (col) el.style.backgroundColor = col;
+        else el.style.backgroundColor = "";
+      }
+    }, 1000);
+  })();
   function mgmtSubsHtml(d) {
     var subs = (d && d.subs) || [];
     var box = "";
@@ -865,7 +902,7 @@ var mgmtNodeSet = null;
     } catch (_) { return false; }
   }
   (function subsPollLoop() {
-    var POLL_MS = 10000; // 10s（boss 0923 定：30s 嫌久）；测试/调优可覆盖（下限 5s）
+    var POLL_MS = HB_POLL_SEC * 1000; // T1 同源（boss 0923 定 10s）；测试/调优可覆盖（下限 5s）
     try {
       var o = parseInt(localStorage.getItem("ovw_subs_poll_ms") || "0", 10);
       if (o >= 5000) POLL_MS = o;
