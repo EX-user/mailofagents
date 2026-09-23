@@ -127,6 +127,12 @@ func main() {
 	// with no shared mutable state. SIGTERM cancels the shared context and
 	// stops all of them. The status board redraws itself on a fast tick.
 	worker.SetMeta(buildTag, "errors-*.log beside each account's state file (+ WORKER_LOG_FILE when set)")
+	// mouse is file-level (the board is process-global): honor it from the
+	// first config. Without this line the config field never reached the
+	// board and the buttons stayed dark no matter what (boss 0924 report).
+	if len(cfgs) > 0 {
+		worker.SetMouse(cfgs[0].Mouse)
+	}
 	go worker.RenderLoop(ctx)
 	var wg sync.WaitGroup
 	cbwSet := map[string]bool{}
