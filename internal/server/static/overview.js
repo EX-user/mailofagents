@@ -55,7 +55,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
   // 仅悬停 tooltip；与活跃度黄绿灰圆点并列不混色——形制区分）。
   // 数据面（Devi rc7 定稿）：subs-overview 行两字段 worker_state / worker_seen_at
   // （秒级 epoch；>1e12 按毫秒兜底折算）。
-  var HB_TTL_SEC = 180; // 2×90s 上报周期为过期线（常数，候与 worker 上报频率对表）
+  var HB_TTL_SEC = 60; // 3×20s 上报周期为过期线（boss 0923 定口径：前端刷 10s/心跳 20s/TTL 60s）
   (function hbInjectCss() {
     var css = ".hb-pill{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;" +
       "font-size:11px;line-height:16px;font-weight:600;color:#fff;vertical-align:1px;white-space:nowrap}" +
