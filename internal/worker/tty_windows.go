@@ -59,7 +59,46 @@ var (
 	procReadConsoleIn  = kernel32.NewProc("ReadConsoleInputW")
 	procSetConsoleMode = kernel32.NewProc("SetConsoleMode")
 	procGetConsoleMode = kernel32.NewProc("GetConsoleMode")
+	procGetConsoleBuf  = kernel32.NewProc("GetConsoleScreenBufferInfo")
 )
+
+type consoleScreenBufferInfo struct {
+	dwSize              coord
+	dwCursorPosition    coord
+	wAttributes         uint16
+	srWindow            [4]int16
+	dwMaximumWindowSize coord
+}
+
+// resolveTopRowWin locates the board's absolute top row without any
+// round-trip: GetConsoleScreenBufferInfo reports the live cursor position,
+// and the board parks the cursor exactly `drawn` lines below its own top.
+// (The unix CPR trick doesn't translate here — the ESC[6n reply arrives as
+// key-event records, which round 3 proved unloved: boss demo v7 recs=1136
+// keys=286 mouse=841 err="" with clicks still dead.)
+func (b *Board) resolveTopRowWin(ctx context.Context, fd uintptr) {
+	for attempt := 0; attempt < 20; attempt++ {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
+		b.mu.Lock()
+		drawn := b.drawn
+		b.mu.Unlock()
+		if drawn == 0 {
+			continue
+		}
+		var csbi consoleScreenBufferInfo
+		if r, _, _ := procGetConsoleBuf.Call(fd, uintptr(unsafe.Pointer(&csbi))); r == 0 {
+			continue
+		}
+		b.mu.Lock()
+		b.topRow = int(csbi.dwCursorPosition.Y) - drawn + 1
+		b.mu.Unlock()
+		return
+	}
+}
 
 // readConsoleEvents drives the whole Windows input plane: opens CONIN$,
 // enables mouse+window input (QuickEdit off), then loops ReadConsoleInputW
@@ -88,6 +127,7 @@ func readConsoleEvents(ctx context.Context, b *Board) {
 		return
 	}
 	defer func() { procSetConsoleMode.Call(fd, uintptr(mode)) }() // restore
+	go b.resolveTopRowWin(ctx, fd)
 
 	rec := inputRecord{}
 	var read uint32
