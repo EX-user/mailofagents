@@ -77,7 +77,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     if (!HB_STATES[key]) return ""; // 未知状态=不显（前瞻兼容 worker 新态）
     return '<span class="hb-pill hb-' + key + '" title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
   }
-  function mgmtOverviewHtml(d) {
+  function mgmtSubsHtml(d) {
     var subs = (d && d.subs) || [];
     var box = "";
     if (!subs.length) {
@@ -92,7 +92,7 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       in7 += s.count_in_7d || 0; out7 += s.count_out_7d || 0;
     });
     box += '<div class="mgmt-sum">' + t("mgmt.sum", { n: subs.length, a: live, i: in7, o: out7 }) +
-      ' <button class="row-action mgmt-refresh" data-mgmt-go="refresh">' + t("mgmt.refresh") + "</button></div>";
+      "</div>";
     box += '<table class="mgmt-ovw"><thead><tr>' +
       "<th>" + t("mgmt.colAccount") + "</th><th>" + t("mgmt.colCounts") + "</th><th>" + t("mgmt.colAvg") + "</th><th>" + t("mgmt.colTop") + "</th></tr></thead><tbody>";
     subs.forEach(function (s) {
@@ -116,6 +116,12 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
         '<td data-label="' + esc(t("mgmt.colTop")) + '" class="mono">' + esc(top) + "</td></tr>";
     });
     box += "</tbody></table>";
+    return box;
+  }
+
+  // 概览整页 HTML = 从属表（mgmtSubsHtml，可被轮询单独就地更新）+ 连接图段。
+  function mgmtOverviewHtml(d) {
+    var box = mgmtSubsHtml(d);
     // Connections graph (superior: force-directed, N2 label blocks + A4
     // volume-scaled wedges, shown on BOTH desktop and mobile, inside the
     // Overview view). The container is rendered by renderMgmtGraph after
@@ -834,6 +840,46 @@ var mgmtNodeSet = null;
   }
 
 
+  // 0.3.1 派修（alice 0923，boss TTL 目验反馈）：从属页窗可见期间周期重拉
+  // subs-overview，就地更新汇总行+从属表（胶囊 TTL 与活跃度同帧复算）；
+  // 绝不动图容器——整页重渲会重建 vis-network 实例触发物理重排。失败静默。
+  async function refreshMgmtSubsQuiet() {
+    if (!mgmtOverviewLoaded || document.hidden) return false;
+    var box = $("#mgmt-overview");
+    if (!box || box.offsetParent === null) return false; // 视图不可见=不动
+    try {
+      var d = await api("/api/mgmt/subs-overview?days=" + graphPrefs.days, { keepSession: true });
+      mgmtOverviewData = d;
+      var fresh = document.createElement("div");
+      fresh.innerHTML = mgmtSubsHtml(d);
+      var oldSum = box.querySelector(".mgmt-sum"), newSum = fresh.querySelector(".mgmt-sum");
+      var oldTb = box.querySelector(".mgmt-ovw"), newTb = fresh.querySelector(".mgmt-ovw");
+      if (oldTb && newTb) {
+        if (oldSum && newSum) oldSum.replaceWith(newSum);
+        oldTb.replaceWith(newTb);
+        document.dispatchEvent(new CustomEvent("ovw:rendered")); // 签名跑马灯复量
+        return true;
+      }
+      loadMgmtOverview(); // 空态↔有表态翻转走整页（图也随之出现/消失）
+      return true;
+    } catch (_) { return false; }
+  }
+  (function subsPollLoop() {
+    var POLL_MS = 30000; // 30s=å³å¨ keepalive åå¨æï¼alice 30â60s åºé´ä¸éï¼ï¼æµè¯/è°ä¼å¯è¦çï¼ä¸é 5sï¼
+    try {
+      var o = parseInt(localStorage.getItem("ovw_subs_poll_ms") || "0", 10);
+      if (o >= 5000) POLL_MS = o;
+    } catch (_) {}
+    var lastPull = 0;
+    function tick() {
+      refreshMgmtSubsQuiet().then(function (ok) { if (ok) lastPull = Date.now(); });
+    }
+    setInterval(function () { if (!document.hidden) tick(); }, POLL_MS);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && Date.now() - lastPull > 10000) tick(); // 回窗即拉（防抖 10s）
+    });
+  })();
+
   // In-view actions: refresh, or deep-link to Accounts / a subordinate's
   // Messages view (the browse pane is the manage module's — bus again).
   (function wireOverviewActions() {
@@ -843,7 +889,6 @@ var mgmtNodeSet = null;
       var btn = ev.target.closest("[data-mgmt-go]");
       if (btn) {
         if (btn.dataset.mgmtGo === "accounts") { document.dispatchEvent(new CustomEvent("nav:activate", { detail: { tab: "accounts" } })); return; }
-        if (btn.dataset.mgmtGo === "refresh") { loadMgmtOverview(); return; }
       }
       var row = ev.target.closest("tr[data-mgmt-acct]");
       if (row) document.dispatchEvent(new CustomEvent("mgmt:browse-account", { detail: { address: row.dataset.mgmtAcct, folder: "inbox" } }));
