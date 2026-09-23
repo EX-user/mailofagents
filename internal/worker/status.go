@@ -414,23 +414,35 @@ func statusLine(r *statusRow, w int) string {
 	if r.ctxTokens > 0 {
 		tail = " | ctx " + ctxReadout(r.ctxTokens, r.ctxWindow, r.noticeTokens)
 	}
-	// mouse controls (boss 0.2.10 pool): ride the row's tail so the
-	// clamping below always preserves them; hovered row's buttons flip to
-	// reverse video (boss demo feedback: no hover feedback = feels dead)
+	// mouse controls (boss 0.2.10 pool): RIGHT-ALIGNED at a fixed column —
+	// uptime/detail change width every tick and moving buttons are
+	// unclickable (boss demo rounds 5-6: hit boxes drifted under the
+	// pointer); hovered button flips to reverse video (inner label only —
+	// v10 regression: wrapping whole buttons split the anchor text and the
+	// hit-map scan lost the hovered row)
+	ctl := ""
 	if board.mouse && board.enabled {
 		ht, _ := board.hoverTag.Load().(string)
 		hb, _ := board.hoverBtn.Load().(string)
 		if r.tag == ht {
-			// reverse only the INNER label: the visible "[停止] [压缩] [复制]"
-			// sequence stays contiguous so the hit-map scan keeps matching
-			// (v10 regression: wrapping whole buttons split the text and the
-			// hovered row lost its hit box — highlight oscillated off)
-			tail += "  " + btn(hb == "stop", "停止") + " " + btn(hb == "compact", "压缩") + " " + btn(hb == "copy", "复制")
+			ctl = "  " + btn(hb == "stop", "停止") + " " + btn(hb == "compact", "压缩") + " " + btn(hb == "copy", "复制")
 		} else {
-			tail += ctlText
+			ctl = ctlText
 		}
 	}
 	detail := r.detail
+	if ctl != "" {
+		base := head + tail
+		if detail != "" {
+			base = head + " | " + clampEllipsis(detail, w-lipgloss.Width(head)-
+				lipgloss.Width(tail)-lipgloss.Width(ctl)-8) + tail
+		}
+		pad := w - lipgloss.Width(base) - lipgloss.Width(ctl) - 1
+		if pad < 1 {
+			return clampCols(base+ctl, w)
+		}
+		return base + strings.Repeat(" ", pad) + ctl
+	}
 	if detail == "" {
 		if lipgloss.Width(head+tail) > w {
 			return clampCols(head, w)
