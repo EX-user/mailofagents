@@ -50,115 +50,19 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     return "idle";
   }
 
-  // 0.3.1 worker 心跳特显胶囊（boss 终态 0917：working 绿填充 / waiting 静置蓝 /
-  // compact 琥珀 / error 红 / ARMING 蓝呼吸；TTL 过期即隐回落现状；pill 免点击、
-  // 仅悬停 tooltip；与活跃度黄绿灰圆点并列不混色——形制区分）。
-  // 数据面（Devi rc7 定稿）：subs-overview 行两字段 worker_state / worker_seen_at
-  // （秒级 epoch；>1e12 按毫秒兜底折算）。
-  var HB_TTL_SEC = 60; // 3×20s 上报周期为过期线（boss 0923 定口径：前端刷 10s/心跳 20s/TTL 60s）
-  var HB_POLL_SEC = 10; // T1=前端刷新间隔（subsPollLoop 的 POLL_MS 与此同源）
-  var HB_GRAY = [0x9c, 0xa3, 0xaf]; // 渐变灰端 #9ca3af
-  var HB_COLORS = { working: [0x16, 0xa3, 0x4a], waiting: [0x25, 0x63, 0xeb], compact: [0xb4, 0x53, 0x09], error: [0xdc, 0x26, 0x26], arming: [0x25, 0x63, 0xeb] };
-  (function hbInjectCss() {
-    var css = ".hb-pill{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;" +
-      "font-size:11px;line-height:16px;font-weight:600;color:#fff;vertical-align:1px;white-space:nowrap}" +
-      ".hb-working{background:#16a34a}.hb-waiting{background:#2563eb}.hb-compact{background:#b45309}" +
-      ".hb-error{background:#dc2626}.hb-arming{background:#2563eb;animation:hbBreath 1.6s ease-in-out infinite}" +
-      "@keyframes hbBreath{0%,100%{opacity:1}50%{opacity:.55}}" +
-      ".hb-pill{transition:background-color .9s linear}";
-    var st = document.createElement("style");
-    st.textContent = css;
-    document.head.appendChild(st);
-  })();
-  var HB_STATES = { working: 1, waiting: 1, compact: 1, error: 1, arming: 1 };
-  // boss 0923 公式：f=max(t-t1-T1,0)/T3 ∈[0,1]，活跃色→灰实时渐变；f>=1 即隐（TTL）。
-  // T1=HB_POLL_SEC（前端刷新间隔）、T3=HB_TTL_SEC（失效时阈）；T2 为 worker 上报侧常数不入式。
-  function hbFreshRatio(at) {
-    var f = (Date.now() / 1000 - at - HB_POLL_SEC) / HB_TTL_SEC;
-    return f < 0 ? 0 : (f > 1 ? 1 : f);
-  }
-  function hbFadeColor(key, f) {
-    var c = HB_COLORS[key];
-    if (!c || f <= 0) return ""; // f=0 交给状态类本色
-    var r = Math.round(c[0] + (HB_GRAY[0] - c[0]) * f);
-    var g = Math.round(c[1] + (HB_GRAY[1] - c[1]) * f);
-    var b2 = Math.round(c[2] + (HB_GRAY[2] - c[2]) * f);
-    return "rgb(" + r + "," + g + "," + b2 + ")";
-  }
-  function hbPillHtml(s) {
-    var hst = s && s.worker_state;
-    if (!hst) return "";
-    var at = +s.worker_seen_at || 0;
-    if (at > 1e12) at = at / 1000; // 毫秒时间戳兜底
-    if (!at || Date.now() / 1000 - at >= HB_POLL_SEC + HB_TTL_SEC) return ""; // TTL 过期即隐（T1+T3）
-    var key = hst.toLowerCase();
-    if (!HB_STATES[key]) return ""; // 未知状态=不显（前瞻兼容 worker 新态）
-    var f = hbFreshRatio(at);
-    var col = hbFadeColor(key, f);
-    var style = col ? ' style="background-color:' + col + '"' : "";
-    return '<span class="hb-pill hb-' + key + '" data-hb-t1="' + at + '" data-hb-key="' + key + '"' + style + ' title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
-  }
-  // 实时走查（1s，仅改样式不动 DOM 结构；页签隐藏时跳过）：渐变到 1 即摘除
-  (function hbFadeLoop() {
-    setInterval(function () {
-      if (document.hidden) return;
-      var pills = document.querySelectorAll(".hb-pill[data-hb-t1]");
-      for (var i = 0; i < pills.length; i++) {
-        var el = pills[i];
-        var at = +el.getAttribute("data-hb-t1") || 0;
-        var f = hbFreshRatio(at);
-        if (f >= 1) { el.remove(); continue; }
-        var col = hbFadeColor(el.getAttribute("data-hb-key"), f);
-        if (col) el.style.backgroundColor = col;
-        else el.style.backgroundColor = "";
-      }
-    }, 1000);
-  })();
-  function mgmtSubsHtml(d) {
+  // 0.3.2 概览重构（boss 0924 认定）：链接页 = 连接图独占。从属表已并入
+  // 账户页（B 案列融合，宿主 app.js：胶囊+活动行+10s 轮询+进页即拉）；
+  // 图不跟 10s 活帧（boss 定）——进页拉一次静态呈示，60s 窗内重进只 fit
+  // 不重建（物理稳态沿用 1027/1034 冻结成果），超窗重拉。
+  function mgmtOverviewHtml(d) {
     var subs = (d && d.subs) || [];
     var box = "";
     if (!subs.length) {
-      return '<div class="mgmt-empty"><div>' + t("mgmt.emptyTitle") + '</div><div class="sub">' +
+      box += '<div class="mgmt-empty"><div>' + t("mgmt.emptyTitle") + '</div><div class="sub">' +
         t("mgmt.emptySub") + '</div><button class="row-action" data-mgmt-go="accounts">' +
         t("mgmt.goAccounts") + "</button></div>";
     }
-    var live = 0, in7 = 0, out7 = 0;
-    subs.forEach(function (s) {
-      var stt = mgmtIsActive(s);
-      if (stt === "strong" || stt === "weak") live++;
-      in7 += s.count_in_7d || 0; out7 += s.count_out_7d || 0;
-    });
-    box += '<div class="mgmt-sum">' + t("mgmt.sum", { n: subs.length, a: live, i: in7, o: out7 }) +
-      "</div>";
-    box += '<table class="mgmt-ovw"><thead><tr>' +
-      "<th>" + t("mgmt.colAccount") + "</th><th>" + t("mgmt.colCounts") + "</th><th>" + t("mgmt.colAvg") + "</th><th>" + t("mgmt.colTop") + "</th></tr></thead><tbody>";
-    subs.forEach(function (s) {
-      var st = mgmtIsActive(s);
-      var dotCls = st === "strong" ? "green" : (st === "weak" ? "yellow" : "idle");
-      var liveTxt = st === "strong" ? t("mgmt.liveStrong")
-        : (st === "weak" ? t("mgmt.liveWeak")
-        : (st === "never" ? t("mgmt.never") : t("mgmt.idle")));
-      var top = (s.top_contacts || []).map(function (c) {
-        return shortAddr(c.address) + "×" + c.count;
-      }).join(" · ") || "—";
-      function fmtAvg(v) { return v > 0 ? (v >= 1000 ? (v / 1000).toFixed(1) + "K" : String(v)) : "—"; }
-      // Liveness moved into the account cell (feedback: the standalone
-      // column wrapped at five characters); the dot keeps its meaning via
-      // the hover title.
-      box += '<tr data-mgmt-acct="' + esc(s.address) + '">' +
-        '<td data-label="' + esc(t("mgmt.colAccount")) + '"><span class="dot ' + dotCls + '" title="' + esc(liveTxt) + '"></span><span class="mono">' + esc(s.address) + '</span>' + hbPillHtml(s) +
-        (s.signature ? '<div class="ovw-sig mq"><span class="sig-track"><span class="sig-txt">' + esc(s.signature) + '</span><span class="sig-dup" aria-hidden="true">' + esc(s.signature) + "</span></span></div>" : "") + "</td>" +
-        '<td data-label="' + esc(t("mgmt.colCounts")) + '" class="mono">' + (s.count_in_7d || 0) + " / " + (s.count_out_7d || 0) + "</td>" +
-        '<td data-label="' + esc(t("mgmt.colAvg")) + '" class="mono">' + fmtAvg(s.avg_len_in) + " / " + fmtAvg(s.avg_len_out) + "</td>" +
-        '<td data-label="' + esc(t("mgmt.colTop")) + '" class="mono">' + esc(top) + "</td></tr>";
-    });
-    box += "</tbody></table>";
-    return box;
-  }
 
-  // 概览整页 HTML = 从属表（mgmtSubsHtml，可被轮询单独就地更新）+ 连接图段。
-  function mgmtOverviewHtml(d) {
-    var box = mgmtSubsHtml(d);
     // Connections graph (superior: force-directed, N2 label blocks + A4
     // volume-scaled wedges, shown on BOTH desktop and mobile, inside the
     // Overview view). The container is rendered by renderMgmtGraph after
@@ -488,9 +392,9 @@ var mgmtNodeSet = null;
       mgmtOverviewData = d;
       box.innerHTML = mgmtOverviewHtml(d);
       mgmtOverviewLoaded = true;
+      lastGraphLoad = Date.now();
       syncGraphControlLabels();
       wireGraphControls();
-      wireOvwSplit();
       renderMgmtGraph(d && d.graph, (d && d.subs) || []);
       // S2: the marquee measurer lives in app.js — let it size the new
       // .mq signature lines (accounts one-screen plan shares the grammar).
@@ -498,43 +402,6 @@ var mgmtNodeSet = null;
     } catch (e) {
       box.innerHTML = '<p class="muted">' + esc(t("common.error", { msg: e.message })) + "</p>";
     }
-  }
-
-  // Split drag handle (superior 09-02): on phones the Overview stacks the
-  // scrollable subs table above the connections graph; the handle between
-  // them drags the split vertically. Height persists in localStorage.
-  function wireOvwSplit() {
-    var wrap = document.getElementById("mgmt-graph-wrap");
-    var box = document.getElementById("mgmt-overview");
-    if (!wrap || !box || wrap.dataset.splitWired === "1") return;
-    var handle = document.createElement("button");
-    handle.type = "button";
-    handle.className = "ovw-split";
-    handle.setAttribute("aria-label", "drag to resize");
-    wrap.parentNode.insertBefore(handle, wrap);
-    var saved = 0;
-    try { saved = parseInt(localStorage.getItem("ovw_graph_h") || "0", 10); } catch (_) {}
-    if (saved > 100) wrap.style.height = saved + "px";
-    handle.addEventListener("pointerdown", function (e) {
-      if (window.innerWidth > 800) return;
-      e.preventDefault();
-      handle.setPointerCapture(e.pointerId);
-      var startY = e.clientY;
-      var startH = wrap.getBoundingClientRect().height;
-      function move(ev) {
-        var h = startH + (startY - ev.clientY); // dragging up grows the graph
-        var max = box.getBoundingClientRect().height - 160; // keep ≥160px for the list
-        wrap.style.height = Math.max(120, Math.min(max, h)) + "px";
-      }
-      function up() {
-        handle.removeEventListener("pointermove", move);
-        handle.removeEventListener("pointerup", up);
-        try { localStorage.setItem("ovw_graph_h", String(Math.round(wrap.getBoundingClientRect().height))); } catch (_) {}
-      }
-      handle.addEventListener("pointermove", move);
-      handle.addEventListener("pointerup", up);
-    });
-    wrap.dataset.splitWired = "1";
   }
 
   // Floating graph controls: one click cycles the value, persists, and
@@ -877,73 +744,6 @@ var mgmtNodeSet = null;
   }
 
 
-  // 0.3.1 派修（alice 0923，boss TTL 目验反馈）：从属页窗可见期间周期重拉
-  // subs-overview，就地更新汇总行+从属表（胶囊 TTL 与活跃度同帧复算）；
-  // 绝不动图容器——整页重渲会重建 vis-network 实例触发物理重排。失败静默。
-  async function refreshMgmtSubsQuiet() {
-    if (!mgmtOverviewLoaded || document.hidden) return false;
-    var box = $("#mgmt-overview");
-    if (!box || box.offsetParent === null) return false; // 视图不可见=不动
-    try {
-      var d = await api("/api/mgmt/subs-overview?days=" + graphPrefs.days, { keepSession: true });
-      mgmtOverviewData = d;
-      var fresh = document.createElement("div");
-      fresh.innerHTML = mgmtSubsHtml(d);
-      var oldSum = box.querySelector(".mgmt-sum"), newSum = fresh.querySelector(".mgmt-sum");
-      var oldTb = box.querySelector(".mgmt-ovw"), newTb = fresh.querySelector(".mgmt-ovw");
-      if (oldTb && newTb) {
-        // 逐行就地更新（boss 0923：任意周期滑条纹丝不动、滚动中不打断）——
-        // 行集不变时只换各行内部内容（胶囊/圆点/计数随新数据复算），
-        // 行元素本体不动，滚动/悬停零感；行集变化才整表兼容替换（带滑动快照兜底）。
-        var newRows = {}, oldRows = {};
-        var nrs = newTb.querySelectorAll("tbody tr"), ors = oldTb.querySelectorAll("tbody tr");
-        var i;
-        for (i = 0; i < nrs.length; i++) newRows[nrs[i].getAttribute("data-mgmt-acct")] = nrs[i];
-        for (i = 0; i < ors.length; i++) oldRows[ors[i].getAttribute("data-mgmt-acct")] = ors[i];
-        var sameSet = ors.length === nrs.length;
-        if (sameSet) for (var addr in newRows) if (!oldRows[addr]) { sameSet = false; break; }
-        if (sameSet) {
-          if (oldSum && newSum) oldSum.innerHTML = newSum.innerHTML;
-          for (addr in newRows) {
-            var orow = oldRows[addr];
-            if (orow.innerHTML !== newRows[addr].innerHTML) orow.innerHTML = newRows[addr].innerHTML;
-          }
-          document.dispatchEvent(new CustomEvent("ovw:rendered")); // 签名跑马灯复量
-          return true;
-        }
-        // 行集变化：整表兼容替换（滑动快照兜底）
-        var snaps = [], n = oldTb, sx = window.scrollX, sy = window.scrollY;
-        while (n && n !== document.body) {
-          if (n.scrollTop || n.scrollLeft) snaps.push([n, n.scrollTop, n.scrollLeft]);
-          n = n.parentNode;
-        }
-        if (oldSum && newSum) oldSum.replaceWith(newSum);
-        oldTb.replaceWith(newTb);
-        snaps.forEach(function (s2) { s2[0].scrollTop = s2[1]; s2[0].scrollLeft = s2[2]; });
-        if (window.scrollY !== sy || window.scrollX !== sx) window.scrollTo(sx, sy);
-        document.dispatchEvent(new CustomEvent("ovw:rendered"));
-        return true;
-      }
-      loadMgmtOverview(); // 空态↔有态翻转走整页（图也随之出现/消失）
-      return true;
-    } catch (_) { return false; }
-  }
-  (function subsPollLoop() {
-    var POLL_MS = HB_POLL_SEC * 1000; // T1 同源（boss 0923 定 10s）；测试/调优可覆盖（下限 5s）
-    try {
-      var o = parseInt(localStorage.getItem("ovw_subs_poll_ms") || "0", 10);
-      if (o >= 5000) POLL_MS = o;
-    } catch (_) {}
-    var lastPull = 0;
-    function tick() {
-      refreshMgmtSubsQuiet().then(function (ok) { if (ok) lastPull = Date.now(); });
-    }
-    setInterval(function () { if (!document.hidden) tick(); }, POLL_MS);
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden && Date.now() - lastPull > 10000) tick(); // 回窗即拉（防抖 10s）
-    });
-  })();
-
   // In-view actions: refresh, or deep-link to Accounts / a subordinate's
   // Messages view (the browse pane is the manage module's — bus again).
   (function wireOverviewActions() {
@@ -954,14 +754,14 @@ var mgmtNodeSet = null;
       if (btn) {
         if (btn.dataset.mgmtGo === "accounts") { document.dispatchEvent(new CustomEvent("nav:activate", { detail: { tab: "accounts" } })); return; }
       }
-      var row = ev.target.closest("tr[data-mgmt-acct]");
-      if (row) document.dispatchEvent(new CustomEvent("mgmt:browse-account", { detail: { address: row.dataset.mgmtAcct, folder: "inbox" } }));
     });
   })();
 
   // ---- event surface (the manage module owns the capsule + browse pane) ----
+  var lastGraphLoad = 0;
   document.addEventListener("overview:entered", function () {
-    if (!mgmtOverviewLoaded && getSession()) loadMgmtOverview();
+    if (!getSession()) return;
+    if (!mgmtOverviewLoaded || Date.now() - lastGraphLoad > 60000) loadMgmtOverview();
     else if (mgmtNetwork) setTimeout(function () {
       try { mgmtNetwork.fit({ animation: false }); } catch (_) {}
     }, 0);

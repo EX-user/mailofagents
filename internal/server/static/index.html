@@ -379,11 +379,10 @@
         <button id="btn-subreg-pc" class="primary" data-i18n="subs.registerBtn">Register a mailbox for your AI agent</button>
         <div class="muted" style="font-size: 12px; margin-top: 6px;" data-i18n="subs.registerNote">Creates a new mailbox for your AI assistant (Codex, Claude, etc.). You can read its mail here anytime.</div>
       </div>
-      <!-- Accounts one-screen plan (mobile only): the own account renders
-           here as a compact card matching the contact cards below; the
-           matching table row hides via CSS (.own-row). PC ignores it. -->
-      <div id="acc-m-own" class="m-only"></div>
-      <table id="accounts-table">
+      <!-- 0.3.2 reorg: subordinate activity summary (10s poll host is
+           this page now; hidden until data arrives / when no subs). -->
+      <div id="acc-act-sum" class="mgmt-sum" hidden></div>
+      <table id="accounts-table">      <table id="accounts-table">
         <thead><tr><th data-i18n="hdr.address">Address</th><th data-i18n="hdr.tags">Tags</th><th data-i18n="prof.signature">Signature</th><th data-i18n="hdr.created">Created</th><th data-i18n="hdr.actions">Actions</th></tr></thead>
         <tbody></tbody>
       </table>
@@ -504,17 +503,13 @@
     <section id="tab-profile" class="tab-panel hidden">
       <h2><span data-i18n="prefs.pageTitle">Preferences &amp; settings</span> <small class="muted" data-i18n="sub.profile">— profile, attachments, interface and subordinates</small></h2>
 
-      <!-- (0) Display address (v0.6.34, design 01M13ZZ5A): the ONLY place a
-           mixed-case display form may appear. Read-only line + edit entry;
-           server stores display_local (local part only, ToLower==key). -->
-      <div class="settings-section pref-card" id="dispaddr-card">
-        <h4 class="pref-title" data-i18n="disp.title">My address</h4>
-        <div class="row" style="align-items:center; gap:8px;">
-          <code id="dispaddr-value" style="font-size:13px;"></code>
-        </div>
-      </div>
+      <!-- (0) Own account card (0.3.2 reorg, boss ruling 4): the accounts
+           page own card migrates HERE in the mobile card grammar (rendered
+           by app.js renderPrefsOwnCard, same style on PC and phones). The
+           old "My address" display line retires with the migration. -->
+      <div id="pown-card"></div>
 
-      <!-- (1) Profile -->
+            <!-- (1) Profile -->
       <div class="settings-section pref-card">
         <h4 class="pref-title" data-i18n="prefs.secProfile">Profile</h4>
         <div class="compose-form">

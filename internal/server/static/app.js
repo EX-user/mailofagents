@@ -156,7 +156,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $$(".tab-panel").forEach(function (p) { p.classList.add("hidden"); });
     $("#tab-" + name).classList.remove("hidden");
     if (name === "overview") loadOverview();
-    if (name === "accounts") loadAccounts();
+    if (name === "accounts") { loadAccounts(); activityEntered(); } // 进页即拉（5s 防抖，boss 报单修）
     if (name === "inbox") document.dispatchEvent(new CustomEvent("inbox:entered"));
     if (name === "profile") document.dispatchEvent(new CustomEvent("profile:entered"));
     if (name === "mail") document.dispatchEvent(new CustomEvent("manage:entered"));
@@ -528,6 +528,169 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     }
   }
 
+  // ---- 0.3.2 概览重构：从属活动 B 案融合（boss 0924 认定）----
+  // 从属表从管理-概览并入账户页：心跳胶囊＋活动行（7 日收发/均长/常联）
+  // 融进账户表从属行与手机从属卡（不换表头、不加列）。10s 轮询宿主=
+  // 账户页可见期；进页即拉（5s 防抖——boss 报单「进页晚显 10s」修，规格
+  // alice/Devi 0924 定）；轮询就地更新只写两个活动槽位，行元素本体不动
+  // （1046 语义沿袭，滑条零扰）。图不跟活帧（boss 定）：图侧留 overview.js。
+  var HB_TTL_SEC = 60; // 3×20s 上报周期为过期线（boss 0923 定口径：前端刷 10s/心跳 20s/TTL 60s）
+  var HB_POLL_SEC = 10; // T1=前端刷新间隔（轮询 POLL_MS 与此同源）
+  var HB_GRAY = [0x9c, 0xa3, 0xaf]; // 渐变灰端 #9ca3af
+  var HB_COLORS = { working: [0x16, 0xa3, 0x4a], waiting: [0x25, 0x63, 0xeb], compact: [0xb4, 0x53, 0x09], error: [0xdc, 0x26, 0x26], arming: [0x25, 0x63, 0xeb] };
+  (function hbInjectCss() {
+    var css = ".hb-pill{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;" +
+      "font-size:11px;line-height:16px;font-weight:600;color:#fff;vertical-align:1px;white-space:nowrap}" +
+      ".hb-working{background:#16a34a}.hb-waiting{background:#2563eb}.hb-compact{background:#b45309}" +
+      ".hb-error{background:#dc2626}.hb-arming{background:#2563eb;animation:hbBreath 1.6s ease-in-out infinite}" +
+      "@keyframes hbBreath{0%,100%{opacity:1}50%{opacity:.55}}" +
+      ".hb-pill{transition:background-color .9s linear}";
+    var st = document.createElement("style");
+    st.textContent = css;
+    document.head.appendChild(st);
+  })();
+  var HB_STATES = { working: 1, waiting: 1, compact: 1, error: 1, arming: 1 };
+  // boss 0923 公式：f=max(t-t1-T1,0)/T3 ∈[0,1]，活跃色→灰实时渐变；f>=1 即隐（TTL）。
+  function hbFreshRatio(at) {
+    var f = (Date.now() / 1000 - at - HB_POLL_SEC) / HB_TTL_SEC;
+    return f < 0 ? 0 : (f > 1 ? 1 : f);
+  }
+  function hbFadeColor(key, f) {
+    var c = HB_COLORS[key];
+    if (!c || f <= 0) return ""; // f=0 交给状态类本色
+    var r = Math.round(c[0] + (HB_GRAY[0] - c[0]) * f);
+    var g = Math.round(c[1] + (HB_GRAY[1] - c[1]) * f);
+    var b2 = Math.round(c[2] + (HB_GRAY[2] - c[2]) * f);
+    return "rgb(" + r + "," + g + "," + b2 + ")";
+  }
+  function hbPillHtml(s) {
+    var hst = s && s.worker_state;
+    if (!hst) return "";
+    var at = +s.worker_seen_at || 0;
+    if (at > 1e12) at = at / 1000; // 毫秒时间戳兜底
+    if (!at || Date.now() / 1000 - at >= HB_POLL_SEC + HB_TTL_SEC) return ""; // TTL 过期即隐（T1+T3）
+    var key = hst.toLowerCase();
+    if (!HB_STATES[key]) return ""; // 未知状态=不显（前瞻兼容 worker 新态）
+    var f = hbFreshRatio(at);
+    var col = hbFadeColor(key, f);
+    var style = col ? ' style="background-color:' + col + '"' : "";
+    return '<span class="hb-pill hb-' + key + '" data-hb-t1="' + at + '" data-hb-key="' + key + '"' + style + ' title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
+  }
+  // 实时走查（1s，仅改样式/摘除，不动结构）。0.3.2 修（boss 报单双根因之二）：
+  // 走查加宿主视图域门——账户页不可见时不摘不涂，离页不再偷摘过期胶囊；
+  // 回页由进页即拉按服务器数据整槽重渲，状态以服务器为准。
+  (function hbFadeLoop() {
+    setInterval(function () {
+      if (document.hidden) return;
+      var panel = document.getElementById("tab-accounts");
+      if (!panel || panel.offsetParent === null) return;
+      var pills = document.querySelectorAll(".hb-pill[data-hb-t1]");
+      for (var i = 0; i < pills.length; i++) {
+        var el = pills[i];
+        var at = +el.getAttribute("data-hb-t1") || 0;
+        var f = hbFreshRatio(at);
+        if (f >= 1) { el.remove(); continue; }
+        var col = hbFadeColor(el.getAttribute("data-hb-key"), f);
+        if (col) el.style.backgroundColor = col;
+        else el.style.backgroundColor = "";
+      }
+    }, 1000);
+  })();
+  function shortActAddr(a) {
+    return String(a || "").split("@")[0];
+  }
+  function actLineHtml(s) {
+    var top = (s.top_contacts || []).map(function (c) {
+      return shortActAddr(c.address) + "×" + c.count;
+    }).join(" · ") || "—";
+    function fmtAvg(v) { return v > 0 ? (v >= 1000 ? (v / 1000).toFixed(1) + "K" : String(v)) : "—"; }
+    return t("acc.act7") + " " + (s.count_in_7d || 0) + "/" + (s.count_out_7d || 0) +
+      " · " + t("acc.actAvg") + " " + fmtAvg(s.avg_len_in) + "/" + fmtAvg(s.avg_len_out) +
+      " · " + t("acc.actTop") + " " + top;
+  }
+  // 活动数据＋就地应用：从属行/手机从属卡内的两个槽位（胶囊槽/活动行槽）
+  // 整槽重写，行元素与操作按钮不动——滚动/悬停零感（1046 语义）。
+  var actData = null, actLastPull = 0, actPulling = false;
+  function applyActivity() {
+    var byAddr = {};
+    ((actData && actData.subs) || []).forEach(function (s) {
+      byAddr[String(s.address).toLowerCase()] = s;
+    });
+    $$("[data-act-acct]").forEach(function (el) {
+      var s = byAddr[String(el.getAttribute("data-act-acct")).toLowerCase()];
+      var pill = el.querySelector('[data-act-slot="pill"]');
+      var line = el.querySelector('[data-act-slot="line"]');
+      if (pill) pill.innerHTML = s ? hbPillHtml(s) : "";
+      if (line) line.innerHTML = s ? actLineHtml(s) : "";
+    });
+    var sum = $("#acc-act-sum");
+    if (sum) {
+      var subs = (actData && actData.subs) || [];
+      if (subs.length) {
+        var live = 0, in7 = 0, out7 = 0;
+        var now = Date.now() / 1000;
+        var strongH = (userPrefs && userPrefs.livenessStrongHours) || 24;
+        var weakH = (userPrefs && userPrefs.livenessWeakHours) || 48;
+        subs.forEach(function (s) {
+          var traffic = Math.max(s.last_in_at || 0, s.last_out_at || 0);
+          var read = s.last_read_at || 0;
+          if ((traffic && now - traffic <= strongH * 3600) || (read && now - read <= weakH * 3600)) live++;
+          in7 += s.count_in_7d || 0; out7 += s.count_out_7d || 0;
+        });
+        sum.textContent = t("mgmt.sum", { n: subs.length, a: live, i: in7, o: out7 });
+        sum.hidden = false;
+      } else sum.hidden = true;
+    }
+  }
+  function accountsPanelVisible() {
+    var p = document.getElementById("tab-accounts");
+    return !!p && p.offsetParent !== null;
+  }
+  async function pullActivity() {
+    if (actPulling || document.hidden || !accountsPanelVisible()) return;
+    actPulling = true;
+    try {
+      var d = await api("/api/mgmt/subs-overview?days=7", { keepSession: true });
+      actData = d;
+      actLastPull = Date.now();
+      applyActivity();
+    } catch (_) { /* 失败静默（权限/网络）——活动槽保持空态 */ }
+    actPulling = false;
+  }
+  function activityEntered() {
+    // 进页即拉（5s 防抖）：进账户页 ≤一个网络往返内胶囊/活动行可见——
+    // boss 报单「进页晚显约 10s」修复的一半；另一半是走查视图域门。
+    if (Date.now() - actLastPull > 5000) pullActivity();
+  }
+  (function activityPollLoop() {
+    var POLL_MS = HB_POLL_SEC * 1000; // T1 同源（boss 0923 定 10s）；测试/调优可覆盖（下限 5s）
+    try {
+      var o = parseInt(localStorage.getItem("ovw_subs_poll_ms") || "0", 10);
+      if (o >= 5000) POLL_MS = o;
+    } catch (_) {}
+    setInterval(function () { if (!document.hidden && accountsPanelVisible()) pullActivity(); }, POLL_MS);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && accountsPanelVisible() && Date.now() - actLastPull > 10000) pullActivity(); // 回窗即拉（防抖 10s）
+    });
+  })();
+  function renderPrefsOwnCard(ownSig, ownVisible) {
+    // 0.3.2 boss 认定四：自身卡迁偏好页，双端同款手机卡样式（ct-card 语法）；
+    // 「My address」显示地址卡随迁撤销（boss：不留「我的地址 XXX」）。
+    const sess = getSession();
+    const el = $("#pown-card");
+    if (!sess || !el) return;
+    el.innerHTML =
+      '<div class="ct-card">' +
+      '<div class="ct-line">' + (ownVisible ? '<span class="badge-listed">listed</span>' : "") +
+      '<div class="ct-addr"><strong>' + esc(sess.address) + "</strong></div>" +
+      '<span class="badge-listed">you</span></div>' +
+      (ownSig ? '<div class="ct-sig">' + esc(ownSig) + "</div>" : "") +
+      '<div class="ct-foot"><button class="row-action pill-btn" id="btn-change-pw-p">' + t("act.changePw") + '</button><button class="row-action pill-btn" data-limits="' + esc(sess.address) + '">' + t("limits.open") + "</button></div>" +
+      "</div>";
+    const pw = $("#btn-change-pw-p");
+    if (pw) pw.addEventListener("click", openChangePassword);
+  }
+
   // loadAccountsRegular renders the regular-user Accounts view: themselves
   // (with a change-password button) plus the people they've exchanged mail with
   // (from /api/contacts). No admin/disabled/uuid columns — those are sensitive
@@ -575,26 +738,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       });
     } catch (e) { /* non-fatal — badges degrade to sub-only */ }
     var rows = [];
-    rows.push(
-      "<tr class=\"own-row\">" +
-      '<td class="addr-cell mq" data-label="' + t("col.address") + '"><span class="sig-track"><span class="sig-txt"><strong>' + esc(selfAddr) + '</strong></span><span class="sig-dup" aria-hidden="true"><strong>' + esc(selfAddr) + "</strong></span></span></td>" +
-      '<td data-label="' + t("col.tags") + '"><span class="badge-listed">you</span>' + (ownVisible ? ' <span class="badge-listed">listed</span>' : "") + "</td>" +
-      '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(ownSig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(ownSig) + "</span></span></td>" +
-      "<td data-label=\"Created\"></td>" +
-      '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" id="btn-change-pw">' + t("act.changePw") + '</button><button class="row-action" data-limits="' + esc(selfAddr) + '">' + t("limits.open") + "</button></td>" +
-      "</tr>"
-    );
-    // Mobile one-screen plan: the own account renders as a compact card
-    // (same grammar as the contact cards) above the subordinate zone; the
-    // table row above hides on phones via CSS (.own-row).
-    var ownMobile =
-      '<div class="ct-card">' +
-      '<div class="ct-line">' + (ownVisible ? '<span class="badge-listed">listed</span>' : "") +
-      '<div class="ct-addr mq"><span class="sig-track"><span class="sig-txt"><strong>' + esc(selfAddr) + '</strong></span><span class="sig-dup" aria-hidden="true"><strong>' + esc(selfAddr) + "</strong></span></span></div>" +
-      '<span class="badge-listed">you</span></div>' +
-      (ownSig ? '<div class="ct-sig mq"><span class="sig-track"><span class="sig-txt">' + esc(ownSig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(ownSig) + "</span></span></div>" : "") +
-      '<div class="ct-foot"><button class="row-action pill-btn" id="btn-change-pw-m">' + t("act.changePw") + '</button><button class="row-action pill-btn" data-limits="' + esc(selfAddr) + '">' + t("limits.open") + "</button></div>" +
-      "</div>";
+    // 0.3.2 概览重构（boss 认定四）：自身行已撤——自身卡迁偏好页
+    // （renderPrefsOwnCard，手机卡样式双端）。
     // Subordinates render TWICE from one pass (superior feedback round 3):
     // PC = leading table rows right after the own row (no container; the
     // register button lives above the table — #subreg-pc in index.html);
@@ -603,11 +748,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var subZone = "", pcSubRows = "", ctZone = "";
     subsList.forEach(function (e) {
       var sig = e.signature || listedSig[e.address] || "";
-      var badge = '<span class="badge-sub">' + t("subs.badge") + "</span>" +
-        (listedSet[e.address] ? ' <span class="badge-listed">listed</span>' : "");
+      // 0.3.2 tag 语义反转（boss 认定五）：从属是面板主角不打标（listed 照旧）。
+      var badge = listedSet[e.address] ? '<span class="badge-listed">listed</span>' : "";
       pcSubRows +=
-        '<tr class="subrow-pc">' +
-        '<td class="addr-cell" data-label="' + t("col.address") + '">' + esc(e.address) + "</td>" +
+        '<tr class="subrow-pc" data-act-acct="' + esc(e.address) + '">' +
+        '<td class="addr-cell" data-label="' + t("col.address") + '">' + esc(e.address) +
+        '<span class="act-pill-slot" data-act-slot="pill"></span><div class="act-line-slot" data-act-slot="line"></div></td>' +
         '<td data-label="' + t("col.tags") + '">' + badge + "</td>" +
         '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span></td>" +
         "<td data-label=\"Created\"></td>" +
@@ -617,9 +763,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // line (address marquees on overflow), signature max one line (same),
       // pill buttons bottom-right — all inside the scrollable .sub-list.
       subZone +=
-        '<div class="sub-card">' +
-        '<div class="sub-meta">' + badge + "</div>" +
+        '<div class="sub-card" data-act-acct="' + esc(e.address) + '">' +
+        '<div class="sub-meta">' + badge + '<span class="act-pill-slot" data-act-slot="pill"></span></div>' +
         '<div class="sub-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(e.address) + '</span><span class="sig-dup" aria-hidden="true">' + esc(e.address) + "</span></span></div>" +
+        '<div class="act-line-slot" data-act-slot="line"></div>' +
         '<div class="sub-sig mq">' + (sig ? '<span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span>" : "") + "</div>" +
         '<div class="sub-foot"><button class="row-action pill-btn" data-compose="' + esc(e.address) + '">' + "✉ " + t("act.compose") + '</button><button class="row-action pill-btn" data-remove-sub="' + esc(e.address) + '">' + "✕ " + t("subs.removeBtn") + '</button><button class="row-action pill-btn" data-limits="' + esc(e.address) + '">' + t("limits.open") + "</button></div>" +
         "</div>";
@@ -643,10 +790,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       (data.contacts || []).forEach(function (c) {
         if (subAddrs[c]) return; // already shown (PC leading rows / mobile container)
         seenAddrs[c] = 1;
-        // Subordinate addresses carry a badge (admin feedback: same style
-        // family as the admin/listed badges on the admin view).
-        var badge = (listedSet[c] ? ' <span class="badge-listed">listed</span>' : "") +
-          (subAddrs[c] ? ' <span class="badge-sub">' + t("subs.badge") + "</span>" : "");
+        // 0.3.2 tag 语义反转（boss 认定五）：非从属才是例外——联系人中不在
+        // 从属集内的地址打「外部」标（与 listed 并存不互斥）。纯前端推导
+        // （requestSubs 从属集在手），数据面零改动（Devi 已确认口径）。
+        var badge = (subAddrs[c] ? "" : '<span class="badge-ext">' + t("acc.badgeExt") + "</span>") +
+          (listedSet[c] ? ' <span class="badge-listed">listed</span>' : "");
         // Every address row gets the same shape (feedback: subordinate
         // rows with and without mail history must look identical):
         // badge column, Compose action; Created only where known.
@@ -701,12 +849,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       });
 
     }
-    var ownBox = $("#acc-m-own");
-    if (ownBox) {
-      ownBox.innerHTML = ownMobile;
-      var pwM = $("#btn-change-pw-m");
-      if (pwM) pwM.addEventListener("click", openChangePassword);
-    }
+    // 自身卡 → 偏好页（0.3.2 认定四）；活动槽有缓存则即时回填。
+    renderPrefsOwnCard(ownSig, ownVisible);
+    applyActivity();
   }
 
   // composeTo switches to the Compose tab and prefills the To field with the
@@ -1036,32 +1181,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       });
     });
   })();
-  // v0.6.34 display address (design 01M13ZZ5A §4, superior ruling 01M14HSA:
-  // READ-ONLY — value comes only from registration input): the settings page
-  // is the ONLY slot allowed to show the mixed-case display form; the mail
-  // face (lists, headers, threads, forest) stays lowercase key everywhere.
-  (function wireDispAddr() {
-    const dVal = $("#dispaddr-value");
-    if (!dVal) return;
-    function baseAddr() {
-      const sess = getSession();
-      return sess ? String(sess.address || "").toLowerCase() : "";
-    }
-    function render(local) {
-      const base = baseAddr();
-      dVal.textContent = local ? base.replace(/^[^@]+/, local) : base;
-    }
-    function fRefresh() {
-      api("/api/account/display-local", { keepSession: true }).then(function (d) {
-        render((d && d.display_local) || "");
-      }, function () { /* endpoint absent on older servers: keep key form */ });
-    }
-    const prefsBtn = $("#btn-prefs");
-    if (prefsBtn) prefsBtn.addEventListener("click", function () { setTimeout(fRefresh, 250); });
-    document.addEventListener("profile:entered", function () { setTimeout(fRefresh, 250); });
-    if (getSession()) fRefresh();
-  })();
-
   // v0.1.3 site copy (admin-only): three faces × zh/en → PUT /admin/site-copy
   // (all six keys submitted on every save; an empty value clears the override
   // so the built-in default shows through again — alice 01M18GRC5; ≤200 chars/key).
@@ -1204,6 +1323,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const p = await api("/api/profile/self");
       $("#profile-visible").checked = !!p.visible;
       $("#profile-signature").value = p.signature || "";
+      renderPrefsOwnCard(p.signature || "", !!p.visible); // 0.3.2：偏好页自身卡
       status.textContent = "";
       // Preferences toggles (v0.6): server prefs win, local fallback.
       mergePrefs(p.prefs);
