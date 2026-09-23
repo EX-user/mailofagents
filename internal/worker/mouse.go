@@ -102,17 +102,23 @@ func (b *Board) EnableMouse(ctx context.Context) {
 	}
 	fmt.Fprint(os.Stdout, "\x1b[2J\x1b[H"+mouseEnable)
 	// the clear homes the cursor: the board's top row is deterministically
-	// row 1 (kills the whole cursor-math offset class — boss demo round 5)
+	// row 1 (kills the whole cursor-math offset class — boss demo round 5).
+	// No CPR refinement here: any cursor probe sampled between differential
+	// ticks reads the wrong row and would overwrite this correct value
+	// (boss WSL demo: top=-2, buttons inert). Resize full repaints also
+	// re-home, so topRow stays 1 for the board's whole life.
 	b.mu.Lock()
 	b.topRow = 1
 	b.mu.Unlock()
-	go b.resolveTopRow(ctx)
 	go b.startInput(ctx)
 }
 
-// resolveTopRow waits for the first frame, then asks the terminal where the
-// cursor is: the board parks the cursor exactly `drawn` lines below its own
-// top, so reply row minus drawn is the board's absolute top row.
+// resolveTopRow is the retired CPR-based top-row probe, kept for reference:
+// it raced differential repaints (any sample between ticks reads a stale
+// cursor row) and has been superseded by EnableMouse's clear-and-home,
+// which pins topRow=1 unconditionally.
+//
+//nolint:unused
 func (b *Board) resolveTopRow(ctx context.Context) {
 	for attempt := 0; attempt < 10; attempt++ {
 		select {
