@@ -4,9 +4,11 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -64,35 +66,49 @@ var (
 // dispatching clicks and hover straight into the board. Blocks until ctx
 // is done or the console fails.
 func readConsoleEvents(ctx context.Context, b *Board) {
-	tty, err := os.OpenFile("CONIN$", os.O_RDONLY, 0)
+	// CONIN$ needs read+write for the mode dance (read-only handles have
+	// been observed dying between GetConsoleMode and the read loop — boss
+	// demo round 3: recs=0 with mode visible)
+	tty, err := os.OpenFile("CONIN$", os.O_RDWR, 0)
 	if err != nil {
+		winFail("open CONIN$: " + err.Error())
 		return
 	}
 	defer tty.Close()
 	fd := tty.Fd()
 	var mode uint32
-	if r, _, _ := procGetConsoleMode.Call(fd, uintptr(unsafe.Pointer(&mode))); r == 0 {
+	if r, _, e := procGetConsoleMode.Call(fd, uintptr(unsafe.Pointer(&mode))); r == 0 {
+		winFail("GetConsoleMode: " + e.Error())
 		return
 	}
 	addi(modeSeen, int64(mode))
 	want := (mode &^ winQuickEditMode) | winEnableMouseInput | winEnableWindowInput | winEnableExtendedOpts
-	if r, _, _ := procSetConsoleMode.Call(fd, uintptr(want)); r == 0 {
+	if r, _, e := procSetConsoleMode.Call(fd, uintptr(want)); r == 0 {
+		winFail(fmt.Sprintf("SetConsoleMode(0x%x): %v", want, e))
 		return
 	}
 	defer func() { procSetConsoleMode.Call(fd, uintptr(mode)) }() // restore
 
 	rec := inputRecord{}
 	var read uint32
+	fails := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
-		r, _, _ := procReadConsoleIn.Call(fd, uintptr(unsafe.Pointer(&rec)), 1, uintptr(unsafe.Pointer(&read)))
+		r, _, e := procReadConsoleIn.Call(fd, uintptr(unsafe.Pointer(&rec)), 1, uintptr(unsafe.Pointer(&read)))
 		if r == 0 {
-			return
+			fails++
+			winFail(fmt.Sprintf("ReadConsoleInputW: %v", e))
+			if fails > 5 {
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+			continue
 		}
+		fails = 0
 		if read == 0 {
 			continue
 		}
@@ -120,9 +136,14 @@ func readConsoleEvents(ctx context.Context, b *Board) {
 // startInput is the EnableMouse hook (platform dispatch).
 func (b *Board) startInput(ctx context.Context) { readConsoleEvents(ctx, b) }
 
+var winErrText atomic.Value // string: where the input plane died ("" alive)
+
+func winFail(msg string) { winErrText.Store(msg) }
+
 // WinDiag exposes the record-level counters for the demo driver's
 // diagnostics line (recs/keys/mouse counts and the console mode we saw).
-func WinDiag() (recs, keys, mouse int64, mode int64) {
+func WinDiag() (recs, keys, mouse int64, mode int64, errText string) {
 	return atomic.LoadInt64(recCount), atomic.LoadInt64(keyCount),
-		atomic.LoadInt64(mouseIn), atomic.LoadInt64(modeSeen)
+		atomic.LoadInt64(mouseIn), atomic.LoadInt64(modeSeen),
+		func() string { s, _ := winErrText.Load().(string); return s }()
 }
