@@ -529,10 +529,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   }
 
   // ---- 0.3.2 概览重构：从属活动 B 案融合（boss 0924 认定）----
-  // 从属表从管理-概览并入账户页：心跳胶囊＋活动行（7 日收发/均长/常联）
+  // 从属表从管理-概览并入账户页：心跳胶囊（活动行按 boss 0924 口径摘除：「7日/均/常联」不再显示）
   // 融进账户表从属行与手机从属卡（不换表头、不加列）。10s 轮询宿主=
   // 账户页可见期；进页即拉（5s 防抖——boss 报单「进页晚显 10s」修，规格
-  // alice/Devi 0924 定）；轮询就地更新只写两个活动槽位，行元素本体不动
+  // alice/Devi 0924 定）；轮询就地更新只写胶囊槽位，行元素本体不动
   // （1046 语义沿袭，滑条零扰）。图不跟活帧（boss 定）：图侧留 overview.js。
   var HB_TTL_SEC = 60; // 3×20s 上报周期为过期线（boss 0923 定口径：前端刷 10s/心跳 20s/TTL 60s）
   var HB_POLL_SEC = 10; // T1=前端刷新间隔（轮询 POLL_MS 与此同源）
@@ -596,18 +596,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       }
     }, 1000);
   })();
-  function shortActAddr(a) {
-    return String(a || "").split("@")[0];
-  }
-  function actLineHtml(s) {
-    var top = (s.top_contacts || []).map(function (c) {
-      return shortActAddr(c.address) + "×" + c.count;
-    }).join(" · ") || "—";
-    function fmtAvg(v) { return v > 0 ? (v >= 1000 ? (v / 1000).toFixed(1) + "K" : String(v)) : "—"; }
-    return t("acc.act7") + " " + (s.count_in_7d || 0) + "/" + (s.count_out_7d || 0) +
-      " · " + t("acc.actAvg") + " " + fmtAvg(s.avg_len_in) + "/" + fmtAvg(s.avg_len_out) +
-      " · " + t("acc.actTop") + " " + top;
-  }
   // 活动数据＋就地应用：从属行/手机从属卡内的两个槽位（胶囊槽/活动行槽）
   // 整槽重写，行元素与操作按钮不动——滚动/悬停零感（1046 语义）。
   var actData = null, actLastPull = 0, actPulling = false;
@@ -619,9 +607,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $$("[data-act-acct]").forEach(function (el) {
       var s = byAddr[String(el.getAttribute("data-act-acct")).toLowerCase()];
       var pill = el.querySelector('[data-act-slot="pill"]');
-      var line = el.querySelector('[data-act-slot="line"]');
       if (pill) pill.innerHTML = s ? hbPillHtml(s) : "";
-      if (line) line.innerHTML = s ? actLineHtml(s) : "";
     });
     var sum = $("#acc-act-sum");
     if (sum) {
@@ -753,7 +739,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       pcSubRows +=
         '<tr class="subrow-pc" data-act-acct="' + esc(e.address) + '">' +
         '<td class="addr-cell" data-label="' + t("col.address") + '">' + esc(e.address) +
-        '<span class="act-pill-slot" data-act-slot="pill"></span><div class="act-line-slot" data-act-slot="line"></div></td>' +
+        '<span class="act-pill-slot" data-act-slot="pill"></span></td>' +
         '<td data-label="' + t("col.tags") + '">' + badge + "</td>" +
         '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span></td>" +
         "<td data-label=\"Created\"></td>" +
@@ -766,7 +752,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         '<div class="sub-card" data-act-acct="' + esc(e.address) + '">' +
         '<div class="sub-meta">' + badge + '<span class="act-pill-slot" data-act-slot="pill"></span></div>' +
         '<div class="sub-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(e.address) + '</span><span class="sig-dup" aria-hidden="true">' + esc(e.address) + "</span></span></div>" +
-        '<div class="act-line-slot" data-act-slot="line"></div>' +
         '<div class="sub-sig mq">' + (sig ? '<span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span>" : "") + "</div>" +
         '<div class="sub-foot"><button class="row-action pill-btn" data-compose="' + esc(e.address) + '">' + "✉ " + t("act.compose") + '</button><button class="row-action pill-btn" data-remove-sub="' + esc(e.address) + '">' + "✕ " + t("subs.removeBtn") + '</button><button class="row-action pill-btn" data-limits="' + esc(e.address) + '">' + t("limits.open") + "</button></div>" +
         "</div>";
