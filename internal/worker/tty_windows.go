@@ -99,16 +99,44 @@ func (b *Board) resolveTopRowWin(ctx context.Context, fd uintptr) {
 		if drawn == 0 {
 			continue
 		}
-		var csbi consoleScreenBufferInfo
-		if r, _, _ := procGetConsoleBuf.Call(fd, uintptr(unsafe.Pointer(&csbi))); r == 0 {
-			continue
-		}
-		// viewport-relative: visible window bounds live in srWindow
-		vpTop := int(csbi.srWindow[1]) // top visible row (buffer coords)
+		// The cursor only sits at a known spot right after a FULL repaint:
+		// differential ticks leave it under whichever line changed last
+		// (boss demo v13: top=-11 — measured mid-frame, 11 rows off).
+		// Force one, then measure the instant it lands.
 		b.mu.Lock()
-		b.topRow = (int(csbi.dwCursorPosition.Y) - vpTop) - drawn + 1
+		gen0 := b.fullGen
+		b.resized = true
 		b.mu.Unlock()
-		return
+		measured := false
+		for wait := 0; wait < 200 && !measured; wait++ {
+			time.Sleep(5 * time.Millisecond)
+			b.mu.Lock()
+			gen := b.fullGen
+			b.mu.Unlock()
+			if gen <= gen0 {
+				continue
+			}
+			var csbi consoleScreenBufferInfo
+			if r, _, _ := procGetConsoleBuf.Call(fd, uintptr(unsafe.Pointer(&csbi))); r == 0 {
+				break // full repaint landed but the buffer read failed — retry the cycle
+			}
+			// re-read drawn: the forced repaint may have changed the board height
+			b.mu.Lock()
+			drawn = b.drawn
+			b.mu.Unlock()
+			if drawn == 0 {
+				break
+			}
+			// viewport-relative: visible window bounds live in srWindow
+			vpTop := int(csbi.srWindow[1]) // top visible row (buffer coords)
+			b.mu.Lock()
+			b.topRow = (int(csbi.dwCursorPosition.Y) - vpTop) - drawn + 1
+			b.mu.Unlock()
+			measured = true
+		}
+		if measured {
+			return
+		}
 	}
 }
 

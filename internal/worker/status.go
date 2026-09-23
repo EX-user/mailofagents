@@ -74,6 +74,7 @@ type Board struct {
 	dumped       []string            // dumped frame contents
 	renderMu     sync.Mutex          // serializes whole render cycles: hover-triggered renders race the tick otherwise (boss demo v3 feedback: interleaved draws corrupted layout)
 	resized      bool                // SIGWINCH seen: next drawFrame does a full screen clear + repaint
+	fullGen      int                 // bumped after every full repaint — only then is the cursor parked exactly one line below the board top (differential ticks leave it wherever the last changed line was)
 	winch        chan os.Signal      // resize notifications (nil where unavailable)
 	mouse        bool                // mouse controls on (config `mouse`, file-level; boss sign-off 2026-09-22)
 	topRow       int                 // absolute screen row of the board's first line (0 = unknown)
@@ -296,6 +297,7 @@ func (b *Board) drawFrame(frame string) {
 			b.drawn++
 		}
 		b.lastLines = newLines
+		b.fullGen++
 		return
 	}
 	total := b.drawn // board height; the cursor parks on the line below
