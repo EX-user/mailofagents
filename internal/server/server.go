@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -81,7 +82,7 @@ type Server struct {
 
 // New builds a server with the given dependencies.
 func New(s *store.Store, a *audit.Store, cfg *config.Config) *Server {
-	return &Server{
+	server := &Server{
 		store: s, audit: a, cfg: cfg,
 		sendRates:    make(map[string]*rateWindow),
 		recvRates:    make(map[string]*rateWindow),
@@ -96,6 +97,15 @@ func New(s *store.Store, a *audit.Store, cfg *config.Config) *Server {
 		boardCodeRate:  newRegLimiter(time.Minute),
 		boardBoardRate: newRegLimiter(time.Minute),
 	}
+	// First-period update push (boss-approved copy, verbatim): seeded once
+	// when the data plane first boots; a no-op once any published push
+	// exists, so admin content is never overwritten.
+	if n, err := server.store.EnsureSeedPushes(defaultPushSeed()); err != nil {
+		log.Printf("updates: seed pushes: %v", err)
+	} else if n > 0 {
+		log.Printf("updates: seeded %d push(es)", n)
+	}
+	return server
 }
 
 // domain returns the effective mail domain: the value persisted in bbolt
@@ -174,7 +184,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/inbox/mark-all-read", s.requireInitialized(s.requireAccount(s.handleInboxMarkAllRead)))
 	mux.HandleFunc("/api/message", s.requireInitialized(s.requireAccount(s.handleMessage)))
 	mux.HandleFunc("/api/profile/self", s.requireInitialized(s.requireAccount(s.handleProfileSelf)))
-	// Short alias of /api/profile/self — same handler, zero semantic drift
+	// System-update pushes (0.3.2 updates modal data plane): the shell polls
+	// latest once per overview entry and stays silent on failure; admin
+	// curates content (drafts never surface on self endpoints).
+	mux.HandleFunc("/api/updates/latest", s.requireInitialized(s.requireAccount(s.handleUpdatesLatest)))
+	mux.HandleFunc("/api/updates/read", s.requireInitialized(s.requireAccount(s.handleUpdatesRead)))
+	mux.HandleFunc("/api/admin/updates", s.requireInitialized(s.requireAdmin(s.handleAdminUpdates))) // Short alias of /api/profile/self — same handler, zero semantic drift
 	// (the self-describe document advertises /api/profile; the MCP gateway
 	// update_profile tool forwards to the /self path).
 	mux.HandleFunc("/api/profile", s.requireInitialized(s.requireAccount(s.handleProfileSelf)))

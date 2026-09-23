@@ -44,6 +44,12 @@ type Account struct {
 	// validated at the API edge; the store accepts whatever map it is
 	// given (it never interprets the contents).
 	Prefs map[string]any `json:"prefs,omitempty"`
+	// LastReadPushID is the account's system-update read watermark: the id
+	// of the newest push the account has acknowledged (MarkPushRead keeps it
+	// monotonic). Zero on old records — readers treat 0 as "nothing read",
+	// no migration needed. Push ids are unix-milli ints, so plain integer
+	// comparison against published push ids answers "unread".
+	LastReadPushID int64 `json:"last_read_push_id,omitempty"`
 	// DisplayLocal is the account's optional case-preserved spelling of its
 	// own local part, shown ONLY on the settings page / self-query (V06
 	// ruling: mail surfaces stay all-lowercase). Empty = unset. Invariant:
