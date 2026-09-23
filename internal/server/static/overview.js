@@ -892,8 +892,17 @@ var mgmtNodeSet = null;
       var oldSum = box.querySelector(".mgmt-sum"), newSum = fresh.querySelector(".mgmt-sum");
       var oldTb = box.querySelector(".mgmt-ovw"), newTb = fresh.querySelector(".mgmt-ovw");
       if (oldTb && newTb) {
+        // 滚动保护（boss 0923：10s 刷新把列表滑条打回顶部）——替换前后快照恢复
+        // 窗口与 oldTb 各祖先容器的滚动位置；无位移则零写入。
+        var snaps = [], n = oldTb, sx = window.scrollX, sy = window.scrollY;
+        while (n && n !== document.body) {
+          if (n.scrollTop || n.scrollLeft) snaps.push([n, n.scrollTop, n.scrollLeft]);
+          n = n.parentNode;
+        }
         if (oldSum && newSum) oldSum.replaceWith(newSum);
         oldTb.replaceWith(newTb);
+        snaps.forEach(function (s2) { s2[0].scrollTop = s2[1]; s2[0].scrollLeft = s2[2]; });
+        if (window.scrollY !== sy || window.scrollX !== sx) window.scrollTo(sx, sy);
         document.dispatchEvent(new CustomEvent("ovw:rendered")); // 签名跑马灯复量
         return true;
       }
