@@ -1029,7 +1029,7 @@ nav::-webkit-scrollbar { display: none; }
   /* Phones (one-screen plan): badges + address share ONE line (address
      marquees on overflow), signature max one line, pill buttons
      bottom-right; the card list scrolls via .sub-list max-height. */
-  .agentreg-card { padding: 10px 12px; }
+  .agentreg-card { padding: 10px 12px; margin-top: 0; } /* 1048i */
   .sub-card {
     display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px;
     padding: 7px 9px; margin: 5px 0;
@@ -2399,7 +2399,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 /* 账户页 v3（boss 01M1FWBSM6）：注册钮改小（同写邮件钮尺寸、保留蓝底），
    收紧外卡内边距——滑动列表本身不再独大 */
 @media (max-width: 800px) {
-  .agentreg-card { padding: 10px 12px; }
+  .agentreg-card { padding: 10px 12px; margin-top: 0; } /* 1048i */
   .agentreg-card button.primary {
     display: inline-block; width: auto; min-height: 0;
     font-size: 12px; padding: 4px 14px; margin: 0;
@@ -2759,7 +2759,8 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   background: #8b5cf6; color: #fff; margin-right: 4px;
   text-transform: uppercase; letter-spacing: 0.5px; vertical-align: middle;
 }
-#acc-act-sum { margin: 2px 0 6px; }
+#acc-act-sum { margin: 0; }
+#acc-act-sum + #accounts-table { margin-top: 2px; } /* 1048i: boss - tighten summary-to-register gap */
 /* 自身卡迁偏好页：手机卡语法（.ct-card 族原在 ≤800px 块内）宿主域双端化 */
 #pown-card { max-width: 560px; }
 #pown-card .ct-card {

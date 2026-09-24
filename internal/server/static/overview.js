@@ -74,13 +74,8 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
     // title row as capsule pills on phones — same line as the 连接图 label,
     // right-aligned. Two class-wired instances; CSS shows head pills on
     // phones and canvas circles on PC. Download glyph ⬇ (⤓ read too thin).
-    box += '<div class="mgmt-graph-head">' +
-      '<div class="mgmt-graph-actions">' +
-      '<button type="button" class="gg-btn gg-head-btn gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
-      '<button type="button" class="gg-btn gg-head-btn gg-export" title="' + esc(t("mgmt.gExport")) + '">⬇</button>' +
-      '</div>' +
-      '</div>' +
-      '<div id="mgmt-graph-wrap" class="mgmt-graph-wrap">' +
+    // 1048i（boss 0924）：播放/下载回画布内圆钮（与线性/数字一致）；图头行整体移除——链接图与切卡胶囊之间无别的内容。
+    box += '<div id="mgmt-graph-wrap" class="mgmt-graph-wrap">' +
       '<div class="mgmt-graph-controls overlay">' +
       '<button type="button" class="gg-btn" id="gg-map" title="' + esc(t("mgmt.gMap")) + '"></button>' +
       '<button type="button" class="gg-btn" id="gg-nums" title="' + esc(t("mgmt.gNums")) + '"></button>' +

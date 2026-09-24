@@ -3200,7 +3200,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // measurement timing does.
     var tabTop = page.getBoundingClientRect().top;
     if (tabTop > 0) {
-      var accH = acKbVh() - tabTop - 10;
+      var accH = acKbVh() - tabTop - 24;
       if (accH < 300) accH = 300;
       page.style.setProperty("--acc-1s", accH + "px");
     }
@@ -3223,21 +3223,21 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // so budget the card at ~52% of the space below the own card and cap
       // the sliding list at whatever the button/note chrome leaves.
       var cardTop = card ? card.getBoundingClientRect().top : subList.getBoundingClientRect().top;
-      var avail = acKbVh() - 10 - cardTop;
+      var avail = acKbVh() - 24 - cardTop;
       var fixed = card ? card.offsetHeight - subList.offsetHeight : 0;
       var cardTarget = Math.round(avail * 0.52);
       var subH = Math.min(subList.scrollHeight, Math.max(96, cardTarget - fixed));
       subList.style.maxHeight = subH + "px";
     }
     var ctTop2 = ctBox.getBoundingClientRect().top;
-    var ctH = acKbVh() - 10 - ctTop2;
+    var ctH = acKbVh() - 24 - ctTop2;
     if (ctH < reserve && subList) {
       // Shrink the subordinate list by the deficit, then re-pin exactly.
       var deficit = reserve - ctH;
       var cur = parseInt(subList.style.maxHeight, 10) || 0;
       subList.style.maxHeight = Math.max(96, cur - deficit) + "px";
       ctTop2 = ctBox.getBoundingClientRect().top;
-      ctH = acKbVh() - 10 - ctTop2;
+      ctH = acKbVh() - 24 - ctTop2;
     }
     ctBox.style.maxHeight = Math.max(96, ctH) + "px";
     // Correction pass: if anything still pushes the document past the
