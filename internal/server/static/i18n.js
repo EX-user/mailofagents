@@ -548,7 +548,8 @@
       "subs.noneVisible": "No subordinate accounts yet.",
       "subs.badge": "sub",
       // 0.3.2 reorg: external tag on non-subordinate contacts (accounts page).
-      "acc.badgeExt": "external",
+      "acc.badgeExt": "external",
+      "graph.play": "Play", "graph.fast": "Fast", "graph.stop": "Stop", "graph.dl": "Save",
       "subs.readonly": "read-only — subordinate mailbox",
       "subs.attachMeta": " attachment(s) — download not authorized",
       "subs.attachNoDl": "download not authorized",
@@ -1130,7 +1131,8 @@
       "subs.noneVisible": "暂无从属账户。",
       "subs.badge": "从属",
       // 0.3.2 概览重构：非从属「外部」标（账户页融合；活动行已按 boss 口径摘除）。
-      "acc.badgeExt": "外部",
+      "acc.badgeExt": "外部",
+      "graph.play": "播放", "graph.fast": "加速", "graph.stop": "停止", "graph.dl": "下载",
       "subs.readonly": "只读——从属邮箱",
       "subs.attachMeta": " 个附件（未授权下载）",
       "subs.attachNoDl": "未授权下载",

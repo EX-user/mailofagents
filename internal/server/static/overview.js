@@ -80,8 +80,8 @@ import { $, $$, esc, api, getSession, toast, fmtTime } from "./core.js";
       '<button type="button" class="gg-btn" id="gg-map" title="' + esc(t("mgmt.gMap")) + '"></button>' +
       '<button type="button" class="gg-btn" id="gg-nums" title="' + esc(t("mgmt.gNums")) + '"></button>' +
       '<button type="button" class="gg-btn gg-btn-days" id="gg-days"></button>' +
-      '<button type="button" class="gg-btn gg-canvas-btn gg-play" title="' + esc(t("mgmt.gPlay")) + '">▶</button>' +
-      '<button type="button" class="gg-btn gg-canvas-btn gg-export" title="' + esc(t("mgmt.gExport")) + '">⬇</button>' +
+      '<button type="button" class="gg-btn gg-canvas-btn gg-play" title="' + esc(t("mgmt.gPlay")) + '">' + esc(t("graph.play")) + '</button>' +
+      '<button type="button" class="gg-btn gg-canvas-btn gg-export" title="' + esc(t("mgmt.gExport")) + '">' + esc(t("graph.dl")) + '</button>' +
       '</div>' +
       '<div id="mgmt-graph" class="mgmt-graph is-stabilizing"></div>' +
       '</div>';
@@ -638,7 +638,7 @@ var mgmtNodeSet = null;
     playNodeOrig = null;
     if (playBadge) { playBadge.remove(); playBadge = null; }
     if (mgmtNetwork) mgmtNetwork.setOptions({ interaction: { dragNodes: true, dragView: true, selectable: true, hover: true } });
-    syncPlayButtons("▶", false, false);
+    syncPlayButtons(t("graph.play"), false, false);
   }
   var playLoading = false;
   async function startPlay() {
@@ -675,7 +675,7 @@ var mgmtNodeSet = null;
     }));
     playBadgeEnsure();
     // 三态循环（上级 09-03）：▶ 待播 → ▶▶ 一倍速播放中（点进二倍速）→ ■(大) 二倍速播放中（点停）
-    syncPlayButtons("▶▶", false, false);
+    syncPlayButtons(t("graph.fast"), false, false);
     playLoading = false;
     playState.timer = setInterval(playTick, playBeatMs());
   }
@@ -688,7 +688,7 @@ var mgmtNodeSet = null;
     if (playState.speed === 1) { // 1×→2×
       playState.speed = 2;
       if (playState.timer) { clearInterval(playState.timer); playState.timer = setInterval(playTick, playBeatMs()); }
-      syncPlayButtons("■", true, true);
+      syncPlayButtons(t("graph.stop"), true, true);
       return;
     }
     stopPlay(); // 2×→停止
