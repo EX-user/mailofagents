@@ -2737,10 +2737,6 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
 .mgmt-graph-actions { display: flex; align-items: center; gap: 6px; }
 .gg-head-btn { display: none; }
 @media (max-width: 800px) {
-  .gg-canvas-btn.gg-play, .gg-canvas-btn.gg-export { display: none; }
-  .gg-head-btn { display: flex; width: auto; min-width: 0; height: 24px;
-    padding: 0 10px; border-radius: 999px; font-size: 11px; box-shadow: none; }
-  #gg-play.is-stop, .gg-play.is-stop { font-size: 12px; }
 }
 
 /* 1034 (boss: "抖得不行"): the stabilization pre-pass is violent to watch
