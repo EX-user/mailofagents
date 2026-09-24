@@ -257,7 +257,8 @@ func (s *Server) handleSubsMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Detail: GET /api/subs/{A}/message?id=<messageID> — full body, cc
-	// included, attachment access codes stripped (Q2: metadata only).
+	// included; attachment access codes stripped unless the reader is
+	// himself a recipient of this message (see below).
 	if segs[3] == "message" {
 		id := strings.TrimSpace(r.URL.Query().Get("id"))
 		if id == "" {
@@ -278,9 +279,22 @@ func (s *Server) handleSubsMessages(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+		// Q2 strips access codes so a superior reading a subordinate's mail
+		// gets metadata-only attachments. When the reader is himself a
+		// recipient of this letter (to/cc), the download endpoint already
+		// authorizes him — keep the codes so the read-only pane can offer
+		// the same downloads his own inbox has (0924 boss report: a
+		// subordinate's letter TO the viewer showed its attachments as
+		// "download not authorized"). Non-recipient readers keep the
+		// stripped payload; the download endpoint enforces authorization
+		// regardless, so this branch grants no new capability.
+		out := *msg
+		if !isMessageRecipient(out, me) {
+			out = stripAttachmentCodes(out)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"subordinate": target,
-			"message":     stripAttachmentCodes(*msg),
+			"message":     out,
 		})
 		return
 	}
@@ -323,6 +337,23 @@ func stripAttachmentCodes(m store.Message) store.Message {
 		m.Attachments[i].AccessCode = ""
 	}
 	return m
+}
+
+// isMessageRecipient reports whether addr is a to/cc recipient of m
+// (case-insensitive, same matching semantics as the file download
+// authorization in the store).
+func isMessageRecipient(m store.Message, addr string) bool {
+	for _, a := range m.To {
+		if strings.EqualFold(a, addr) {
+			return true
+		}
+	}
+	for _, a := range m.CC {
+		if strings.EqualFold(a, addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // handleRegisterSubordinate creates a fresh random account and declares it

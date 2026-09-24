@@ -1241,6 +1241,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     const sentToMe = myAddr && String(msg.from || "").toLowerCase() === String(subAddr).toLowerCase() &&
       (msg.to || []).some(function (a) { return String(a).toLowerCase() === myAddr; });
     const atts = (msg.attachments || []);
+    // The server strips attachment access codes for this pane unless the
+    // viewer is himself a recipient of the letter (0924 boss report) —
+    // code presence is the authorization signal, so cards with a real
+    // download button render only then; everyone else keeps the
+    // metadata-only "not authorized" label (Q2 unchanged).
+    const attDownloadable = atts.some(function (a) { return a && a.access_code; });
     detail.innerHTML = inboxDetailFrame(
       '<div class="detail-row"><span class="badge-sub">' + t("subs.badge") + "</span> " +
       esc(subAddr) + ' · <i class="muted">' + t("subs.readonly") + "</i></div>" +
@@ -1251,13 +1257,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       '<div class="detail-row"><b>Date:</b> ' + fmtTime(msg.received_at) + "</div>" +
       '<div class="detail-row"><b>ID:</b> <code>' + esc(msg.id || msg.message_id) + "</code></div>" +
       (atts.length
-        ? '<div class="attach-list">' + atts.map(function (a) {
+        ? (attDownloadable
+          ? attachmentCards(msg)
+          : '<div class="attach-list">' + atts.map(function (a) {
             return '<div class="attach-card attach-card-file">' +
               '<span class="attach-clip">📎</span>' +
               '<span class="attach-name">' + esc(a.filename) + "</span>" +
               '<span class="attach-size">' + esc(fmtBytes(a.size)) + "</span>" +
               '<span class="muted">' + t("subs.attachNoDl") + "</span></div>";
-          }).join("") + "</div>"
+          }).join("") + "</div>")
         : (m.files ? '<div class="detail-row">📎 ' + m.files + t("subs.attachMeta") + "</div>" : "")) +
       "<hr>" + letterBodyHtml(msg.body != null ? msg.body : (msg.preview || "")) +
       (canReply || sentToMe
@@ -1268,6 +1276,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         : ""));
     upgradeLetterBody(detail, msg);
     wireMailNav(detail, item);
+    if (attDownloadable) wireAttachmentDownloads(detail, msg);
     wireReplyRef(detail, msg, function (pid) { showSubDetail(subAddr, { id: pid }, item); });
     const rbtn = $("#btn-reply-as-self");
     if (rbtn) rbtn.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:reply-self", { detail: { m: msg } })); });
