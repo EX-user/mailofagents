@@ -554,6 +554,7 @@
 
       "acc.badgeExt": "external",
       "acc.latestNone": "No messages yet",
+      "acc.latestPre": "Latest: ",
       "acc.latestIn": "in", "acc.latestOut": "out",
       "acc.settings": "Settings", "acc.back": "Back",
       "acc.regTitle": "Register a mailbox for your AI agent",
@@ -1147,6 +1148,7 @@
 
       "acc.badgeExt": "外部",
       "acc.latestNone": "暂无往来",
+      "acc.latestPre": "最新：",
       "acc.latestIn": "收", "acc.latestOut": "发",
       "acc.settings": "设置", "acc.back": "返回",
       "acc.regTitle": "为你的 AI agent 注册邮箱",

@@ -985,72 +985,94 @@ nav::-webkit-scrollbar { display: none; }
      many account cards must scroll the document itself, so exempt
      .acc-admin from the lock entirely. */
 
-  /* ---- 0.3.3-C: accounts listification (mobile only; boss approved v6) ----
-     One full-page list: pinned register row -> subs -> contacts. Rows are
-     equal height (75px), three-column grammar (avatar | body | gear). The
-     gear opens an in-place overlay (absolute over the row) so the page
-     layout is pixel-identical open or closed. */
-  #acc-m-contacts { border: none; background: transparent; margin-top: 6px; }
-  .cl-row {
-    position: relative;
-    display: flex; align-items: center; gap: 10px;
-    height: 75px; box-sizing: border-box;
-    padding: 0 10px;
-    background: var(--sub-card-bg);
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
+  /* ---- 0.3.3-C: accounts listification — boss directive: ported from
+   Iris's v6 implementation (shot_c6.js) verbatim; class prefix im3- kept
+   so diffing against her preview code stays 1:1. ---- */
+  .im3-list { border-top: 1px solid var(--border); background: var(--panel); }
+  .im3-row { position: relative; display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .im3-row.pinned { background: rgba(74,158,255,.07); }
+  .im3-av { width: 38px; height: 38px; border-radius: 10px; flex: 0 0 auto; align-self: center;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 15px; overflow: hidden; }
+  .im3-av.pin { border: 1px dashed var(--accent); background: transparent; color: var(--accent); font-size: 18px; font-weight: 400; }
+  .im3-av .cl-av-img { width: 38px; height: 38px; }
+  /* Equal height: the label body carries a uniform three-line height; rows
+     center whatever they have. */
+  .im3-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+    gap: 2px; justify-content: center; min-height: 54px; }
+  .im3-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 18px;
+    line-height: 18px; }
+  /* Badges/heartbeat: nowrap, never shrink (v4 defect root fix). */
+  .im3-l1 .badge-ext, .im3-l1 .badge-listed, .im3-l1 .badge { flex: 0 0 auto; white-space: nowrap; }
+  .im3-l1 .badge-ext { background: rgba(139,92,246,.22); color: #b39cff; font-size: 10px;
+    padding: 1px 6px; border-radius: 3px; }
+  .im3-l1 .act-pill-slot { flex: 0 0 auto; margin-left: auto; display: inline-flex; }
+  .im3-l1 .act-pill-slot:empty { display: none; }
+  .im3-addr { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-align: left; }
+  .im3-addr-in { display: inline-block; max-width: none; }
+  .im3-addr.mq .im3-addr-in {
+    animation: im3mq var(--mq-dur, 8s) linear infinite alternate; }
+  @keyframes im3mq {
+    0%, 16% { transform: translateX(0); }
+    84%, 100% { transform: translateX(var(--mq-shift, -40px)); } }
+  .im3-line2, .im3-line3 { font-size: 11.5px; line-height: 16px; height: 16px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .im3-line3 .cl-none { opacity: .75; }
+  /* boss directive round 2: keep the bare symbol but give it back a small
+     box, glyph a notch larger, still centered. */
+  .im3-gear { height: 26px; padding: 0 7px; border: 1px solid var(--border); border-radius: 8px;
+    background: transparent; color: var(--muted); font-size: 17px; line-height: 24px;
+    flex: 0 0 auto; align-self: center; }
+  .im3-gear:hover { color: var(--accent); border-color: var(--accent); }
+  .im3-overlay { position: absolute; inset: 0; display: none; align-items: center; gap: 8px;
+    padding: 0 12px 0 12px; background: var(--panel-2); z-index: 3; }
+  .im3-overlay.on { display: flex; }
+  .im3-overlay button { font-size: 12px; padding: 5px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+  .im3-overlay button.warn { color: #ff9c9c; border-color: rgba(255,120,120,.35); }
+  .im3-overlay .cl-close { margin-left: auto; border: none; background: transparent; color: var(--muted); font-size: 14px; }
+  .im3-title-pin { color: var(--accent); }
+  /* v6 grammar: the register entry IS the pinned list row — the old
+     above-table register banner has no place on phones (Iris's preview
+     hides it; PC keeps #subreg-pc). */
+  #subreg-pc { display: none; }
+  #tab-accounts .agentreg-card { display: none; }
+  /* boss directive: frameless full-bleed list — no outer border, rows run
+     edge-to-edge, the list spans from the floating header down to the
+     floating bottom bar (accounts page only). :has() scopes the main
+     padding/margin reset to exactly this page. */
+  body:has(#tab-accounts:not(.hidden)) main {
+    margin-top: 0; padding: 0 0 0 0; padding-bottom: 0;
   }
-  .cl-row:last-child { border-bottom: none; }
-  #acc-m-contacts .cl-row:first-child { border-top: 1px solid var(--border); }
-  .cl-av { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 10px; overflow: hidden; }
-  .cl-av-img { display: flex; align-items: center; justify-content: center;
-    width: 38px; height: 38px; border-radius: 10px;
-    background: linear-gradient(135deg, #2563eb, #7c3aed);
-    color: #fff; font-weight: 700; font-size: 15px; }
-  .cl-ext .cl-av-img { background: linear-gradient(135deg, #0891b2, #2563eb); }
-  .cl-av-reg { border: 1.5px dashed var(--accent); color: var(--accent);
-    display: flex; align-items: center; justify-content: center;
-    width: 38px; height: 38px; border-radius: 10px; font-size: 18px; background: transparent; }
-  .cl-body { flex: 1 1 0; min-width: 0; }
-  .cl-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .cl-badges { flex: 0 0 auto; display: inline-flex; gap: 4px; white-space: nowrap; }
-  .cl-addr { flex: 1 1 0; min-width: 0; font-size: 13px; font-weight: 600; }
-  .cl-l1 .act-pill-slot { flex: 0 0 auto; display: inline-flex; }
-  .cl-l1 .act-pill-slot:empty { display: none; }
-  .cl-sig { font-size: 12px; color: var(--muted); margin-top: 1px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 14px; }
-  .cl-latest { font-size: 12px; color: var(--muted); margin-top: 1px;
-    white-space: nowrap; overflow: hidden; min-height: 14px; }
-  .cl-latest .cl-none { font-style: normal; opacity: .75; }
-  .cl-latest.mq2 .cl-track { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-  .cl-gear { flex: 0 0 auto; height: 18px; padding: 0 8px; border-radius: 999px;
-    border: 1px solid var(--border); background: var(--panel); color: var(--muted);
-    font-size: 11px; line-height: 16px; cursor: pointer; }
-  .cl-gear:hover { border-color: var(--accent); color: var(--accent); }
-  .cl-reg .cl-body { display: flex; flex-direction: column; justify-content: center; }
-  .cl-reg-title { font-size: 13px; font-weight: 600; color: var(--accent); }
-  .cl-reg-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .cl-overlay {
-    display: none; position: absolute; inset: 0; z-index: 3;
-    align-items: center; justify-content: space-between; gap: 8px;
-    padding: 0 10px;
-    background: var(--sub-card-bg);
+  body:has(#tab-accounts:not(.hidden)) #tab-accounts {
+    display: flex; flex-direction: column; margin: 0; padding: 0;
+    min-height: calc(100vh - 64px - env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
   }
-  .cl-overlay.on { display: flex; }
-  .cl-ovl-acts { display: flex; gap: 8px; min-width: 0; flex-wrap: wrap; }
-  .cl-ovl-back { flex: 0 0 auto; border: none; background: transparent;
-    color: var(--muted); font-size: 12px; cursor: pointer; }
-  .cl-ovl-back:hover { color: var(--text); }
-  /* v6 preview shows the remove action in error red; the generic
-     .row-action hover/base rules elsewhere use the accent, so state the
-     red explicitly (with fallback) and let it win on hover too. */
-  .cl-overlay .row-action.cl-warn {
-    color: var(--error, #dc2626); border-color: var(--error, #dc2626);
-  }
-  .cl-overlay .row-action.cl-warn:hover {
-    color: var(--error, #dc2626); border-color: var(--error, #dc2626);
-    background: rgba(220, 38, 38, .08);
-  }
+  #tab-accounts > h2 { display: none; }
+  #acc-m-contacts { flex: 1 1 auto; margin: 0; border: none; border-top: none; }
+}
+
+
+/* ---- 0.3.3-B: bottom navigation bar (mobile only; boss approved) ----
+ Minimal-move ruling: the nav keeps its exact current styling — only the
+ container position changes. Desktop (PC) is untouched. */
+@media (max-width: 800px) {
+nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+  background: var(--panel); /* 样式照旧：顶区原 nav 承 panel 底 */
+  box-shadow: 0 -1px 0 var(--border);
+  /* boss: the tab's bottom edge sat too close to the screen edge — pad a
+     little more (safe-area still adds on top of this where present). */
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  margin: 0; padding-left: 6px; padding-right: 6px; padding-top: 6px;
+}
+/* Boss order (C correction, rides with B): the accounts summary line is
+   text outside the list — hidden on phones, PC unaffected. */
+#acc-act-sum { display: none; }
+
+
   #tab-accounts.acc-admin:not(.hidden) {
     height: auto; min-height: 0; overflow: visible;
   }
@@ -1116,7 +1138,13 @@ nav::-webkit-scrollbar { display: none; }
     border-radius: 999px; min-height: 0; }
   /* Phone-only contacts list (accounts one-screen plan). */
   .m-only { display: block; }
-  #acc-m-contacts { overflow-y: auto; margin-top: 10px; }
+  /* 0.3.3-C full-bleed: no top gap — the list touches the floating header
+     (0.3.3-B bottom-bar block keeps the bar itself fixed). */
+  #acc-m-contacts { overflow-y: auto; margin-top: 0; }
+  /* the regular plan renders the list only; the empty PC table shell (a
+     latent dup-tag on main) would otherwise add a top gap. Admin phones
+     keep the reverted data-label table (.acc-admin). */
+  #tab-accounts:not(.acc-admin) #accounts-table { display: none; }
   .ct-card {
     border: 1px solid var(--sub-card-border); border-radius: 10px;
     background: var(--sub-card-bg); padding: 7px 9px; margin: 5px 0;
@@ -1218,6 +1246,10 @@ nav::-webkit-scrollbar { display: none; }
 
   /* Give the page a little more room on small screens. */
   main { margin: 16px auto; padding: 0 14px; }
+  /* 0.3.3-B: content yields >=64px so no page's last row / the compose
+  Send button can ever sit under the fixed bottom bar. Source order after
+  the padding reset above wins the shorthand conflict. */
+  main { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
   header { padding: 10px 14px; }
 
   /* Mobile header (superior-approved layout): line 1 = title + address

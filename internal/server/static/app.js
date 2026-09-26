@@ -613,6 +613,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         var html = s ? hbPillHtml(s) : "";
         if (pill.innerHTML !== html) pill.innerHTML = html;
       }
+
+      // 0.3.3-C: the latest-message line rides the same in-place update --
+      // the poll delivers latest_subject/latest_at after first render.
+      var line3 = el.querySelector(".im3-line3");
+      if (line3) {
+        var lh = accLatestHtml(s);
+        if (line3.innerHTML !== lh) line3.innerHTML = lh;
+      }
     });
     var sum = $("#acc-act-sum");
     if (sum) {
@@ -700,59 +708,161 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     return t("acc.daysAgo", { n: diff });
   }
   function accLatestHtml(s) {
-    if (!s || !(+s.latest_at)) return '<div class="cl-latest"><span class="cl-none">' + esc(t("acc.latestNone")) + "</span></div>";
+    if (!s || !(+s.latest_at)) return '<div class="im3-line3"><span class="cl-none">' + esc(t("acc.latestNone")) + "</span></div>";
     var dir = s.latest_dir === "out" ? t("acc.latestOut") : t("acc.latestIn");
     var subj = s.latest_subject ? "\u300c" + s.latest_subject + "\u300d" : "";
-    return '<div class="cl-latest mq2"><span class="cl-track"><span class="cl-txt">' +
-      esc(accRelTime(+s.latest_at)) + " " + dir + " \u00b7 " + subj + "</span></span></div>";
+    return '<div class="im3-line3">' + esc(t("acc.latestPre")) + esc(accRelTime(+s.latest_at)) + " " + dir + (subj ? " \u00b7 " + esc(subj) : "") + "</div>";
+  }
+  // ---- 0.3.3-A: default avatar mixed generator (Iris spec v1.1) ----
+  // Deterministic: address (lowercase) -> SHA-256 -> seed bytes S[0..3].
+  // Style = S[0] % 3 (0 gradient-initial / 1 geometric-2x2 / 2 two-tone
+  // ripple). Every parameter derives from the seed — no Math.random, the
+  // same address renders the same avatar across sessions and devices.
+  var __avHashCache = {};
+  function avSeed(addr, cb) {
+    var a = String(addr).toLowerCase();
+    if (__avHashCache[a]) { cb(__avHashCache[a]); return; }
+    var subtle = (window.crypto && window.crypto.subtle) || null;
+    if (!subtle) { __avHashCache[a] = new Uint8Array([a.length, a.charCodeAt(0) || 0, a.charCodeAt(1) || 0, a.charCodeAt(2) || 0]); cb(__avHashCache[a]); return; }
+    subtle.digest("SHA-256", new TextEncoder().encode(a)).then(function (buf) {
+      __avHashCache[a] = new Uint8Array(buf.slice(0, 4));
+      cb(__avHashCache[a]);
+    }).catch(function () {
+      // fallback seed: char-code fold (spec: hash failure -> solid + initial)
+      __avHashCache[a] = new Uint8Array([0xff, a.charCodeAt(0) || 0, a.charCodeAt(1) || 0, a.charCodeAt(2) || 0]);
+      cb(__avHashCache[a]);
+    });
+  }
+  function avHsl(h, s, l) { return "hsl(" + Math.round(h) + "," + Math.round(s) + "%," + Math.round(l) + "%)"; }
+  function avGradientInitial(addr, S) {
+    // linear gradient 135°±40° (S[2]); two hues 30-60° apart, L 55/45;
+    // white bold initial centered.
+    var h1 = (S[1] * 360) / 256;
+    var h2 = h1 + 30 + (S[3] % 31);
+    var ang = 135 + (S[2] % 81) - 40;
+    var ch = esc((String(addr)[0] || "?").toUpperCase());
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' +
+      '<defs><linearGradient id="g" gradientTransform="rotate(' + ang + ' .5 .5)">' +
+      '<stop offset="0" stop-color="' + avHsl(h1, 70, 55) + '"/>' +
+      '<stop offset="1" stop-color="' + avHsl(h2, 70, 45) + '"/></linearGradient></defs>' +
+      '<rect width="96" height="96" fill="url(#g)"/>' +
+      '<text x="48" y="48" dy=".36em" text-anchor="middle" font-family="system-ui,sans-serif" font-size="44" font-weight="700" fill="#fff">' + ch + "</text></svg>";
+  }
+  function avGeoTiles(addr, S) {
+    // fixed 2x2 four tiles (v1.1: block-count random dropped); tile hues
+    // 20-40° apart, per-tile rotation in {0,90,180,270} from the seed;
+    // no border, no glyph; seam <= 2px at 96.
+    var h0 = (S[1] * 360) / 256;
+    var gap = S[3] % 3; // 0..2px seam
+    var half = (96 - gap) / 2;
+    var tiles = "";
+    for (var i = 0; i < 4; i++) {
+      var hi = h0 + (20 + (S[(i + 1) % 4] % 21)) * i;
+      var rot = [0, 90, 180, 270][S[i] % 4];
+      var x = (i % 2) * (half + gap), y = Math.floor(i / 2) * (half + gap);
+      tiles += '<rect x="' + x + '" y="' + y + '" width="' + half + '" height="' + half + '" fill="' + avHsl(hi, 65, 55 + (i % 2) * 10) + '" transform="rotate(' + rot + " " + (x + half / 2) + " " + (y + half / 2) + ')"/>';
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' + tiles + "</svg>";
+  }
+  function avRipple(addr, S) {
+    // base = seed hue; two concentric arc-ripple rings in the adjacent
+    // (S[3] even) or complementary (odd) hue; ring radii 0.66/0.33 of the
+    // box nudged +-0.08 by S[2]; no glyph.
+    var h0 = (S[1] * 360) / 256;
+    var h1 = (S[3] % 2 === 0) ? h0 + 30 : h0 + 180;
+    var r1 = 96 * (0.66 + (S[2] % 9 - 4) / 100);
+    var r2 = 96 * (0.33 + (S[2] % 9 - 4) / 100);
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' +
+      '<rect width="96" height="96" fill="' + avHsl(h0, 60, 60) + '"/>' +
+      '<circle cx="48" cy="48" r="' + r1 + '" fill="none" stroke="' + avHsl(h1, 65, 50) + '" stroke-width="7"/>' +
+      '<circle cx="48" cy="48" r="' + r2 + '" fill="none" stroke="' + avHsl(h1, 65, 62) + '" stroke-width="7"/></svg>';
+  }
+  function avSvgHtml(addr, S) {
+    var svg;
+    switch (S[0] % 3) {
+      case 0: svg = avGradientInitial(addr, S); break;
+      case 1: svg = avGeoTiles(addr, S); break;
+      default: svg = avRipple(addr, S);
+    }
+    return '<img class="cl-av-img" src="data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '" alt="" data-avgen="' + (S[0] % 3) + '">';
   }
   function accAvatarHtml(addr, isSub) {
     // A-line hook: payload avatar_hash wins -> real avatar endpoint;
-    // otherwise the deterministic identicon placeholder (visual follows the
-    // A-line spec once landed; geometry fixed here).
+    // otherwise the deterministic mixed generator (spec v1.1).
     var h = (window.__avatarHashes || {})[String(addr).toLowerCase()];
-    var inner = h
-      ? '<img class="cl-av-img" src="/api/avatar/' + encodeURIComponent(addr) + '" alt="">'
-      : '<span class="cl-av-img cl-identicon">' + esc((addr[0] || "?").toUpperCase()) + "</span>";
-    return '<span class="cl-av' + (isSub ? "" : " cl-av-ext") + '" data-av="' + esc(addr) + '">' + inner + "</span>";
+    if (h) return '<div class="im3-av' + (isSub ? "" : " im3-av-ext") + '" data-av="' + esc(addr) + '"><img class="cl-av-img" src="/api/avatar/' + encodeURIComponent(addr) + '" alt=""></div>';
+    return '<div class="im3-av' + (isSub ? "" : " im3-av-ext") + '" data-av="' + esc(addr) + '" data-avpend="1">' + esc((String(addr)[0] || "?").toUpperCase()) + "</div>";
   }
+  // Hydrate pending generator avatars (async seed -> svg swap-in place).
+  function avHydrate(root) {
+    $$("[data-avpend]", root).forEach(function (el) {
+      avSeed(el.getAttribute("data-av"), function (S) {
+        if (S[0] === 0xff) { // hash failure fallback: solid + initial (spec)
+          var hue = (S[1] * 360) / 256;
+          el.style.background = avHsl(hue, 60, 60);
+          el.classList.add("cl-av-img");
+          el.removeAttribute("data-avpend");
+          return;
+        }
+        el.innerHTML = avSvgHtml(el.getAttribute("data-av"), S);
+        el.removeAttribute("data-avpend");
+      });
+    });
+  }
+
   function accOverlayHtml(addr, isSub) {
     var acts = "";
-    if (isSub) acts += '<button class="row-action cl-warn" data-remove-sub="' + esc(addr) + '">\u2715 ' + t("subs.removeBtn") + "</button>";
-    acts += '<button class="row-action" data-limits="' + esc(addr) + '">' + t("limits.open") + "</button>";
-    return '<div class="cl-overlay" data-ovl="' + esc(addr) + '">' +
-      '<div class="cl-ovl-acts">' + acts + "</div>" +
-      '<button class="cl-ovl-back" data-ovl-back="' + esc(addr) + '">\u2715 ' + t("acc.back") + "</button></div>";
+    if (isSub) acts += '<button class="warn" data-remove-sub="' + esc(addr) + '">\u2715 ' + t("subs.removeBtn") + "</button>";
+    acts += '<button data-limits="' + esc(addr) + '">' + t("limits.open") + "</button>";
+    return '<div class="im3-overlay" data-ovl="' + esc(addr) + '">' +
+      acts +
+      '<button class="cl-close" data-ovl-back="' + esc(addr) + '">\u2715 ' + t("acc.back") + "</button></div>";
   }
   function accRowHtml(o) {
     var av = accAvatarHtml(o.addr, o.isSub);
     var latest = accLatestHtml(o.sub);
-    return '<div class="cl-row' + (o.isSub ? " cl-sub" : " cl-ext") + '" data-act-acct="' + esc(o.addr) + '" data-claddr="' + esc(o.addr) + '">' +
+    var sigLine = o.sig ? esc(o.sig) : "";
+    return '<div class="im3-row' + (o.isSub ? " im3-sub" : " im3-ext") + '" data-act-acct="' + esc(o.addr) + '" data-claddr="' + esc(o.addr) + '">' +
       av +
-      '<div class="cl-body">' +
-        '<div class="cl-l1"><span class="cl-badges">' + o.badge + '</span><span class="cl-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(o.addr) + '</span><span class="sig-dup" aria-hidden="true">' + esc(o.addr) + "</span></span></span>" +
+      '<div class="im3-main">' +
+        '<div class="im3-l1">' + o.badge +
+        '<span class="im3-addr"><span class="im3-addr-in">' + esc(o.addr) + "</span></span>" +
         '<span class="act-pill-slot" data-act-slot="pill"></span></div>' +
-        '<div class="cl-sig">' + (o.sig ? esc(o.sig) : "") + "</div>" +
+        '<div class="im3-line2">' + sigLine + "</div>" +
         latest +
       "</div>" +
-      '<button class="cl-gear" data-gear="' + esc(o.addr) + '" aria-label="' + esc(t("acc.settings")) + '">\u2699</button>' +
+      (o.isSub ? '<button class="im3-gear" data-gear="' + esc(o.addr) + '" aria-label="' + esc(t("acc.settings")) + '">\u2699</button>' : '') +
       accOverlayHtml(o.addr, o.isSub) +
       "</div>";
   }
+  // Iris v6 marquee scan (verbatim semantics): overflow detection sets the
+  // shift distance and duration; the CSS keyframes do the ping-pong.
+  function im3MarqueeScan(root) {
+    $$(".im3-addr", root).forEach(function (el) {
+      var inn = el.querySelector(".im3-addr-in");
+      if (!inn) return;
+      var over = inn.scrollWidth - el.clientWidth;
+      if (over > 1) {
+        el.classList.add("mq");
+        el.style.setProperty("--mq-shift", (-over - 2) + "px");
+        el.style.setProperty("--mq-dur", Math.max(6, over / 18).toFixed(1) + "s");
+      } else { el.classList.remove("mq"); el.style.removeProperty("--mq-shift"); }
+    });
+  }
   function accWireList(root) {
     // Row tap = compose; gear tap = in-place overlay; back hides it.
-    $$(".cl-row", root).forEach(function (row) {
+    $$(".im3-row", root).forEach(function (row) {
       row.addEventListener("click", function (ev) {
-        if (ev.target.closest("[data-gear]") || ev.target.closest(".cl-overlay")) return;
+        if (ev.target.closest("[data-gear]") || ev.target.closest(".im3-overlay")) return;
         document.dispatchEvent(new CustomEvent("compose:to", { detail: { address: row.getAttribute("data-claddr") } }));
       });
       var gear = row.querySelector("[data-gear]");
       if (gear) gear.addEventListener("click", function () {
-        $$(".cl-overlay.on", root).forEach(function (o) { if (o !== row.querySelector(".cl-overlay")) o.classList.remove("on"); });
-        row.querySelector(".cl-overlay").classList.toggle("on");
+        $$(".im3-overlay.on", root).forEach(function (o) { if (o !== row.querySelector(".im3-overlay")) o.classList.remove("on"); });
+        row.querySelector(".im3-overlay").classList.toggle("on");
       });
       var back = row.querySelector("[data-ovl-back]");
-      if (back) back.addEventListener("click", function () { row.querySelector(".cl-overlay").classList.remove("on"); });
+      if (back) back.addEventListener("click", function () { row.querySelector(".im3-overlay").classList.remove("on"); });
     });
     $$("[data-compose], [data-remove-sub]", root).forEach(function (b) {
       if (b.dataset.compose) b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:to", { detail: { address: b.dataset.compose } })); });
@@ -900,10 +1010,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var ctBox = $("#acc-m-contacts");
     if (ctBox) {
       // 0.3.3-C: pinned register row first, then subs + contacts in one list.
-      var regRow = '<div class="cl-row cl-reg" data-reg>' +
-        '<span class="cl-av cl-av-reg">\uff0b</span>' +
-        '<div class="cl-body"><div class="cl-reg-title">' + esc(t("acc.regTitle")) + '</div>' +
-        '<div class="cl-reg-sub">' + esc(t("acc.regSub")) + "</div></div></div>";
+      var regRow = '<div class="im3-row pinned" data-reg>' +
+        '<div class="im3-av pin">\uff0b</div>' +
+        '<div class="im3-main">' +
+        '<div class="im3-l1"><span class="im3-addr im3-title-pin"><span class="im3-addr-in">' + esc(t("acc.regTitle")) + "</span></span></div>" +
+        '<div class="im3-line2">' + esc(t("acc.regSub")) + "</div></div></div>";
       ctBox.innerHTML = regRow + clRows;
       var regEl = ctBox.querySelector("[data-reg]");
       if (regEl) regEl.addEventListener("click", function () {
@@ -911,7 +1022,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         if (b) b.click();
       });
       accWireList(ctBox);
-      if (typeof maybeMarqueeSigs === "function") maybeMarqueeSigs();
+      avHydrate(ctBox);
+      im3MarqueeScan(ctBox);
     }
     // 自身卡 → 偏好页（0.3.2 认定四）；活动槽有缓存则即时回填。
     renderPrefsOwnCard(ownSig, ownVisible);
@@ -3406,7 +3518,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       } catch (_) { /* token endpoint optional; basic auth still works */ }
       status.textContent = "";
       showApp();
-      activateTab("overview");
+      // 0.3.3-B (boss directive): on phones the app opens on the Accounts
+      // page (the IM-style list); PC keeps Overview as the landing tab.
+      activateTab(window.matchMedia && window.matchMedia("(max-width: 800px)").matches ? "accounts" : "overview");
     } catch (e) {
       setSession(null);
       // The tentative session (set above) makes core's 401 path report
