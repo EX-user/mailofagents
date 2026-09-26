@@ -1869,7 +1869,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           updateTokenRole(me.is_admin);
       maybeMarqueeWhoami(); // role suffix changes text width (01M1836CAK)
           showApp(me.is_admin);
-          activateTab("overview");
+          // Same landing rule as the login path (boss directive): on phones
+          // refresh lands on the Accounts page too.
+          activateTab(window.matchMedia && window.matchMedia("(max-width: 800px)").matches ? "accounts" : "overview");
         } catch (e) {
           // Verification failed (401 already cleared session + showed login).
           showLogin();
