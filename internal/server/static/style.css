@@ -1041,7 +1041,16 @@ nav::-webkit-scrollbar { display: none; }
   .cl-ovl-back { flex: 0 0 auto; border: none; background: transparent;
     color: var(--muted); font-size: 12px; cursor: pointer; }
   .cl-ovl-back:hover { color: var(--text); }
-  .cl-warn { color: var(--error); border-color: var(--error); }
+  /* v6 preview shows the remove action in error red; the generic
+     .row-action hover/base rules elsewhere use the accent, so state the
+     red explicitly (with fallback) and let it win on hover too. */
+  .cl-overlay .row-action.cl-warn {
+    color: var(--error, #dc2626); border-color: var(--error, #dc2626);
+  }
+  .cl-overlay .row-action.cl-warn:hover {
+    color: var(--error, #dc2626); border-color: var(--error, #dc2626);
+    background: rgba(220, 38, 38, .08);
+  }
   #tab-accounts.acc-admin:not(.hidden) {
     height: auto; min-height: 0; overflow: visible;
   }
