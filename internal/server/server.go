@@ -205,6 +205,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/files/upload", s.requireInitialized(s.requireAccount(s.handleFileUpload)))
 	mux.HandleFunc("/api/files/list", s.requireInitialized(s.requireAccount(s.handleFileList)))
 	mux.HandleFunc("/api/files/", s.requireInitialized(s.requireAccount(s.handleFileDownload)))
+	// Avatars (0.3.3 feature A): self-service upload/clear + in-wall GET.
+	// D1 approved (boss 0925): guest-page real avatars via the public
+	// endpoint — Visible + has-avatar are the hard conditions, else 404.
+	mux.HandleFunc("/api/account/avatar", s.requireInitialized(s.requireAccount(s.handleAccountAvatar)))
+	mux.HandleFunc("/api/avatar/", s.requireInitialized(s.requireAccount(s.handleAvatarGet)))
+	mux.HandleFunc("/api/public/avatar", s.requireInitialized(s.handlePublicAvatar))
 	mux.HandleFunc("/api/password", s.requireInitialized(s.requireAccount(s.handleChangePassword)))
 	// Remember-login session tokens (v0.6.27): mint with Basic auth, revoke
 	// (logout) with the bearer token itself.

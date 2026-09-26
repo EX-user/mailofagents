@@ -39,6 +39,7 @@ var (
 	bPushSubs = []byte("pushsubs") // web push subscriptions: sha256(endpoint) -> PushSubscription (v0.6.30)
 	bPushDND  = []byte("pushdnd")  // per-account notification do-not-disturb windows (v0.6.30)
 	bUpdates  = []byte("updates")  // system-update pushes: unix-milli id (8B BE) -> PushRecord (0.3.2)
+	bAvatars  = []byte("avatars")  // account avatars: lowercase address -> image bytes (0.3.3 feature A)
 )
 
 // Meta keys within the meta bucket.
@@ -79,7 +80,7 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{db: db, now: time.Now}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bAccounts, bMessages, bInbox, bSent, bUnread, bMeta, bShowcase, bFiles, bFileData, bSubs, bTokens, bPushSubs, bPushDND, bBoards, bBoardCodes, bBoardLines, bWorkerBeat, bUpdates} {
+		for _, b := range [][]byte{bAccounts, bMessages, bInbox, bSent, bUnread, bMeta, bShowcase, bFiles, bFileData, bSubs, bTokens, bPushSubs, bPushDND, bBoards, bBoardCodes, bBoardLines, bWorkerBeat, bUpdates, bAvatars} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("create bucket %q: %w", b, err)
 			}

@@ -55,6 +55,12 @@ type Account struct {
 	// ruling: mail surfaces stay all-lowercase). Empty = unset. Invariant:
 	// strings.ToLower(DisplayLocal) == local part of Address.
 	DisplayLocal string `json:"display_local,omitempty"`
+	// AvatarHash is the ETag of the account's uploaded avatar (random hex,
+	// re-minted on every save; empty = no avatar, client falls back to the
+	// address-seeded default). AvatarAt is the save time, audit evidence.
+	// 0.3.3 feature A; the bytes live in the dedicated avatars bucket.
+	AvatarHash string `json:"avatar_hash,omitempty"`
+	AvatarAt   int64  `json:"avatar_at,omitempty"`
 	// MaxRecipients caps how many addresses the account may put in a
 	// send's "to" array; MaxCC caps "cc" the same way. 0 = unlimited —
 	// the default, and what old records without these fields decode to,

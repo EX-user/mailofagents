@@ -24,7 +24,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 // anonymously; the server binary IS the delivery vehicle, so a server swap
 // can never lose the file (alice's review point: an ops-managed file would
 // silently degrade the TWA to a browser tab on redeploy).
-//   GET /.well-known/assetlinks.json
+//
+//	GET /.well-known/assetlinks.json
 func (s *Server) handleAssetlinks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		methodNotAllowed(w)
@@ -40,7 +41,8 @@ func (s *Server) handleAssetlinks(w http.ResponseWriter, r *http.Request) {
 
 // handleStatus reports initialization state (no auth). Used by the panel to
 // decide whether to show the setup wizard or the normal UI.
-//   GET /api/status -> {"initialized": bool, "domain": "..."}
+//
+//	GET /api/status -> {"initialized": bool, "domain": "..."}
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"initialized":                   s.store.IsInitialized(),
@@ -53,8 +55,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 // handleSetup performs first-time initialization. Only works when the system
 // is NOT yet initialized; after that it returns 409. Creates the admin
 // account, stores the domain, and marks the system initialized.
-//   POST /setup {"admin_password": "...", "domain": "..."}
-//   -> {"admin_address": "..."}
+//
+//	POST /setup {"admin_password": "...", "domain": "..."}
+//	-> {"admin_address": "..."}
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -106,8 +109,9 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRegister creates a new account from a semantic name.
-//   POST /api/register  {"name": "frontend-engineer-1"}
-//   -> {"address": "...", "password": "..."}
+//
+//	POST /api/register  {"name": "frontend-engineer-1"}
+//	-> {"address": "...", "password": "..."}
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -185,8 +189,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleVerifyPassword checks a credential pair.
-//   POST /api/verify-password  {"address": "...", "password": "..."}
-//   -> {"ok": true} or 401
+//
+//	POST /api/verify-password  {"address": "...", "password": "..."}
+//	-> {"ok": true} or 401
 func (s *Server) handleVerifyPassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -208,8 +213,10 @@ func (s *Server) handleVerifyPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSend posts a message from the authenticated account.
-//   POST /api/send  {"to": [...], "subject": "...", "body": "...", "public": bool, "attachments": ["fileID", ...]}
-//   -> {"message_id": "..."}
+//
+//	POST /api/send  {"to": [...], "subject": "...", "body": "...", "public": bool, "attachments": ["fileID", ...]}
+//	-> {"message_id": "..."}
+//
 // public (optional, default false) additionally writes an independent copy
 // to the showcase bucket for the public portal sample — explicit opt-in by
 // the sender; delivery is unaffected either way.
@@ -317,7 +324,9 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleInbox lists the authenticated account's inbox.
-//   GET /api/inbox?limit=20  -> {"messages": [...], "count": N}
+//
+//	GET /api/inbox?limit=20  -> {"messages": [...], "count": N}
+//
 // Every owner pull also stamps the liveness weak-evidence mark (contract
 // addendum, superior ruling): a watcher polling this endpoint is exactly
 // the automation the yellow tier wants to surface. This is the single
@@ -355,7 +364,9 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleInboxMarkAllRead clears every unread marker in the caller's inbox.
-//   POST /api/inbox/mark-all-read (no body) -> {"marked": N}
+//
+//	POST /api/inbox/mark-all-read (no body) -> {"marked": N}
+//
 // The panel's bulk-dismiss button uses it; the badge drops to zero on the
 // next poll.
 func (s *Server) handleInboxMarkAllRead(w http.ResponseWriter, r *http.Request) {
@@ -375,7 +386,8 @@ func (s *Server) handleInboxMarkAllRead(w http.ResponseWriter, r *http.Request) 
 
 // handleMessage fetches one message by id, if the authenticated account can
 // see it (inbox or sent).
-//   GET /api/message?id=...  -> {"message_id","from","to","subject","body","received_at"}
+//
+//	GET /api/message?id=...  -> {"message_id","from","to","subject","body","received_at"}
 func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 	who := accountFrom(r.Context())
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
@@ -426,8 +438,9 @@ func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 
 // handleThread returns the bilateral conversation between the authenticated
 // account and one peer, newest first.
-//   GET /api/thread?with=<address>&limit=50&offset=0
-//     -> {"peer","messages":[{...MessageSummary, "dir":"in"|"out"}],"count"}
+//
+//	GET /api/thread?with=<address>&limit=50&offset=0
+//	  -> {"peer","messages":[{...MessageSummary, "dir":"in"|"out"}],"count"}
 func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 	who := accountFrom(r.Context())
 	// Two modes on one endpoint (v0.6.15): the original bilateral window
@@ -467,9 +480,10 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 
 // handleProfileSelf updates the authenticated account's directory visibility
 // and signature. Uses account Basic auth (like handleSend).
-//   GET  /api/profile/self  -> {"address","visible","signature"}
-//   POST /api/profile/self  {"visible": bool, "signature": string}
-//   -> {"ok": true, "visible": bool, "signature": string}
+//
+//	GET  /api/profile/self  -> {"address","visible","signature"}
+//	POST /api/profile/self  {"visible": bool, "signature": string}
+//	-> {"ok": true, "visible": bool, "signature": string}
 //
 // signature is trimmed and capped at 200 characters (MaxSignatureLen).
 func (s *Server) handleProfileSelf(w http.ResponseWriter, r *http.Request) {
@@ -609,8 +623,9 @@ func (s *Server) handleProfileSelf(w http.ResponseWriter, r *http.Request) {
 // is uniform. This is the account-level companion to /api/info (which is
 // system-level): directory moves here from server_info so MCP tools split by
 // responsibility (system info vs account info vs self-update).
-//   GET /api/account/info?query=self       -> {address, visible, signature}
-//   GET /api/account/info?query=directory  -> {entries:[{address, signature}]}
+//
+//	GET /api/account/info?query=self       -> {address, visible, signature}
+//	GET /api/account/info?query=directory  -> {entries:[{address, signature}]}
 //
 // query=directory reuses ListVisibleAccounts (same data as the public
 // /api/info?query=directory); it is exposed here too so the account_info MCP
@@ -633,7 +648,7 @@ func (s *Server) handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		used, fileCount, expiring := s.store.AccountFileStats(acc.Address)
-		writeJSON(w, http.StatusOK, map[string]any{
+		resp := map[string]any{
 			"query":                "self",
 			"address":              acc.Address,
 			"is_admin":             acc.IsAdmin,
@@ -642,7 +657,9 @@ func (s *Server) handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 			"files_used_bytes":     used,
 			"attachments_count":    fileCount,
 			"attachments_expiring": expiring,
-		})
+		}
+		exposeAvatarHash(resp, acc)
+		writeJSON(w, http.StatusOK, resp)
 
 	case "directory":
 		visible, err := s.store.ListVisibleAccounts()
@@ -651,8 +668,9 @@ func (s *Server) handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		type dirEntry struct {
-			Address   string `json:"address"`
-			Signature string `json:"signature"`
+			Address    string `json:"address"`
+			Signature  string `json:"signature"`
+			AvatarHash string `json:"avatar_hash,omitempty"`
 		}
 		// Return-layer merge (same as /api/info directory): legacy mixed-case
 		// twin rows collapse into one lowercase entry.
@@ -661,7 +679,7 @@ func (s *Server) handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 			func(a *store.Account) { a.Address = strings.ToLower(a.Address) })
 		entries := make([]dirEntry, 0, len(rows))
 		for _, a := range rows {
-			entries = append(entries, dirEntry{Address: a.Address, Signature: a.Signature})
+			entries = append(entries, dirEntry{Address: a.Address, Signature: a.Signature, AvatarHash: a.AvatarHash})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"query":   "directory",
@@ -678,7 +696,8 @@ func (s *Server) handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 // account has exchanged mail with (inbox senders + sent recipients, excluding
 // self). Account Basic auth. Used by the regular-user panel's Accounts tab and
 // the Compose "to" dropdown.
-//   GET /api/contacts  -> {"contacts": ["a@...", "b@..."], "count": N}
+//
+//	GET /api/contacts  -> {"contacts": ["a@...", "b@..."], "count": N}
 func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w)
@@ -694,7 +713,9 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSent lists the authenticated account's sent messages.
-//   GET /api/sent?limit=50&offset=M  -> {"messages": [...], "count": N, "total_count": T}
+//
+//	GET /api/sent?limit=50&offset=M  -> {"messages": [...], "count": N, "total_count": T}
+//
 // total_count is the full sent count regardless of the page window (mirrors
 // /api/inbox; the My-activity cards request limit=1 and read total_count).
 // offset pages newest-first, same contract as the inbox endpoint.
@@ -718,7 +739,8 @@ func (s *Server) handleSent(w http.ResponseWriter, r *http.Request) {
 // handleMyGrowth returns the authenticated account's recent in/out activity
 // (today/week scalars + a 7-day array). Account-authenticated — this is
 // personal data, deliberately NOT under public /api/info.
-//   GET /api/mygrowth -> {"today_in","today_out","week_in","week_out","days":[...]}
+//
+//	GET /api/mygrowth -> {"today_in","today_out","week_in","week_out","days":[...]}
 func (s *Server) handleMyGrowth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w)
@@ -735,7 +757,8 @@ func (s *Server) handleMyGrowth(w http.ResponseWriter, r *http.Request) {
 
 // handleChangePassword lets the authenticated account change its own password
 // by proving the old password. Account Basic auth.
-//   POST /api/password {"old_password":"...","new_password":"..."} -> {"ok":true}
+//
+//	POST /api/password {"old_password":"...","new_password":"..."} -> {"ok":true}
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -776,7 +799,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 // (remember-login, v0.6.27). The client authenticated via Basic (the token
 // does not exist yet); repeat logins keep older tokens alive — multi-device
 // friendly per alice's ruling.
-//   POST /api/auth/token -> {"token": "...", "expires_at": 123}
+//
+//	POST /api/auth/token -> {"token": "...", "expires_at": 123}
 func (s *Server) handleAuthTokenIssue(w http.ResponseWriter, r *http.Request) {
 	who := accountFrom(r.Context())
 	token, expiresAt, err := s.store.CreateSessionToken(who)
@@ -831,7 +855,7 @@ func (s *Server) badRequestErr(w http.ResponseWriter, r *http.Request, err error
 	log.Printf("[server] %s %s: %v", r.Method, r.URL.Path, err)
 	badRequest(w, "bad request")
 }
-func conflict(w http.ResponseWriter, msg string)   { http.Error(w, msg, http.StatusConflict) }
+func conflict(w http.ResponseWriter, msg string) { http.Error(w, msg, http.StatusConflict) }
 func internalError(w http.ResponseWriter, msg string) {
 	http.Error(w, msg, http.StatusInternalServerError)
 }
@@ -900,8 +924,10 @@ func isASCIIDomain(s string) bool {
 // handleRegisterTeam provisions an owner account plus its subordinate bot
 // accounts in one atomic transaction — the guest portal's "register for an
 // AI team" entry (superior-approved contract).
-//   POST /api/register-team {"username","password","team_size"}
-//   -> {"owner":{"address","password"},"members":[...]}   (one-time)
+//
+//	POST /api/register-team {"username","password","team_size"}
+//	-> {"owner":{"address","password"},"members":[...]}   (one-time)
+//
 // team_size 1-10 (default 3) counts MEMBERS ONLY — the owner account is
 // extra (architect ruling: 3 = 1 owner + 3 members); per-IP throttle
 // 4/hour; audit register_team.

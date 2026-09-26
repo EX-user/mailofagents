@@ -56,6 +56,8 @@ const (
 	ActionPushRevoke           Action = "push_revoke"          // subscription removal
 	ActionInvalidMailBackup    Action = "invalid_mail_backup"  // pre-mass-delete db snapshot
 	ActionInvalidMailDelete    Action = "invalid_mail_delete"  // admin purge of all-TO-missing mail
+	ActionAvatarSet            Action = "avatar_set"           // 0.3.3 avatar upload (self)
+	ActionAvatarClear          Action = "avatar_clear"         // 0.3.3 avatar removal back to default
 )
 
 // Entry is one audit record.
