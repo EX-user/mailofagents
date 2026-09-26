@@ -1003,7 +1003,7 @@ nav::-webkit-scrollbar { display: none; }
   .im3-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 18px;
     line-height: 18px; }
   /* Badges/heartbeat: nowrap, never shrink (v4 defect root fix). */
-  .im3-l1 .badge-ext, .im3-l1 .badge-listed, .im3-l1 .badge { flex: 0 0 auto; white-space: nowrap; }
+  .im3-l1 .badge-ext, .im3-l1 .badge-listed, .im3-l1 .badge { flex: 0 0 auto; white-space: nowrap; line-height: 1; }
   .im3-l1 .badge-ext { background: rgba(139,92,246,.22); color: #b39cff; font-size: 10px;
     padding: 1px 6px; border-radius: 3px; }
   .im3-l1 .act-pill-slot { flex: 0 0 auto; margin-left: auto; display: inline-flex; }
