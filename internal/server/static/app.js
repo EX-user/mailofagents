@@ -770,8 +770,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // box nudged +-0.08 by S[2]; no glyph.
     var h0 = (S[1] * 360) / 256;
     var h1 = (S[3] % 2 === 0) ? h0 + 30 : h0 + 180;
-    var r1 = 96 * (0.66 + (S[2] % 9 - 4) / 100);
-    var r2 = 96 * (0.33 + (S[2] % 9 - 4) / 100);
+    var r1 = 96 * (0.66 + (S[2] % 17 - 8) / 100);
+    var r2 = 96 * (0.33 + (S[2] % 17 - 8) / 100);
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' +
       '<rect width="96" height="96" fill="' + avHsl(h0, 60, 60) + '"/>' +
       '<circle cx="48" cy="48" r="' + r1 + '" fill="none" stroke="' + avHsl(h1, 65, 50) + '" stroke-width="7"/>' +
