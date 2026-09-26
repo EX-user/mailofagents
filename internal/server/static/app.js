@@ -786,11 +786,24 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     }
     return '<img class="cl-av-img" src="data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '" alt="" data-avgen="' + (S[0] % 3) + '">';
   }
+  // 404 fallback (A-line task 4): avatar_hash present but the real avatar
+  // is gone (file deleted server-side) - the broken <img> swaps to the
+  // deterministic generator inline, so no white block ever shows.
+  window.__avFallback = function (img) {
+    var box = img && img.parentNode;
+    var addr = box && box.getAttribute("data-av");
+    if (!box || !addr) return;
+    img.remove();
+    box.setAttribute("data-avpend", "1");
+    box.textContent = (String(addr)[0] || "?").toUpperCase();
+    avHydrate(box.parentElement || box); // $$ does not match the root itself - scan from the parent
+  };
+
   function accAvatarHtml(addr, isSub) {
     // A-line hook: payload avatar_hash wins -> real avatar endpoint;
     // otherwise the deterministic mixed generator (spec v1.1).
     var h = (window.__avatarHashes || {})[String(addr).toLowerCase()];
-    if (h) return '<div class="im3-av' + (isSub ? "" : " im3-av-ext") + '" data-av="' + esc(addr) + '"><img class="cl-av-img" src="/api/avatar/' + encodeURIComponent(addr) + '" alt=""></div>';
+    if (h) return '<div class="im3-av' + (isSub ? "" : " im3-av-ext") + '" data-av="' + esc(addr) + '"><img class="cl-av-img" src="/api/avatar/' + encodeURIComponent(addr) + '" alt="" onerror="__avFallback(this)"></div>';
     return '<div class="im3-av' + (isSub ? "" : " im3-av-ext") + '" data-av="' + esc(addr) + '" data-avpend="1">' + esc((String(addr)[0] || "?").toUpperCase()) + "</div>";
   }
   // Hydrate pending generator avatars (async seed -> svg swap-in place).
