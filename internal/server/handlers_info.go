@@ -193,7 +193,10 @@ func (s *Server) infoAudit(w http.ResponseWriter, r *http.Request) {
 
 // infoDirectory returns the public directory: every account that has opted in
 // via Visible=true (disabled accounts are excluded). No auth required — this is
-// the public address book. Only address + signature are exposed per entry.
+// the public address book. Address + signature per entry, plus
+// avatar_hash (0.3.3 A: the guest page shows real avatars for opt-in
+// accounts — same D1 gating as the public avatar endpoint, which itself
+// hard-checks Visible, so this hash leaks nothing about hidden accounts).
 func (s *Server) infoDirectory(w http.ResponseWriter, r *http.Request) {
 	visible, err := s.store.ListVisibleAccounts()
 	if err != nil {
@@ -201,15 +204,16 @@ func (s *Server) infoDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type dirEntry struct {
-		Address   string `json:"address"`
-		Signature string `json:"signature"`
+		Address    string `json:"address"`
+		Signature  string `json:"signature"`
+		AvatarHash string `json:"avatar_hash,omitempty"`
 	}
 	rows := dedupeAccountsByLowerKey(visible,
 		func(a store.Account) string { return a.Address },
 		func(a *store.Account) { a.Address = strings.ToLower(a.Address) })
 	entries := make([]dirEntry, 0, len(rows))
 	for _, a := range rows {
-		entries = append(entries, dirEntry{Address: a.Address, Signature: a.Signature})
+		entries = append(entries, dirEntry{Address: a.Address, Signature: a.Signature, AvatarHash: a.AvatarHash})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query":   "directory",

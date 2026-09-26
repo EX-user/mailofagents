@@ -281,3 +281,71 @@ func TestPublicAvatarGate(t *testing.T) {
 		t.Fatalf("missing address: want 404, got %d", pub.StatusCode)
 	}
 }
+
+// The public directory carries avatar_hash so the guest page can decide
+// real-vs-default avatar without an extra request (0.3.3 A contract).
+func TestPublicDirectoryCarriesAvatarHash(t *testing.T) {
+	ts := setupAvatarServer(t)
+	defer ts.Close()
+	c := &http.Client{}
+
+	// Upload an avatar (account still invisible) — hash must be absent.
+	res := avatarUpload(t, ts, "avuser@test.example", "avpassword1", pngBytes(t, 64, 64))
+	res.Body.Close()
+	dir, err := http.Get(ts.URL + "/api/info?query=directory")
+	if err != nil {
+		t.Fatalf("public directory: %v", err)
+	}
+	var d struct {
+		Entries []struct {
+			Address    string `json:"address"`
+			AvatarHash string `json:"avatar_hash"`
+		} `json:"entries"`
+	}
+	if err := json.NewDecoder(dir.Body).Decode(&d); err != nil {
+		t.Fatalf("decode directory: %v", err)
+	}
+	dir.Body.Close()
+	for _, e := range d.Entries {
+		if e.Address == "avuser@test.example" && e.AvatarHash != "" {
+			t.Fatal("invisible account must not expose avatar_hash in the public directory")
+		}
+	}
+
+	// Make the account visible — the hash must now appear.
+	pref, _ := http.NewRequest("POST", ts.URL+"/api/profile/self", strings.NewReader(`{"visible":true,"signature":""}`))
+	pref.SetBasicAuth("avuser@test.example", "avpassword1")
+	pref.Header.Set("Content-Type", "application/json")
+	res2, err := c.Do(pref)
+	if err != nil {
+		t.Fatalf("profile: %v", err)
+	}
+	res2.Body.Close()
+
+	dir2, err := http.Get(ts.URL + "/api/info?query=directory")
+	if err != nil {
+		t.Fatalf("directory 2: %v", err)
+	}
+	var d2 struct {
+		Entries []struct {
+			Address    string `json:"address"`
+			AvatarHash string `json:"avatar_hash"`
+		} `json:"entries"`
+	}
+	if err := json.NewDecoder(dir2.Body).Decode(&d2); err != nil {
+		t.Fatalf("decode directory 2: %v", err)
+	}
+	dir2.Body.Close()
+	found := false
+	for _, e := range d2.Entries {
+		if e.Address == "avuser@test.example" {
+			if e.AvatarHash == "" {
+				t.Fatal("visible account with avatar must expose avatar_hash")
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("visible account missing from public directory")
+	}
+}
