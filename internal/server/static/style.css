@@ -984,6 +984,64 @@ nav::-webkit-scrollbar { display: none; }
      scroller (#acc-m-contacts). The reverted admin view has none — its
      many account cards must scroll the document itself, so exempt
      .acc-admin from the lock entirely. */
+
+  /* ---- 0.3.3-C: accounts listification (mobile only; boss approved v6) ----
+     One full-page list: pinned register row -> subs -> contacts. Rows are
+     equal height (75px), three-column grammar (avatar | body | gear). The
+     gear opens an in-place overlay (absolute over the row) so the page
+     layout is pixel-identical open or closed. */
+  #acc-m-contacts { border: none; background: transparent; margin-top: 6px; }
+  .cl-row {
+    position: relative;
+    display: flex; align-items: center; gap: 10px;
+    height: 75px; box-sizing: border-box;
+    padding: 0 10px;
+    background: var(--sub-card-bg);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .cl-row:last-child { border-bottom: none; }
+  #acc-m-contacts .cl-row:first-child { border-top: 1px solid var(--border); }
+  .cl-av { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 10px; overflow: hidden; }
+  .cl-av-img { display: flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    color: #fff; font-weight: 700; font-size: 15px; }
+  .cl-ext .cl-av-img { background: linear-gradient(135deg, #0891b2, #2563eb); }
+  .cl-av-reg { border: 1.5px dashed var(--accent); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; border-radius: 10px; font-size: 18px; background: transparent; }
+  .cl-body { flex: 1 1 0; min-width: 0; }
+  .cl-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .cl-badges { flex: 0 0 auto; display: inline-flex; gap: 4px; white-space: nowrap; }
+  .cl-addr { flex: 1 1 0; min-width: 0; font-size: 13px; font-weight: 600; }
+  .cl-l1 .act-pill-slot { flex: 0 0 auto; display: inline-flex; }
+  .cl-l1 .act-pill-slot:empty { display: none; }
+  .cl-sig { font-size: 12px; color: var(--muted); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 14px; }
+  .cl-latest { font-size: 12px; color: var(--muted); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; min-height: 14px; }
+  .cl-latest .cl-none { font-style: normal; opacity: .75; }
+  .cl-latest.mq2 .cl-track { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  .cl-gear { flex: 0 0 auto; height: 18px; padding: 0 8px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+    font-size: 11px; line-height: 16px; cursor: pointer; }
+  .cl-gear:hover { border-color: var(--accent); color: var(--accent); }
+  .cl-reg .cl-body { display: flex; flex-direction: column; justify-content: center; }
+  .cl-reg-title { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .cl-reg-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .cl-overlay {
+    display: none; position: absolute; inset: 0; z-index: 3;
+    align-items: center; justify-content: space-between; gap: 8px;
+    padding: 0 10px;
+    background: var(--sub-card-bg);
+  }
+  .cl-overlay.on { display: flex; }
+  .cl-ovl-acts { display: flex; gap: 8px; min-width: 0; flex-wrap: wrap; }
+  .cl-ovl-back { flex: 0 0 auto; border: none; background: transparent;
+    color: var(--muted); font-size: 12px; cursor: pointer; }
+  .cl-ovl-back:hover { color: var(--text); }
+  .cl-warn { color: var(--error); border-color: var(--error); }
   #tab-accounts.acc-admin:not(.hidden) {
     height: auto; min-height: 0; overflow: visible;
   }

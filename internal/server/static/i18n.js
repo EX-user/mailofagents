@@ -340,7 +340,8 @@
       "mgmt.title": "Manage",
       "mgmt.tabBrowse": "Messages",
       "mgmt.tabThreads": "Threads",
-      "mgmt.tabOverview": "Links",
+      "mgmt.tabOverview": "Links",
+
       "threads.latest": "latest",
       "threads.lone": "no replies",
       "threads.count": "{n} messages",
@@ -385,7 +386,8 @@
       "mgmt.emptySub": "Declare a subordinate and their overview appears here.",
       "mgmt.goAccounts": "Go to Accounts",
       "mgmt.acctNotInList": "Account not available in Messages yet — reload the account list.",
-      "mgmt.graphTitle": "Links",
+      "mgmt.graphTitle": "Links",
+
       "mgmt.gMap": "Map: ",
       "mgmt.mapLinear": "linear",
       "mgmt.mapLog": "log",
@@ -547,8 +549,16 @@
       "subs.visibleTitle": "Accounts visible to me (read-only)",
       "subs.noneVisible": "No subordinate accounts yet.",
       "subs.badge": "sub",
-      // 0.3.2 reorg: external tag on non-subordinate contacts (accounts page).
+      // 0.3.2 reorg: external tag on non-subordinate contacts (accounts page).
+
+
       "acc.badgeExt": "external",
+      "acc.latestNone": "No messages yet",
+      "acc.latestIn": "in", "acc.latestOut": "out",
+      "acc.settings": "Settings", "acc.back": "Back",
+      "acc.regTitle": "Register a mailbox for your AI agent",
+      "acc.regSub": "Create a subordinate account · one-click credentials",
+      "acc.yesterday": "yesterday", "acc.daysAgo": "{n}d ago",
       "graph.play": "Play", "graph.fast": "Fast", "graph.stop": "Stop", "graph.dl": "Save",
       "subs.readonly": "read-only — subordinate mailbox",
       "subs.attachMeta": " attachment(s) — download not authorized",
@@ -923,7 +933,8 @@
       "mgmt.title": "管理",
       "mgmt.tabBrowse": "查信",
       "mgmt.tabThreads": "话题",
-      "mgmt.tabOverview": "链接",
+      "mgmt.tabOverview": "链接",
+
       "threads.latest": "最新",
       "threads.lone": "孤立信",
       "threads.count": "{n} 封",
@@ -968,7 +979,8 @@
       "mgmt.emptySub": "声明从属后这里会出现概览。",
       "mgmt.goAccounts": "前往 Accounts",
       "mgmt.acctNotInList": "该账户尚未在查信列表中——请刷新账户列表。",
-      "mgmt.graphTitle": "链接",
+      "mgmt.graphTitle": "链接",
+
       "mgmt.gMap": "映射：",
       "mgmt.mapLinear": "线性",
       "mgmt.mapLog": "对数",
@@ -1130,8 +1142,16 @@
       "subs.visibleTitle": "我可查看的从属账户（只读）",
       "subs.noneVisible": "暂无从属账户。",
       "subs.badge": "从属",
-      // 0.3.2 概览重构：非从属「外部」标（账户页融合；活动行已按 boss 口径摘除）。
+      // 0.3.2 概览重构：非从属「外部」标（账户页融合；活动行已按 boss 口径摘除）。
+
+
       "acc.badgeExt": "外部",
+      "acc.latestNone": "暂无往来",
+      "acc.latestIn": "收", "acc.latestOut": "发",
+      "acc.settings": "设置", "acc.back": "返回",
+      "acc.regTitle": "为你的 AI agent 注册邮箱",
+      "acc.regSub": "创建从属账户 · 一键出凭据",
+      "acc.yesterday": "昨天", "acc.daysAgo": "{n} 天前",
       "graph.play": "播放", "graph.fast": "加速", "graph.stop": "停止", "graph.dl": "下载",
       "subs.readonly": "只读——从属邮箱",
       "subs.attachMeta": " 个附件（未授权下载）",

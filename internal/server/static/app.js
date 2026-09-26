@@ -682,6 +682,84 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (pw) pw.addEventListener("click", openChangePassword);
   }
 
+  // ---- 0.3.3-C: accounts-page listification (mobile only) ----
+  // Row grammar per Iris spec v1.0: avatar | label body (3 lines) | gear.
+  // All rows equal height; single-line iron rule (badges/pill nowrap, the
+  // address marquees only on overflow, sig/latest ellipsize); gear opens an
+  // in-place overlay card (absolutely positioned over the row — page layout
+  // pixel-stable); tapping the row composes (replaces per-row compose btns).
+  function accRelTime(ts) {
+    if (!ts) return "";
+    var d = new Date(ts * 1000), now = new Date();
+    var hm = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+    var day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var diff = Math.round((today - day) / 86400000);
+    if (diff <= 0) return hm;
+    if (diff === 1) return t("acc.yesterday");
+    return t("acc.daysAgo", { n: diff });
+  }
+  function accLatestHtml(s) {
+    if (!s || !(+s.latest_at)) return '<div class="cl-latest"><span class="cl-none">' + esc(t("acc.latestNone")) + "</span></div>";
+    var dir = s.latest_dir === "out" ? t("acc.latestOut") : t("acc.latestIn");
+    var subj = s.latest_subject ? "\u300c" + s.latest_subject + "\u300d" : "";
+    return '<div class="cl-latest mq2"><span class="cl-track"><span class="cl-txt">' +
+      esc(accRelTime(+s.latest_at)) + " " + dir + " \u00b7 " + subj + "</span></span></div>";
+  }
+  function accAvatarHtml(addr, isSub) {
+    // A-line hook: payload avatar_hash wins -> real avatar endpoint;
+    // otherwise the deterministic identicon placeholder (visual follows the
+    // A-line spec once landed; geometry fixed here).
+    var h = (window.__avatarHashes || {})[String(addr).toLowerCase()];
+    var inner = h
+      ? '<img class="cl-av-img" src="/api/avatar/' + encodeURIComponent(addr) + '" alt="">'
+      : '<span class="cl-av-img cl-identicon">' + esc((addr[0] || "?").toUpperCase()) + "</span>";
+    return '<span class="cl-av' + (isSub ? "" : " cl-av-ext") + '" data-av="' + esc(addr) + '">' + inner + "</span>";
+  }
+  function accOverlayHtml(addr, isSub) {
+    var acts = "";
+    if (isSub) acts += '<button class="row-action cl-warn" data-remove-sub="' + esc(addr) + '">\u2715 ' + t("subs.removeBtn") + "</button>";
+    acts += '<button class="row-action" data-limits="' + esc(addr) + '">' + t("limits.open") + "</button>";
+    return '<div class="cl-overlay" data-ovl="' + esc(addr) + '">' +
+      '<div class="cl-ovl-acts">' + acts + "</div>" +
+      '<button class="cl-ovl-back" data-ovl-back="' + esc(addr) + '">\u2715 ' + t("acc.back") + "</button></div>";
+  }
+  function accRowHtml(o) {
+    var av = accAvatarHtml(o.addr, o.isSub);
+    var latest = accLatestHtml(o.sub);
+    return '<div class="cl-row' + (o.isSub ? " cl-sub" : " cl-ext") + '" data-act-acct="' + esc(o.addr) + '" data-claddr="' + esc(o.addr) + '">' +
+      av +
+      '<div class="cl-body">' +
+        '<div class="cl-l1"><span class="cl-badges">' + o.badge + '</span><span class="cl-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(o.addr) + '</span><span class="sig-dup" aria-hidden="true">' + esc(o.addr) + "</span></span></span>" +
+        '<span class="act-pill-slot" data-act-slot="pill"></span></div>' +
+        '<div class="cl-sig">' + (o.sig ? esc(o.sig) : "") + "</div>" +
+        latest +
+      "</div>" +
+      '<button class="cl-gear" data-gear="' + esc(o.addr) + '" aria-label="' + esc(t("acc.settings")) + '">\u2699</button>' +
+      accOverlayHtml(o.addr, o.isSub) +
+      "</div>";
+  }
+  function accWireList(root) {
+    // Row tap = compose; gear tap = in-place overlay; back hides it.
+    $$(".cl-row", root).forEach(function (row) {
+      row.addEventListener("click", function (ev) {
+        if (ev.target.closest("[data-gear]") || ev.target.closest(".cl-overlay")) return;
+        document.dispatchEvent(new CustomEvent("compose:to", { detail: { address: row.getAttribute("data-claddr") } }));
+      });
+      var gear = row.querySelector("[data-gear]");
+      if (gear) gear.addEventListener("click", function () {
+        $$(".cl-overlay.on", root).forEach(function (o) { if (o !== row.querySelector(".cl-overlay")) o.classList.remove("on"); });
+        row.querySelector(".cl-overlay").classList.toggle("on");
+      });
+      var back = row.querySelector("[data-ovl-back]");
+      if (back) back.addEventListener("click", function () { row.querySelector(".cl-overlay").classList.remove("on"); });
+    });
+    $$("[data-compose], [data-remove-sub]", root).forEach(function (b) {
+      if (b.dataset.compose) b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:to", { detail: { address: b.dataset.compose } })); });
+      if (b.dataset.removeSub) b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("subs:remove", { detail: { address: b.dataset.removeSub, role: "superior" } })); });
+    });
+  }
+
   // loadAccountsRegular renders the regular-user Accounts view: themselves
   // (with a change-password button) plus the people they've exchanged mail with
   // (from /api/contacts). No admin/disabled/uuid columns — those are sensitive
@@ -736,7 +814,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // register button lives above the table — #subreg-pc in index.html);
     // phones keep the approved container card (agentreg-row below) and hide
     // the PC rows via CSS.
-    var subZone = "", pcSubRows = "", ctZone = "";
+    var pcSubRows = "";
+    var clRows = "";
+    var actByAddr = {};
+    ((actData && actData.subs) || []).forEach(function (x) { actByAddr[String(x.address).toLowerCase()] = x; });
     subsList.forEach(function (e) {
       var sig = e.signature || listedSig[e.address] || "";
       // 0.3.2 tag 语义反转（boss 认定五）：从属是面板主角不打标（listed 照旧）。
@@ -753,13 +834,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // Mobile container card (one-screen plan): badges + address share one
       // line (address marquees on overflow), signature max one line (same),
       // pill buttons bottom-right — all inside the scrollable .sub-list.
-      subZone +=
-        '<div class="sub-card" data-act-acct="' + esc(e.address) + '">' +
-        '<div class="sub-meta">' + badge + '<span class="act-pill-slot" data-act-slot="pill"></span></div>' +
-        '<div class="sub-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(e.address) + '</span><span class="sig-dup" aria-hidden="true">' + esc(e.address) + "</span></span></div>" +
-        '<div class="sub-sig mq">' + (sig ? '<span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span>" : "") + "</div>" +
-        '<div class="sub-foot"><button class="row-action pill-btn" data-compose="' + esc(e.address) + '">' + "✉ " + t("act.compose") + '</button><button class="row-action pill-btn" data-remove-sub="' + esc(e.address) + '">' + "✕ " + t("subs.removeBtn") + '</button><button class="row-action pill-btn" data-limits="' + esc(e.address) + '">' + t("limits.open") + "</button></div>" +
-        "</div>";
+      clRows += accRowHtml({ addr: e.address, badge: badge, sig: sig, isSub: true, sub: actByAddr[String(e.address).toLowerCase()] });
     });
     rows.push(pcSubRows);
 
@@ -800,13 +875,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action" data-compose="' + esc(c) + '">' + t("act.compose") + "</button></td>" +
           "</tr>"
         );
-        ctZone +=
-          '<div class="ct-card">' +
-          '<div class="ct-line">' + badge.trim() +
-          '<div class="ct-addr mq"><span class="sig-track"><span class="sig-txt">' + esc(c) + '</span><span class="sig-dup" aria-hidden="true">' + esc(c) + "</span></span></div></div>" +
-          '<div class="ct-sig mq">' + (listedSig[c] ? '<span class="sig-track"><span class="sig-txt">' + esc(listedSig[c]) + '</span><span class="sig-dup" aria-hidden="true">' + esc(listedSig[c]) + "</span></span>" : "") + "</div>" +
-          '<div class="ct-foot"><button class="row-action pill-btn" data-compose="' + esc(c) + '">✉ ' + t("act.compose") + "</button></div>" +
-          "</div>";
+        clRows += accRowHtml({ addr: c, badge: badge.trim(), sig: listedSig[c] || "", isSub: false, sub: null });
       });
     } catch (e) {
       // contacts failure is non-fatal; just show self.
@@ -830,14 +899,19 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // contact rows (which hide via CSS); compose wiring included.
     var ctBox = $("#acc-m-contacts");
     if (ctBox) {
-      ctBox.innerHTML = subZone + ctZone;
-      $$("#acc-m-contacts [data-compose]").forEach(function (b) {
-        b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:to", { detail: { address: b.dataset.compose } })); });
+      // 0.3.3-C: pinned register row first, then subs + contacts in one list.
+      var regRow = '<div class="cl-row cl-reg" data-reg>' +
+        '<span class="cl-av cl-av-reg">\uff0b</span>' +
+        '<div class="cl-body"><div class="cl-reg-title">' + esc(t("acc.regTitle")) + '</div>' +
+        '<div class="cl-reg-sub">' + esc(t("acc.regSub")) + "</div></div></div>";
+      ctBox.innerHTML = regRow + clRows;
+      var regEl = ctBox.querySelector("[data-reg]");
+      if (regEl) regEl.addEventListener("click", function () {
+        var b = document.getElementById("btn-subreg");
+        if (b) b.click();
       });
-      $$("#acc-m-contacts [data-remove-sub]").forEach(function (b) {
-        b.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("subs:remove", { detail: { address: b.dataset.removeSub, role: "superior" } })); });
-      });
-
+      accWireList(ctBox);
+      if (typeof maybeMarqueeSigs === "function") maybeMarqueeSigs();
     }
     // 自身卡 → 偏好页（0.3.2 认定四）；活动槽有缓存则即时回填。
     renderPrefsOwnCard(ownSig, ownVisible);
