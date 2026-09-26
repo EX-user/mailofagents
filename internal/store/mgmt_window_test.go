@@ -1,8 +1,10 @@
 package store
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // TestMgmtSubsOverviewWindow (v0.6.21 range button): a letter older than
@@ -49,4 +51,55 @@ func TestMgmtSubsOverviewWindow(t *testing.T) {
 	if out.WindowDays != 0 {
 		t.Errorf("WindowDays = %d, want 0", out.WindowDays)
 	}
+}
+
+// 0.3.3 C feature: the account-page list row 3 shows the account's latest
+// message — subject (100-rune truncated) and its received_at over ALL TIME.
+// The newest letter wins regardless of direction (in or out).
+func TestMgmtOverviewLatestSubject(t *testing.T) {
+	s := newFilesStore(t)
+	if err := s.DeclareSubordinate("a@t", "b@t"); err != nil {
+		t.Fatalf("declare: %v", err)
+	}
+	if _, err := s.Send("a@t", "a", []string{"b@t"}, nil, "Direct order to sub", "x", ""); err != nil {
+		t.Fatalf("send 1: %v", err)
+	}
+	s.now = func() time.Time { return time.Now().Add(1 * time.Second) }
+	if _, err := s.Send("b@t", "b", []string{"a@t"}, nil, "Sub replies: roger", "x", ""); err != nil {
+		t.Fatalf("send 2: %v", err)
+	}
+	s.now = func() time.Time { return time.Now().Add(2 * time.Second) }
+	if _, err := s.Send("a@t", "a", []string{"b@t"}, nil, "Follow-up after the reply", "x", ""); err != nil {
+		t.Fatalf("send 3: %v", err)
+	}
+	s.now = func() time.Time { return time.Now().Add(3 * time.Second) }
+	out, err := s.MgmtSubsOverviewWindow("a@t", 0)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	for _, sub := range out.Subs {
+		if sub.Address != "b@t" {
+			continue
+		}
+		if sub.LatestAt == 0 || sub.LatestSubject != "Follow-up after the reply" {
+			t.Fatalf("latest: got %q at %d, want the newest letter's subject", sub.LatestSubject, sub.LatestAt)
+		}
+		// Long subjects truncate to 100 runes, rune-safe (no mid-char split).
+		long := strings.Repeat("汉", 120)
+		s.now = func() time.Time { return time.Now().Add(4 * time.Second) }
+		if _, err := s.Send("a@t", "a", []string{"b@t"}, nil, long, "x", ""); err != nil {
+			t.Fatalf("send long: %v", err)
+		}
+		out2, err := s.MgmtSubsOverviewWindow("a@t", 0)
+		if err != nil {
+			t.Fatalf("overview 2: %v", err)
+		}
+		for _, sub2 := range out2.Subs {
+			if sub2.Address == "b@t" && utf8.RuneCountInString(sub2.LatestSubject) != 100 {
+				t.Fatalf("truncation: got %d runes, want 100", utf8.RuneCountInString(sub2.LatestSubject))
+			}
+		}
+		return
+	}
+	t.Fatal("sub row b@t missing")
 }

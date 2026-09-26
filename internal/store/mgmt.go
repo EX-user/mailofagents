@@ -24,6 +24,15 @@ type MgmtTopContact struct {
 	Count   int    `json:"count"`
 }
 
+// truncateRunes cuts s to at most n runes (rune-safe, matching the inbox
+// preview's truncation semantics — never splits a multibyte char).
+func truncateRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
+}
+
 // MgmtSubSummary is one row of the overview table.
 type MgmtSubSummary struct {
 	Address     string           `json:"address"`
@@ -42,6 +51,12 @@ type MgmtSubSummary struct {
 	// worker_seen_at).
 	WorkerState  string `json:"worker_state,omitempty"`
 	WorkerSeenAt int64  `json:"worker_seen_at,omitempty"` // server receipt, unix s
+	// 0.3.3 C feature (account-page list row 3, "latest message"): the
+	// account's newest message over ALL TIME — subject (100-rune truncated,
+	// same semantics as the inbox preview) and its received_at. Empty
+	// subject + 0 = never any mail (client shows its placeholder).
+	LatestSubject string `json:"latest_subject,omitempty"`
+	LatestAt      int64  `json:"latest_at,omitempty"`
 }
 
 // MgmtNode is one graph node. Kind: self | sub | external.
@@ -127,6 +142,11 @@ func (s *Store) MgmtSubsOverviewWindow(me string, days int) (*MgmtOverview, erro
 		lastIn, lastOut   int64
 		countIn, countOut int
 		sumIn, sumOut     int // body runes, 7d window
+		// 0.3.3 C feature (account-page list rows): the account's latest
+		// message over ALL TIME — subject + its received_at, truncated to
+		// 100 runes exactly like the inbox preview (rune-safe).
+		latestSubject string
+		latestAt      int64
 	}
 	core := map[string]*acc{me: {}}
 	for a := range subSet {
@@ -183,6 +203,10 @@ func (s *Store) MgmtSubsOverviewWindow(me string, days int) (*MgmtOverview, erro
 				if m.ReceivedAt > c.lastOut {
 					c.lastOut = m.ReceivedAt
 				}
+				if m.ReceivedAt > c.latestAt {
+					c.latestAt = m.ReceivedAt
+					c.latestSubject = truncateRunes(m.Subject, 100)
+				}
 				if inWindow {
 					c.countOut++
 					c.sumOut += bodyRunes
@@ -202,6 +226,10 @@ func (s *Store) MgmtSubsOverviewWindow(me string, days int) (*MgmtOverview, erro
 				if c, ok := core[r]; ok {
 					if m.ReceivedAt > c.lastIn {
 						c.lastIn = m.ReceivedAt
+					}
+					if m.ReceivedAt > c.latestAt {
+						c.latestAt = m.ReceivedAt
+						c.latestSubject = truncateRunes(m.Subject, 100)
 					}
 					if inWindow {
 						c.countIn++
@@ -253,6 +281,8 @@ func (s *Store) MgmtSubsOverviewWindow(me string, days int) (*MgmtOverview, erro
 		a := core[subs[i].Address]
 		subs[i].LastInAt = a.lastIn
 		subs[i].LastOutAt = a.lastOut
+		subs[i].LatestSubject = a.latestSubject
+		subs[i].LatestAt = a.latestAt
 		subs[i].CountIn7d = a.countIn
 		subs[i].CountOut7d = a.countOut
 		if a.countIn > 0 {
