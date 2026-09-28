@@ -138,6 +138,11 @@ func TestAvatarLifecycle(t *testing.T) {
 	if pres.StatusCode != http.StatusOK {
 		t.Fatalf("profile self: %d %s", pres.StatusCode, pb)
 	}
+	// 0.3.3.4 cache hardening: payload endpoints carry the freshness
+	// anchors, so they revalidate every use.
+	if cc := pres.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("profile self cache-control = %q, want no-cache", cc)
+	}
 	var prof struct {
 		AvatarHash string `json:"avatar_hash"`
 		Avatar     *struct {
@@ -165,7 +170,7 @@ func TestAvatarLifecycle(t *testing.T) {
 		t.Fatalf("avatar.updated_at = %d, want upload time", prof.Avatar.UpdatedAt)
 	}
 
-	// 3) GET serves the bytes with ETag/immutable and honors If-None-Match.
+	// 3) GET serves the bytes with ETag/short max-age and honors If-None-Match.
 	req1, _ := http.NewRequest("GET", ts.URL+"/api/avatar/avuser@test.example", nil)
 	req1.SetBasicAuth("avuser@test.example", "avpassword1")
 	res, err = c.Do(req1)
@@ -181,8 +186,11 @@ func TestAvatarLifecycle(t *testing.T) {
 	if etag != `"`+up.AvatarHash+`"` {
 		t.Fatalf("etag %q != hash %q", etag, up.AvatarHash)
 	}
-	if !strings.Contains(res.Header.Get("Cache-Control"), "immutable") {
-		t.Fatalf("cache-control missing immutable: %q", res.Header.Get("Cache-Control"))
+	// 0.3.3.4 cache hardening: minute-level max-age, no immutable — a stale
+	// ?v= reference must self-heal within minutes, never persist a year.
+	cc := res.Header.Get("Cache-Control")
+	if strings.Contains(cc, "immutable") || !strings.Contains(cc, "max-age=300") {
+		t.Fatalf("cache-control = %q, want max-age=300 without immutable", cc)
 	}
 	req, _ := http.NewRequest("GET", ts.URL+"/api/avatar/avuser@test.example", nil)
 	req.SetBasicAuth("avuser@test.example", "avpassword1")
@@ -324,6 +332,10 @@ func TestPublicAvatarGate(t *testing.T) {
 	}
 	if !strings.Contains(pub.Header.Get("Cache-Control"), "public") {
 		t.Fatalf("public cache-control: %q", pub.Header.Get("Cache-Control"))
+	}
+	// 0.3.3.4: the guest face is minute-level too — no immutable anywhere.
+	if strings.Contains(pub.Header.Get("Cache-Control"), "immutable") {
+		t.Fatalf("public cache-control still immutable: %q", pub.Header.Get("Cache-Control"))
 	}
 
 	// Unknown address and missing query: 404.

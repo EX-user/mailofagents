@@ -3,7 +3,7 @@
 //
 //	PUT    /api/account/avatar   (auth=self) multipart "file" -> {avatar_hash}
 //	DELETE /api/account/avatar   (auth=self) -> 200 {}
-//	GET    /api/avatar/{address} (auth wall)  -> image bytes, ETag, immutable
+//	GET    /api/avatar/{address} (auth wall)  -> image bytes, ETag, short max-age
 //
 // Server-side validation is hard-reject (no resizing): magic-number sniff
 // jpeg/png only, longest edge ≤ 512px, ≤ 100KB. The client scales before
@@ -130,7 +130,13 @@ func (s *Server) handleAvatarGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", `"`+acc.AvatarHash+`"`)
-	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	// 0.3.3.4 cache hardening (tiantian field report via boss): the hash in
+	// ?v= is only as fresh as the payload that carried it, so a year-long
+	// immutable served year-stale bytes to anyone holding an old payload.
+	// Minute-level max-age keeps ordinary reloads cheap while a stale
+	// reference self-heals at the byte level: once max-age lapses the ETag
+	// revalidates and a mismatch returns 200 with the fresh bytes.
+	w.Header().Set("Cache-Control", "private, max-age=300")
 	w.Header().Set("Content-Type", http.DetectContentType(content))
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	_, _ = w.Write(content)
@@ -168,7 +174,9 @@ func (s *Server) handlePublicAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", `"`+acc.AvatarHash+`"`)
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// 0.3.3.4 cache hardening: same minute-level policy as the auth side —
+	// the public guest face must not serve year-stale bytes either.
+	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.Header().Set("Content-Type", http.DetectContentType(content))
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	_, _ = w.Write(content)

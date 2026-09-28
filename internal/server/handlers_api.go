@@ -861,6 +861,14 @@ func (s *Server) handleAuthTokenRevoke(w http.ResponseWriter, r *http.Request) {
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	// 0.3.3.4 cache hardening: JSON payloads carry the freshness anchors
+	// (avatar_hash and friends), so they must revalidate every use —
+	// heuristic browser caching of a payload is exactly how a stale ?v=
+	// reference survives an avatar re-upload. Handlers that need a
+	// different policy set their own header first; this is the default.
+	if w.Header().Get("Cache-Control") == "" {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
