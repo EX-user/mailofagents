@@ -624,6 +624,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     ((actData && actData.subs) || []).forEach(function (s) {
       byAddr[String(s.address).toLowerCase()] = s;
     });
+    avSyncAvatarsFromActivity((actData && actData.subs) || []); // A-case: avatar spot-hydration on the same poll
     $$("[data-act-acct]").forEach(function (el) {
       var s = byAddr[String(el.getAttribute("data-act-acct")).toLowerCase()];
       var pill = el.querySelector('[data-act-slot="pill"]');
@@ -1102,18 +1103,46 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // avatarObjectURL registry (dedupe by addr|hash, page-lifetime URLs).
   // isConnected guards the re-render race; a failed fetch (404 = the
     // account has no avatar) hands the box to the generator path.
+  function avRemoteFillOne(el) {
+    var addr = el.getAttribute("data-av");
+    var hash = el.getAttribute("data-avhash") || "";
+    avatarObjectURL(addr, hash, false).then(function (url) {
+      if (!el.isConnected) return;
+      el.innerHTML = '<img class="cl-av-img" src="' + url + '" alt="">';
+    }).catch(function () {
+      if (!el.isConnected) return;
+      el.setAttribute("data-avpend", "1");
+      avHydrate(el.parentElement || el);
+    });
+  }
   function avRemoteHydrate(root) {
-    $$("[data-avremote]", root).forEach(function (el) {
-      var addr = el.getAttribute("data-av");
-      var hash = el.getAttribute("data-avhash") || "";
-      avatarObjectURL(addr, hash, false).then(function (url) {
-        if (!el.isConnected) return;
-        el.innerHTML = '<img class="cl-av-img" src="' + url + '" alt="">';
-      }).catch(function () {
-        if (!el.isConnected) return;
-        el.setAttribute("data-avpend", "1");
-        avHydrate(el.parentElement || el);
-      });
+    $$("[data-avremote]", root).forEach(avRemoteFillOne);
+  }
+  // A-case (boss-approved): the activity poll payload already carries each
+  // account's current avatar_hash, so sync it here - an uploaded avatar
+  // shows within one poll cycle with no restart or refresh. A changed hash
+  // costs one registry update plus exactly one targeted box re-hydration;
+  // unchanged rows cost zero requests and zero DOM writes.
+  function avSyncAvatarsFromActivity(subs) {
+    var reg = window.__avatarHashes = window.__avatarHashes || {};
+    (subs || []).forEach(function (s) {
+      var addr = String(s.address || "").toLowerCase();
+      if (!addr) return;
+      var nh = s.avatar_hash || "";
+      if ((reg[addr] || "") === nh) return;
+      reg[addr] = nh;
+      var box = null;
+      var nodes = document.querySelectorAll('#tab-accounts [data-avremote]');
+      for (var i = 0; i < nodes.length; i++) {
+        if (String(nodes[i].getAttribute("data-av")).toLowerCase() === addr) { box = nodes[i]; break; }
+      }
+      if (!box || !box.isConnected) return; // row not on the page - registry is enough
+      box.setAttribute("data-avhash", nh);
+      box.classList.remove("cl-av-img");
+      box.style.background = "";
+      box.removeAttribute("data-avpend");
+      box.textContent = (String(box.getAttribute("data-av"))[0] || "?").toUpperCase();
+      avRemoteFillOne(box);
     });
   }
   // Hydrate pending generator avatars (async seed -> svg swap-in place).
