@@ -655,9 +655,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       }).filter(function (a) { return box.querySelector('.im3-row.im3-sub[data-claddr="' + a + '"]'); });
       var have = [...box.querySelectorAll(".im3-row.im3-sub")].map(function (r) { return String(r.getAttribute("data-claddr")).toLowerCase(); });
       var same = want.length === have.length && want.every(function (a, i) { return a === have[i]; });
-      if (!same && have.length) {
-        applyActivity._reloading = true;
-        setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 150);
+      // 0024 batch guard: the reorder reload has no exit once it starts
+      // against an empty actData (rows exist, panel later hidden, pulls
+      // visibility-gated) - the 150ms loop rebuilt the whole list ~27x/5s
+      // with no convergence possible. actData empty = nothing to reorder
+      // against; the next successful pull re-runs applyActivity anyway.
+      if (!same && have.length && actData) {
+        applyActivity._reloading = true;
+        setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 150);
       }
     }
     var sum = $("#acc-act-sum");
