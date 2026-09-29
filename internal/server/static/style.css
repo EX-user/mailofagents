@@ -3087,9 +3087,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   }
   #tab-compose.im .thread-item.thread-in .thread-card { border-left-color: var(--success); }
   #tab-compose.im .thread-av {
-    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 10px;
+    flex: 0 0 auto; width: 34px; height: 34px; border-radius: 11px;
     overflow: hidden; background: var(--bg);
-    font-size: 13px; line-height: 30px; text-align: center; color: var(--muted);
+    font-size: 14px; line-height: 34px; text-align: center; color: var(--muted);
   }
   /* boss 0.3.4.2: bigger avatar, closer to the screen edge - main's 20px
      side padding reads as wasted gutter on the phone; IM view hugs 8px */
@@ -3130,7 +3130,7 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5;
     display: flex; flex-direction: column; gap: 6px;
     background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
-    box-shadow: 0 8px 22px rgba(0,0,0,.4);
+    /* boss 0.3.4.2: no shadow - the front-end uses none anywhere else */
     padding: 4px 8px;
   }
   #tab-compose.im #im-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
