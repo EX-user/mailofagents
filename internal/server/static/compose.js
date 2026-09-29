@@ -1068,7 +1068,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       status.textContent = t("compose.sent", { id: res.message_id });
       toast(t("toast.sent"), "success");
       // Accounts page listens: refreshes activity so the recipient tops the list.
-      document.dispatchEvent(new CustomEvent("compose:sent", { detail: { to: $("#compose-to").value } }));
+      document.dispatchEvent(new CustomEvent("compose:sent", { detail: { to: $("#compose-to").value, subject: ($("#compose-subject").value || "").trim() } }));
+
       // Clear subject/body but keep To (so the thread reloads for the same contact).
       $("#compose-subject").value = "";
       $("#compose-body").value = "";
