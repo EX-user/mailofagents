@@ -269,10 +269,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   var sheetIntoCard = null; // wireImBar assigns: panel + attachment chips live in the card (v6)
   var attHomeRestore = null; // wireImBar assigns: the attachment chips' ride-home
   function imMode() { return window.innerWidth <= 800; }
+  function imInputGrow(el) {
+    if (!el || el.tagName !== "TEXTAREA") return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 110) + "px";
+  }
   function syncImBar() {
     var bar = document.getElementById("im-input");
     var bodyEl = $("#compose-body");
-    if (bar && bodyEl && bar.value !== bodyEl.value) bar.value = bodyEl.value;
+    if (bar && bodyEl && bar.value !== bodyEl.value) { bar.value = bodyEl.value; imInputGrow(bar); }
   }
   function imPeerText() {
     return t("compose.recentConv") + " · " + (($("#compose-to").value || "").trim() || "…");
@@ -1125,6 +1130,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // contacts that fell outside the 50-message windows.
       const cur = getSession();
       const isRegular = cur && !cur.is_admin;
+      // 0.3.4.2 capsule avatars: own letters show the self address,
+      // incoming show the actual sender (falls back to the peer).
+      const selfAddr = isRegular ? (cur.address || "") : ("admin@" + composeDomain);
       // Boss: on the conversation page a letter has exactly ONE recipient.
       // A multi-value To (allowed on the full form) is CLIPPED to its first
       // address the moment the conversation view loads.
@@ -1155,7 +1163,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         }
         return;
       }
-      threadEl.innerHTML = all.map(function (m) {
+      var html = all.map(function (m) {
         const arrow = m.dir === "out" ? t("thread.sentLabel") : t("thread.receivedLabel"); // 历史残留收编 i18n（boss）
         const cls = m.dir === "out" ? "thread-out" : "thread-in";
         const unreadMark = (m.dir === "in" && m.unread) ? '<span class="unread-dot" title="unread">●</span>' : "";
@@ -1169,7 +1177,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         const actionBtn = '<span class="thread-action" data-target="' + esc(actionTarget) +
           '" data-mid="' + esc(m.id) + '" data-act="' + actionKind +
           '" data-subj="' + esc(m.subject || "") + '">' + actionLabel + '</span>';
+        // 0.3.4.2: avatar rides the capsule in IM mode only - peer left,
+        // own right (row-reverse in CSS). Standard data-av box markup so
+        // app.js hydration (real avatar / robot fallback) applies as-is.
+        const avAddr = m.dir === "in" ? (m.from || m.peer) : selfAddr;
+        const avBox = imOrder ? '<div class="thread-av" data-av="' + esc(avAddr) + '" data-avremote="1">' +
+          esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>' : "";
         return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-loaded="0">' +
+          avBox +
+          '<div class="thread-body">' +
           '<div class="thread-meta"><b>' + arrow + "</b> · <small>" + fmtTime(m.ts) + "</small>" +
           ' <span class="thread-toggle">' + esc(t("thread.expand")) + '</span> ' + actionBtn + '</div>' +
           (noSubjectInfo(m.subject)
@@ -1179,8 +1195,20 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
             : '<div class="thread-subj' + subjCls + '">' + esc(m.subject) + "</div>" +
               '<div class="thread-prev">' + esc(m.preview || "") + "</div>") +
           '<div class="thread-full hidden"></div>' +
+          '</div>' +
           "</div>";
       }).join("");
+      // 0.3.4.2: same decode-free recycle as 06586e1 - polls re-render this
+      // list constantly, harvested avatar boxes keep their decoded bitmaps.
+      if (imOrder && window.__avHarvest && window.__avRestore) {
+        var avBankT = window.__avHarvest(threadEl);
+        threadEl.innerHTML = html;
+        window.__avRestore(threadEl, avBankT);
+        if (window.__avHydrate) window.__avHydrate(threadEl);
+        if (window.__avRemoteHydrate) window.__avRemoteHydrate(threadEl);
+      } else {
+        threadEl.innerHTML = html;
+      }
       // 0.3.4 IM semantics (boss 09-29): opening the conversation reads
       // it - each unread incoming letter is fetched once (the detail GET
       // marks it read server-side), so the next accounts poll clears the
@@ -1940,6 +1968,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     input.addEventListener("input", function () {
       $("#compose-body").value = input.value;
       draftNoteTyping();
+      imInputGrow(input);
     });
     // Chat semantics: Enter sends, exactly like the ➤ button would.
     input.addEventListener("keydown", function (ev) {

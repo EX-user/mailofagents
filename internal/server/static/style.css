@@ -3072,6 +3072,19 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
                 color-mix(in srgb, var(--accent) 14%, transparent)), var(--panel);
   }
   #tab-compose.im .thread-item.thread-in { margin-right: 14%; border-left-color: var(--success); }
+  /* boss 0.3.4.2: history capsules carry avatars - peer left, own right
+     (row-reverse). Boxes ride the standard data-av path (real avatar if the
+     sender uploaded one, robot via the 404 fallback); harvest/restore keeps
+     them decode-free across poll rebuilds (same mechanism as 06586e1). */
+  #tab-compose.im .thread-item { display: flex; gap: 7px; align-items: flex-start; }
+  #tab-compose.im .thread-item .thread-body { flex: 1 1 auto; min-width: 0; }
+  #tab-compose.im .thread-item.thread-out { flex-direction: row-reverse; }
+  #tab-compose.im .thread-av {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 9px;
+    overflow: hidden; background: var(--bg);
+    font-size: 12px; line-height: 26px; text-align: center; color: var(--muted);
+  }
+  #tab-compose.im .thread-av img { width: 100%; height: 100%; display: block; border-radius: 9px; }
   /* the visible subject line (boss: the silent Re:-fill was baffling) —
      it always shows exactly what the next send will carry: the user's own
      subject, the predicted "Re: <newest> (auto)", or a tap-to-fill prompt */
@@ -3110,12 +3123,17 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     color: var(--muted); font-size: 17px; line-height: 1;
   }
   #tab-compose.im #im-main #im-input {
-    flex: 1 1 auto; min-width: 0; min-height: 0; padding: 0; border: none;
+    flex: 1 1 auto; min-width: 0; min-height: 0; padding: 4px 0; border: none;
     background: transparent; color: var(--text); font-size: 13.5px; outline: none;
+    font-family: inherit; line-height: 1.45; resize: none;
+    overflow-y: auto; overflow-x: hidden; max-height: 110px;
   }
+  /* boss 0.3.4.2: the send glyph must sit dead-center - flex box centers
+     the glyph on both axes (line-height alone rides the font baseline) */
   #tab-compose.im #im-main #im-send {
     width: 34px; height: 34px; min-height: 0; padding: 0; flex: 0 0 auto;
     border-radius: 50%; background: var(--accent); color: #fff; border: none; font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center; line-height: 1;
   }
   #tab-compose.im #im-bar #compose-attachments { margin: 0; }
   /* 附件卡提密（boss：信息密度低）：单行 chip——📎 名（省略）·大小·× 同排 */

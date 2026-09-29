@@ -1673,6 +1673,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // 404 fallback (A-line task 4): avatar_hash present but the real avatar
   // is gone (file deleted server-side) - the broken <img> swaps to the
   // deterministic generator inline, so no white block ever shows.
+  // window bridge: compose.js imports ONLY core.js (audit constraint), so the
+  // avatar family rides on window for the conversation capsules (0.3.4.2).
+  window.__avHydrate = avHydrate;
+  window.__avRemoteHydrate = avRemoteHydrate;
+  window.__avHarvest = avHarvest;
+  window.__avRestore = avRestore;
   window.__avFallback = function (img) {
     var box = img && img.parentNode;
     var addr = box && box.getAttribute("data-av");
