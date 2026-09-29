@@ -1718,23 +1718,27 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function avHarvest(container) {
     var bank = {};
     $$("[data-avdone]", container).forEach(function (b) {
-      bank[String(b.getAttribute("data-av")).toLowerCase() + "|" + (b.getAttribute("data-avhash") || "")] = b;
+      var k = String(b.getAttribute("data-av")).toLowerCase() + "|" + (b.getAttribute("data-avhash") || "");
+      // multi-slot: one addr|hash renders MANY boxes in a conversation (every
+      // capsule of a thread, or sub+contact twins on the accounts page) - a
+      // single-slot bank left all but the last box re-decoding every rebuild.
+      (bank[k] = bank[k] || []).push(b);
     });
     return bank;
   }
   function avRestore(container, bank) {
     if (!bank) return;
     $$("[data-avremote]", container).forEach(function (b) {
-      var old = bank[String(b.getAttribute("data-av")).toLowerCase() + "|" + (b.getAttribute("data-avhash") || "")];
-      if (!old || !old.hasAttribute("data-avdone")) return;
-      // same addr|hash can render twice in one container (sub+contact twin):
-      // a previous twin already drained the banked node - leave this box to
-      // normal hydration instead of marking an empty box done (Iris review).
-      if (!old.firstChild) return;
-      while (b.firstChild) b.removeChild(b.firstChild);
-      while (old.firstChild) b.appendChild(old.firstChild);
-      b.setAttribute("data-avdone", "1");
-      b.removeAttribute("data-avpend");
+      var q = bank[String(b.getAttribute("data-av")).toLowerCase() + "|" + (b.getAttribute("data-avhash") || "")];
+      while (q && q.length) {
+        var old = q.shift();
+        if (!old.hasAttribute("data-avdone") || !old.firstChild) continue; // drained by a twin - next slot
+        while (b.firstChild) b.removeChild(b.firstChild);
+        while (old.firstChild) b.appendChild(old.firstChild);
+        b.setAttribute("data-avdone", "1");
+        b.removeAttribute("data-avpend");
+        return;
+      }
     });
   }
   function avRemoteFillOne(el) {

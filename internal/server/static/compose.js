@@ -1121,6 +1121,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     }
     titleEl.textContent = t("compose.recentConv");
     threadEl.className = "thread-list";
+    // harvest BEFORE the loading wipe: the wipe destroys the rendered boxes,
+    // and a harvest after it finds nothing (0.3.4.2 follow-up - the recycle
+    // below kept re-decoding every capsule on manual refresh).
+    var avBankT = window.__avHarvest ? window.__avHarvest(threadEl) : null;
     threadEl.textContent = t("common.loading");
 
     try {
@@ -1200,8 +1204,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       }).join("");
       // 0.3.4.2: same decode-free recycle as 06586e1 - polls re-render this
       // list constantly, harvested avatar boxes keep their decoded bitmaps.
-      if (imOrder && window.__avHarvest && window.__avRestore) {
-        var avBankT = window.__avHarvest(threadEl);
+      if (imOrder && window.__avRestore) {
         threadEl.innerHTML = html;
         window.__avRestore(threadEl, avBankT);
         if (window.__avHydrate) window.__avHydrate(threadEl);
