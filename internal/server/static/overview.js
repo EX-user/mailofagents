@@ -173,14 +173,19 @@ var mgmtNodeSet = null;
         var wl = windowLabel(graphPrefs.days);
         // 播放特性一（上级 0.2.5）：「我」节点大一号更醒目——scaling 上限
         // 抬高 + 字号加大，其余节点照旧。
-        var nodeScaling = isMe
-          ? { min: 20, max: 38, label: { enabled: false } }
-          : { min: 8, max: 26, label: { enabled: false } };
+        // boss 0.3.4.2: avatar nodes - uniform circles (boss: 匀称漂亮), the
+        // deterministic robot as the sync base (same generator as everywhere),
+        // a real uploaded avatar upgrades the node once the registry lands.
+        var avSize = isMe ? 40 : 34;
+        var nodeScaling = { min: avSize, max: avSize, label: { enabled: false } };
         var nodeFont = { face: "ui-monospace, Consolas, monospace", size: isMe ? 12 : 11, color: "#23303f" };
         return {
           id: n.address, label: (isMe ? t("mgmt.meLabel") : shortAddr(n.address)) +
             (kind !== "external" ? "\n" + wl + " " + (n.volume || 0) : ""),
-          shape: "box", borderWidth: isMe ? 2 : 1,
+          shape: "circularImage",
+          image: window.__avDataUri ? window.__avDataUri(n.address) : undefined,
+          size: avSize,
+          borderWidth: isMe ? 3 : 2,
           color: { background: bg, border: border },
           font: nodeFont,
           value: Math.max(1, n.volume || 1), scaling: nodeScaling,
@@ -286,6 +291,14 @@ var mgmtNodeSet = null;
       mgmtNodeSet = data.nodes;
       // Keep the instance: re-entering the tab re-fits the viewport so the
       // graph never drifts off-center between visits (superior feedback).
+      // real-avatar upgrade (async): 404 keeps the robot base
+      if (window.__avRemoteUri) {
+        nodes.forEach(function (n) {
+          window.__avRemoteUri(n.address, function (u) {
+            if (u && mgmtNodeSet) mgmtNodeSet.update({ id: n.address, image: u });
+          });
+        });
+      }
       mgmtNetwork = new vis.Network(el, data, {
         // Roomier layout (feedback: nodes sat too close at real volumes):
         // stronger repulsion + longer springs spread the pairs so the

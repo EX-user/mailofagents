@@ -1679,6 +1679,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   window.__avRemoteHydrate = avRemoteHydrate;
   window.__avHarvest = avHarvest;
   window.__avRestore = avRestore;
+  // graph nodes (overview) draw the same robots as everything else: sync
+  // data-URI base + an async real-avatar upgrade when the account has one.
+  window.__avDataUri = function (addr) {
+    var a = String(addr || "").toLowerCase();
+    return "data:image/svg+xml;utf8," + encodeURIComponent(avRobotSvg(a, avSha256(a)));
+  };
+  window.__avRemoteUri = function (addr, cb) {
+    avatarObjectURL(String(addr || ""), "", false).then(function (u) { cb(u); }).catch(function () { cb(null); });
+  };
   window.__avFallback = function (img) {
     var box = img && img.parentNode;
     var addr = box && box.getAttribute("data-av");
