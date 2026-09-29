@@ -762,6 +762,62 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   var actData = null, actLastPull = 0, actPulling = false;
 
 
+  // boss 09-29 PC flicker: under real traffic the unified order flips almost
+  // every poll, and each flip used to trigger a full loadAccounts rewrite -
+  // the whole accounts page churned (rows re-created, hover/selection/scroll
+  // lost). Reorder the EXISTING nodes instead: a moved node keeps its avatar
+  // bitmap, marquee and state, so a reorder costs nothing visually. Returns
+  // false when an address has no rendered row yet (brand-new row) - callers
+  // fall back to the rebuild path for that case.
+  function reorderAccountsDom(want) {
+    var wantList = want.map(function (a) { return String(a).toLowerCase(); });
+    var done = false;
+    // PC table: a main row + a line3-row pair per address; agentreg-row stays last
+    $$("#tab-accounts tbody").forEach(function (tb) {
+      if (!tb.querySelector(".subrow-pc, .ct-row")) return;
+      var main = {}, line3 = {};
+      $$("tr[data-act-acct]", tb).forEach(function (tr) {
+        var k = String(tr.getAttribute("data-act-acct")).toLowerCase();
+        if (tr.classList.contains("line3-row")) (line3[k] = line3[k] || []).push(tr);
+        else (main[k] = main[k] || []).push(tr);
+      });
+      if (!Object.keys(main).length) return;
+      var frag = document.createDocumentFragment();
+      var ok = true;
+      wantList.forEach(function (a) {
+        var m = main[a], l = line3[a];
+        if (!m || !m.length || !l || !l.length) { ok = false; return; }
+        frag.appendChild(m.shift());
+        frag.appendChild(l.shift());
+      });
+      if (!ok) return;
+      var reg = tb.querySelector(".agentreg-row");
+      if (reg) frag.appendChild(reg);
+      tb.appendChild(frag);
+      done = true;
+    });
+    // Mobile: the pinned register row keeps its slot; data rows reorder after it
+    $$("#acc-m-contacts").forEach(function (box) {
+      var rows = {};
+      $$(".im3-row[data-claddr]", box).forEach(function (r) {
+        var k = String(r.getAttribute("data-claddr")).toLowerCase();
+        (rows[k] = rows[k] || []).push(r);
+      });
+      if (!Object.keys(rows).length) return;
+      var frag = document.createDocumentFragment();
+      var ok = true;
+      wantList.forEach(function (a) {
+        var q = rows[a];
+        if (!q || !q.length) { ok = false; return; }
+        frag.appendChild(q.shift());
+      });
+      if (!ok) return;
+      var anchor = box.querySelector(".im3-row[data-claddr]");
+      if (anchor) box.insertBefore(frag, anchor);
+      done = true;
+    });
+    return done;
+  }
   function applyActivity() {
 
 
@@ -875,14 +931,27 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         .map(function (r) { return String(r.getAttribute("data-claddr") || "").toLowerCase(); })
         .filter(function (a) { return a && wantSet[a]; });
       var same = want.length === have.length && want.every(function (a, i) { return a === have[i]; });
+      // entry-flake hardening: a failed initial fetch leaves only state rows.
+      // Data exists but nothing rendered -> one debounced rebuild, so the
+      // page recovers without a manual retry tap.
+      if (want.length && !have.length && !applyActivity._reloading) {
+        applyActivity._reloading = true;
+        setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 400);
+      }
       // 0024 batch guard: the reorder reload has no exit once it starts
       // against an empty actData (rows exist, panel later hidden, pulls
       // visibility-gated) - the 150ms loop rebuilt the whole list ~27x/5s
       // with no convergence possible. actData empty = nothing to reorder
       // against; the next successful pull re-runs applyActivity anyway.
       if (!same && have.length && actData) {
-        applyActivity._reloading = true;
-        setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 150);
+        // boss 09-29 PC flicker: order flips used to trigger a full
+        // loadAccounts rewrite nearly every poll - the whole page churned.
+        // Reorder the existing nodes in place; fall back to the debounced
+        // rebuild only when an address has no rendered row yet.
+        if (!reorderAccountsDom(want)) {
+          applyActivity._reloading = true;
+          setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 150);
+        }
       }
     }
 
