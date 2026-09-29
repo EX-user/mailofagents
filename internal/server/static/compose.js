@@ -1252,17 +1252,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           $("#compose-to").value = btn.dataset.target;
           composeInReplyTo = btn.dataset.mid || null;
           renderInReplyTo();
+          var pfx = btn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
+          var s2 = (btn.dataset.subj || "").trim();
           if (imMode()) {
             // Boss 09-29 (refined): tapping the capsule RESETS the body to
             // prefix + that letter's subject - the visible "who I am
             // replying to" cue (subject itself goes out as the no-info word).
-            var pfx = btn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
-            var s2 = (btn.dataset.subj || "").trim();
             $("#compose-body").value = s2 ? (pfx + " " + s2) : pfx;
             syncImBar();
             $("#im-input").focus();
           }
-          else $("#compose-body").focus();
+          else {
+            // boss 09-29 (restored): PC is a different surface - the capsule
+            // GENERATES the subject fill (prefix + that letter's subject);
+            // the phone keeps the body-prefix cue. PC and mobile are
+            // deliberately different logic here.
+            $("#compose-subject").value = s2 ? (pfx + " " + s2) : pfx;
+            $("#compose-body").focus();
+          }
           $("#compose-status").textContent = "Replying to " + btn.dataset.target;
           syncComposeSplit();
         });
