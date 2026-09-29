@@ -1702,6 +1702,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     $$("[data-avremote]", container).forEach(function (b) {
       var old = bank[String(b.getAttribute("data-av")).toLowerCase() + "|" + (b.getAttribute("data-avhash") || "")];
       if (!old || !old.hasAttribute("data-avdone")) return;
+      // same addr|hash can render twice in one container (sub+contact twin):
+      // a previous twin already drained the banked node - leave this box to
+      // normal hydration instead of marking an empty box done (Iris review).
+      if (!old.firstChild) return;
       while (b.firstChild) b.removeChild(b.firstChild);
       while (old.firstChild) b.appendChild(old.firstChild);
       b.setAttribute("data-avdone", "1");
