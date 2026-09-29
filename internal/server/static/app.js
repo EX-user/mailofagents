@@ -1688,6 +1688,18 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   window.__avRemoteUri = function (addr, cb) {
     avatarObjectURL(String(addr || ""), "", false).then(function (u) { cb(u); }).catch(function () { cb(null); });
   };
+  // graph faces embed avatars as DATA URIs: a data:-loaded SVG may not
+  // reference blob:/http: resources, so hand back bytes read as data URL.
+  window.__avAvatarDataUri = function (addr, cb) {
+    fetch("/api/avatar/" + encodeURIComponent(String(addr || "")), { headers: { Authorization: basicAuth() } })
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.blob(); })
+      .then(function (b) {
+        var fr = new FileReader();
+        fr.onload = function () { cb(fr.result); };
+        fr.onerror = function () { cb(null); };
+        fr.readAsDataURL(b);
+      }).catch(function () { cb(null); });
+  };
   window.__avFallback = function (img) {
     var box = img && img.parentNode;
     var addr = box && box.getAttribute("data-av");

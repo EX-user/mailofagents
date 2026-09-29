@@ -160,7 +160,18 @@ var mgmtNodeSet = null;
     el.innerHTML = '<div class="muted">' + t("common.loading") + "</div>";
     loadVisNetwork().then(function () {
       var myAddr = ((getSession() || {}).address || "").toLowerCase();
-      var vn = new vis.DataSet(nodes.map(function (n) {
+      var wl = windowLabel(graphPrefs.days);
+      // boss 0.3.4.2 (round two): the node KEEPS its previous box look - the
+      // face is a baked SVG in the old palette (ring/bg/kind colors, name +
+      // volume lines) with the account's REAL avatar inset at the left; the
+      // robot generator only covers accounts that never uploaded one (that
+      // robot IS their avatar everywhere else in the product). Avatars are
+      // resolved BEFORE the network builds so faces never flash-swap.
+      var XML_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+      function escXml(s) {
+        return String(s || "").replace(/[&<>"']/g, function (ch) { return XML_MAP[ch]; });
+      }
+      function nodeFace(n, avatarUri) {
         var kind = n.kind || "external";
         var isMe = kind === "self";
         var st = livenessByAddr[String(n.address || "").toLowerCase()];
@@ -170,27 +181,55 @@ var mgmtNodeSet = null;
         var bg = isMe ? "#dbeafe"
           : kind === "sub" ? (st === "strong" ? "#dcf2e4" : st === "weak" ? "#f7edd4" : "#eceff3")
           : "#f2f4f7";
-        var wl = windowLabel(graphPrefs.days);
-        // 播放特性一（上级 0.2.5）：「我」节点大一号更醒目——scaling 上限
-        // 抬高 + 字号加大，其余节点照旧。
-        // boss 0.3.4.2: avatar nodes - uniform circles (boss: 匀称漂亮), the
-        // deterministic robot as the sync base (same generator as everywhere),
-        // a real uploaded avatar upgrades the node once the registry lands.
-        var avSize = isMe ? 40 : 34;
-        var nodeScaling = { min: avSize, max: avSize, label: { enabled: false } };
+        var name = isMe ? t("mgmt.meLabel") : shortAddr(n.address);
+        var sub2 = kind !== "external" ? wl + " " + (n.volume || 0) : "";
+        // face is drawn at 1.6x so it keeps presence at the graph's fit-zoom
+        var FS = 1.6, H = Math.round(46 * FS), pad = Math.round(10 * FS), avD = Math.round(32 * FS);
+        var avX = pad + 2, tx = avX + avD + Math.round(10 * FS);
+        var wName = name.length * 7.4 * FS + 4;
+        var wSub = sub2.length * 6.3 * FS + 4;
+        var W = Math.ceil(tx + Math.max(wName, wSub) + pad + 2);
+        var cid = "c" + Math.abs(n.address.split("").reduce(function (a, ch) { return (a * 31 + ch.charCodeAt(0)) | 0; }, 7));
+        return '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '">' +
+          '<rect x="1" y="1" width="' + (W - 2) + '" height="' + (H - 2) + '" rx="' + Math.round(7 * FS) + '" fill="' + bg + '" stroke="' + border + '" stroke-width="' + (isMe ? 4 : 2.5) + '"/>' +
+          '<clipPath id="' + cid + '"><circle cx="' + (avX + avD / 2) + '" cy="' + H / 2 + '" r="' + avD / 2 + '"/></clipPath>' +
+          '<image x="' + avX + '" y="' + ((H - avD) / 2) + '" width="' + avD + '" height="' + avD + '" clip-path="url(#' + cid + ')" href="' + avatarUri + '"/>' +
+          '<circle cx="' + (avX + avD / 2) + '" cy="' + H / 2 + '" r="' + avD / 2 + '" fill="none" stroke="' + border + '" stroke-width="' + Math.round(1.5 * FS) + '"/>' +
+          '<text x="' + tx + '" y="' + Math.round(20 * FS) + '" font-family="ui-monospace, Consolas, monospace" font-size="' + Math.round(12 * FS) + '" font-weight="600" fill="#23303f">' + escXml(name) + '</text>' +
+          (sub2 ? '<text x="' + tx + '" y="' + Math.round(36 * FS) + '" font-family="ui-monospace, Consolas, monospace" font-size="' + Math.round(10.5 * FS) + '" fill="#5b6b7e">' + escXml(sub2) + '</text>' : "") +
+          '</svg>';
+      }
+      var faceUri = function (svg) { return "data:image/svg+xml;utf8," + encodeURIComponent(svg); };
+      Promise.all(nodes.map(function (n) {
+        return new Promise(function (res) {
+          if (window.__avAvatarDataUri) window.__avAvatarDataUri(n.address, function (u) { res(u || (window.__avDataUri ? window.__avDataUri(n.address) : "")); });
+          else res(window.__avDataUri ? window.__avDataUri(n.address) : "");
+        });
+      })).then(function (uris) {
+      var vn = new vis.DataSet(nodes.map(function (n, ni) {
+        var kind = n.kind || "external";
+        var isMe = kind === "self";
+        var st = livenessByAddr[String(n.address || "").toLowerCase()];
+        var border = isMe ? "#1d4ed8"
+          : kind === "sub" ? (st === "strong" ? "#2e9e5b" : st === "weak" ? "#d9a419" : "#9aa4b2")
+          : "#a7b1bd";
+        var bg = isMe ? "#dbeafe"
+          : kind === "sub" ? (st === "strong" ? "#dcf2e4" : st === "weak" ? "#f7edd4" : "#eceff3")
+          : "#f2f4f7";
+        var wl2 = wl;
+        var nodeScaling = { min: 37, max: 37, label: { enabled: false } };
         var nodeFont = { face: "ui-monospace, Consolas, monospace", size: isMe ? 12 : 11, color: "#23303f" };
         return {
-          id: n.address, label: (isMe ? t("mgmt.meLabel") : shortAddr(n.address)) +
-            (kind !== "external" ? "\n" + wl + " " + (n.volume || 0) : ""),
-          shape: "circularImage",
-          image: window.__avDataUri ? window.__avDataUri(n.address) : undefined,
-          size: avSize,
-          borderWidth: isMe ? 3 : 2,
-          color: { background: bg, border: border },
+          id: n.address, label: "",
+          shape: "image",
+          image: faceUri(nodeFace(n, uris[ni])),
+          size: 37,
+          borderWidth: 0,
+          color: { background: "transparent", border: "transparent" },
           font: nodeFont,
           value: Math.max(1, n.volume || 1), scaling: nodeScaling,
           mass: 1 + 3 * Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)),
-          title: shortAddr(n.address) + (kind !== "external" ? " · " + wl + " " + (n.volume || 0) : ""),
+          title: shortAddr(n.address) + (kind !== "external" ? " · " + wl2 + " " + (n.volume || 0) : ""),
           _kind: kind
         };
       }));
@@ -291,14 +330,6 @@ var mgmtNodeSet = null;
       mgmtNodeSet = data.nodes;
       // Keep the instance: re-entering the tab re-fits the viewport so the
       // graph never drifts off-center between visits (superior feedback).
-      // real-avatar upgrade (async): 404 keeps the robot base
-      if (window.__avRemoteUri) {
-        nodes.forEach(function (n) {
-          window.__avRemoteUri(n.address, function (u) {
-            if (u && mgmtNodeSet) mgmtNodeSet.update({ id: n.address, image: u });
-          });
-        });
-      }
       mgmtNetwork = new vis.Network(el, data, {
         // Roomier layout (feedback: nodes sat too close at real volumes):
         // stronger repulsion + longer springs spread the pairs so the
@@ -383,7 +414,8 @@ var mgmtNodeSet = null;
       });
     }).catch(function () {
       el.innerHTML = '<p class="muted">' + esc(t("mgmt.graphLoadFail")) + "</p>";
-    });
+    }); // avatar/face chain failures land here
+    }).catch(function () {}); // vis loader chain (A): silent — U already reports
   }
 
   var mgmtOverviewLoaded = false;
