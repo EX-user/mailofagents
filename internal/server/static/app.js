@@ -812,8 +812,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         frag.appendChild(q.shift());
       });
       if (!ok) return;
-      var anchor = box.querySelector(".im3-row[data-claddr]");
-      if (anchor) box.insertBefore(frag, anchor);
+      // plain append: the pinned register row is not in the fragment, so it
+      // naturally stays first; a null-anchor insertBefore (all rows in want)
+      // silently dropped the whole fragment here - empty list (v0.3.4.2)
+      box.appendChild(frag);
       done = true;
     });
     return done;
