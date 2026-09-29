@@ -3087,10 +3087,14 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   }
   #tab-compose.im .thread-item.thread-in .thread-card { border-left-color: var(--success); }
   #tab-compose.im .thread-av {
-    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 9px;
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 10px;
     overflow: hidden; background: var(--bg);
-    font-size: 12px; line-height: 26px; text-align: center; color: var(--muted);
+    font-size: 13px; line-height: 30px; text-align: center; color: var(--muted);
   }
+  /* boss 0.3.4.2: bigger avatar, closer to the screen edge - main's 20px
+     side padding reads as wasted gutter on the phone; IM view hugs 8px */
+  html:has(#tab-compose.im) main { padding-left: 8px; padding-right: 8px; }
+  #tab-compose.im .thread-item { gap: 6px; }
   #tab-compose.im .thread-av img { width: 100%; height: 100%; display: block; border-radius: 9px; }
   /* boss 0.3.4.2 addendum: no-subject capsules have no subject line, so the
      folded preview is the whole face of the letter - let it breathe to 3
