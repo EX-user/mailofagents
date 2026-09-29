@@ -1176,7 +1176,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // A multi-value To (allowed on the full form) is CLIPPED to its first
       // address the moment the conversation view loads.
       const firstPeer = to.split(",")[0].trim();
-      if (firstPeer && firstPeer !== to) $("#compose-to").value = firstPeer;
+      // boss 09-29 field report: the clip is CONVERSATION-PAGE semantics only.
+      // Gating it on imMode - on the PC full form a second To address the
+      // user just typed must survive (the field feeds the send envelope).
+      if (imMode() && firstPeer && firstPeer !== to) $("#compose-to").value = firstPeer;
       const threadRes = isRegular
         ? await api("/api/thread?with=" + encodeURIComponent(firstPeer || to) + "&limit=50")
         : await api("/admin/thread?account=" + encodeURIComponent("admin@" + composeDomain) +
