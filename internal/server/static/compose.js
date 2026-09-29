@@ -1217,7 +1217,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // marks it read server-side), so the next accounts poll clears the
       // dots everywhere. Self-limiting: afterwards there is nothing to
       // fetch. Regular accounts only (admin previews never write state).
-      if (isRegular) {
+      // boss 09-29 field report (red dot dies by itself): this block used to
+      // run on EVERY loadComposeThread, including fires with the compose
+      // page hidden (draft switches, stale recipient) - unread letters were
+      // consumed by a page the user was not looking at, and the inbox badge
+      // cleared without any read. Gate on the conversation actually being
+      // on screen; a load with the page visible still reads it per the
+      // approved 09-29 semantics.
+      var cp = document.getElementById("tab-compose");
+      var composeOnScreen = !document.hidden && cp && cp.offsetParent !== null;
+      if (isRegular && composeOnScreen) {
         all.filter(function (m) { return m.dir === "in" && m.unread; }).forEach(function (m) {
           api("/api/message?id=" + encodeURIComponent(m.id), { keepSession: true }).catch(function () {});
         });
