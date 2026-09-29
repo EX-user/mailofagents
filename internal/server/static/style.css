@@ -3065,20 +3065,27 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
      glance (position + edge color + fill). The expand hint stays visible:
      it is the affordance for the lazy-loaded full body. Order in JS. */
   #tab-compose.im .thread-item { margin: 0 0 7px; font-size: 12.5px; border-left-width: 2px; }
-  #tab-compose.im .thread-item.thread-out {
-    margin-left: 14%;
-    border-left-color: var(--accent);
-    background: linear-gradient(color-mix(in srgb, var(--accent) 14%, transparent),
-                color-mix(in srgb, var(--accent) 14%, transparent)), var(--panel);
-  }
-  #tab-compose.im .thread-item.thread-in { margin-right: 14%; border-left-color: var(--success); }
+  #tab-compose.im .thread-item.thread-out { margin-left: 14%; }
+  #tab-compose.im .thread-item.thread-in { margin-right: 14%; }
   /* boss 0.3.4.2: history capsules carry avatars - peer left, own right
      (row-reverse). Boxes ride the standard data-av path (real avatar if the
      sender uploaded one, robot via the 404 fallback); harvest/restore keeps
      them decode-free across poll rebuilds (same mechanism as 06586e1). */
-  #tab-compose.im .thread-item { display: flex; gap: 7px; align-items: flex-start; }
-  #tab-compose.im .thread-item .thread-body { flex: 1 1 auto; min-width: 0; }
+  #tab-compose.im .thread-item { display: flex; gap: 7px; align-items: flex-start;
+    background: none; border: none; border-left: none; padding: 0; border-radius: 0; }
+  /* the capsule chrome lives on the inner card - the avatar hangs in the
+     gutter OUTSIDE it (boss 09-29: 头像不放在胶囊内) */
+  #tab-compose.im .thread-item .thread-card {
+    flex: 1 1 auto; min-width: 0; padding: 8px 12px; border-radius: 6px;
+    border-left: 2px solid var(--border); background: var(--panel);
+  }
   #tab-compose.im .thread-item.thread-out { flex-direction: row-reverse; }
+  #tab-compose.im .thread-item.thread-out .thread-card {
+    border-left-color: var(--accent);
+    background: linear-gradient(color-mix(in srgb, var(--accent) 14%, transparent),
+                color-mix(in srgb, var(--accent) 14%, transparent)), var(--panel);
+  }
+  #tab-compose.im .thread-item.thread-in .thread-card { border-left-color: var(--success); }
   #tab-compose.im .thread-av {
     flex: 0 0 auto; width: 26px; height: 26px; border-radius: 9px;
     overflow: hidden; background: var(--bg);
@@ -3134,7 +3141,7 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     flex: 1 1 auto; min-width: 0; min-height: 0; padding: 4px 0; border: none;
     background: transparent; color: var(--text); font-size: 13.5px; outline: none;
     font-family: inherit; line-height: 1.45; resize: none;
-    overflow-y: auto; overflow-x: hidden; max-height: 110px;
+    overflow-y: auto; overflow-x: hidden; max-height: 86px;
   }
   /* boss 0.3.4.2: the send glyph must sit dead-center - flex box centers
      the glyph on both axes (line-height alone rides the font baseline) */

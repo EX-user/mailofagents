@@ -272,7 +272,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   function imInputGrow(el) {
     if (!el || el.tagName !== "TEXTAREA") return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 110) + "px";
+    el.style.height = Math.min(el.scrollHeight, 86) + "px";
   }
   function syncImBar() {
     var bar = document.getElementById("im-input");
@@ -1189,7 +1189,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>' : "";
         return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-loaded="0">' +
           avBox +
-          '<div class="thread-body">' +
+          '<div class="thread-card">' +
           '<div class="thread-meta"><b>' + arrow + "</b> · <small>" + fmtTime(m.ts) + "</small>" +
           ' <span class="thread-toggle">' + esc(t("thread.expand")) + '</span> ' + actionBtn + '</div>' +
           (noSubjectInfo(m.subject)
