@@ -585,7 +585,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var css = ".hb-pill{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;" +
 
 
-      "font-size:11px;line-height:16px;font-weight:600;color:#fff;vertical-align:1px;white-space:nowrap}" +
+      "font-size:11px;line-height:16px;font-weight:600;color:#fff;vertical-align:1px;white-space:nowrap;transition:background-color 1.2s linear}" +
 
 
       ".hb-working{background:#16a34a}.hb-waiting{background:#2563eb}.hb-compact{background:#b45309}" +
@@ -624,7 +624,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var f = (Date.now() / 1000 - at - HB_POLL_SEC) / HB_TTL_SEC;
 
 
-    return f < 0 ? 0 : (f > 1 ? 1 : f);
+    if (f < 0) f = 0; else if (f > 1) f = 1;
+
+
+    return Math.round(f * 10) / 10; // decile steps
 
 
   }
@@ -654,7 +657,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   }
 
 
-  function hbPillHtml(s) {
+  function hbPillKey(s) {
 
 
     var hst = s && s.worker_state;
@@ -678,16 +681,22 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (!HB_STATES[key]) return ""; // 未知状态=不显（前瞻兼容 worker 新态）
 
 
-    var f = hbFreshRatio(at);
+    return key;
 
 
-    var col = hbFadeColor(key, f);
+  }
 
 
-    var style = col ? ' style="background-color:' + col + '"' : "";
+  function hbPillHtml(s) {
 
 
-    return '<span class="hb-pill hb-' + key + '" data-hb-t1="' + at + '" data-hb-key="' + key + '"' + style + ' title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
+    var key = hbPillKey(s);
+
+
+    if (!key) return "";
+
+
+    return '<span class="hb-pill hb-' + key + '" data-hb-key="' + key + '" title="' + esc(t("hb." + key + "Tip")) + '">' + esc(t("hb." + key)) + "</span>";
 
 
   }
@@ -717,7 +726,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       if (!panel || panel.offsetParent === null) return;
 
 
-      var pills = document.querySelectorAll(".hb-pill[data-hb-t1]");
+      var pills = document.querySelectorAll(".hb-pill");
 
 
       for (var i = 0; i < pills.length; i++) {
@@ -726,22 +735,30 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         var el = pills[i];
 
 
-        var at = +el.getAttribute("data-hb-t1") || 0;
+        if (!applyActivity._hb) return;
+
+      var host = el.closest("[data-act-acct]");
+
+      var s2 = host ? (applyActivity._hb[String(host.getAttribute("data-act-acct")).toLowerCase()] || null) : null;
+
+      var at = 0;
+
+      if (s2) { at = +s2.worker_seen_at || 0; if (at > 1e12) at = at / 1000; }
 
 
-        var f = hbFreshRatio(at);
+        var f = s2 ? hbFreshRatio(at) : 1;
 
 
-        if (f >= 1) { el.remove(); continue; }
+        if (!s2 || f >= 1) { el.remove(); continue; }
 
 
         var col = hbFadeColor(el.getAttribute("data-hb-key"), f);
 
 
-        if (col) el.style.backgroundColor = col;
+        if (el.__hbcol !== col) { el.__hbcol = col; el.style.backgroundColor = col; }
 
 
-        else el.style.backgroundColor = "";
+
 
 
       }
@@ -762,68 +779,92 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   var actData = null, actLastPull = 0, actPulling = false;
 
 
-  // boss 09-29 PC flicker: under real traffic the unified order flips almost
-  // every poll, and each flip used to trigger a full loadAccounts rewrite -
-  // the whole accounts page churned (rows re-created, hover/selection/scroll
-  // lost). Reorder the EXISTING nodes instead: a moved node keeps its avatar
-  // bitmap, marquee and state, so a reorder costs nothing visually. Returns
-  // false when an address has no rendered row yet (brand-new row) - callers
-  // fall back to the rebuild path for that case.
+  // reorderAccountsDom moves EXISTING rows into the unified latest_at order
+  // on both surfaces instead of the full loadAccounts rewrite (boss 09-29
+  // round two, from the clean v0.3.4.1 base: PC and the phone must share one
+  // list-refresh logic, and the per-flip rebuild re-created every row on
+  // nearly every poll - on PC that read as constant page flicker). One
+  // contract for both surfaces: collect the rendered rows per address,
+  // VERIFY the move is total - every wanted address has its row(s), every
+  // rendered data row is wanted, no unknown children, pinned furniture
+  // present, no duplicates - and only then append in want order. Any
+  // mismatch returns false and the caller falls back to the debounced
+  // rebuild, so a partial move can never strand rows in a detached fragment
+  // (the v0.3.4.2 empty-list bug class is structurally impossible here).
+  // Moved nodes keep avatar bitmaps, listeners and hover/scroll state.
   function reorderAccountsDom(want) {
     var wantList = want.map(function (a) { return String(a).toLowerCase(); });
-    var done = false;
-    // PC table: a main row + a line3-row pair per address; agentreg-row stays last
+    var wantSet = {};
+    wantList.forEach(function (a) { wantSet[a] = 1; });
+    var moved = false;
+    // PC: one tbody; per-address pair = main row (subrow-pc/ct-row) +
+    // full-width line3 row; the register card stays last.
     $$("#tab-accounts tbody").forEach(function (tb) {
       if (!tb.querySelector(".subrow-pc, .ct-row")) return;
-      var main = {}, line3 = {};
-      $$("tr[data-act-acct]", tb).forEach(function (tr) {
-        var k = String(tr.getAttribute("data-act-acct")).toLowerCase();
-        if (tr.classList.contains("line3-row")) (line3[k] = line3[k] || []).push(tr);
-        else (main[k] = main[k] || []).push(tr);
+      var main = {}, line3 = {}, unknown = 0, reg = null;
+      Array.prototype.forEach.call(tb.children, function (tr) {
+        if (tr.nodeType !== 1) { unknown++; return; }
+        var k = String(tr.getAttribute("data-act-acct") || "").toLowerCase();
+        if (tr.classList.contains("agentreg-row")) { reg = tr; return; }
+        if (tr.classList.contains("line3-row")) {
+          if (k && !line3[k]) line3[k] = tr; else unknown++;
+        } else if (k && (tr.classList.contains("subrow-pc") || tr.classList.contains("ct-row"))) {
+          if (main[k]) unknown++; else main[k] = tr;
+        } else unknown++;
       });
-      if (!Object.keys(main).length) return;
-      var frag = document.createDocumentFragment();
-      // boss 09-29 (settings-card flash-close, root cause): the old loop
-      // kept moving later addresses after a miss (forEach return only skips
-      // the iteration), then aborted - rows already moved into the fragment
-      // were stranded in a discarded fragment and destroyed. Validate the
-      // whole order first; move rows only when every address resolves.
+      if (!reg || unknown) return;
+      var seq = [];
       var ok = wantList.every(function (a) {
-        var m = main[a], l = line3[a];
-        return m && m.length && l && l.length;
+        if (main[a] && line3[a]) { seq.push(a); return true; }
+        return false;
       });
+      Object.keys(main).forEach(function (a) { if (!wantSet[a]) ok = false; });
+      Object.keys(line3).forEach(function (a) { if (!wantSet[a]) ok = false; });
       if (!ok) return;
-      wantList.forEach(function (a) {
-        frag.appendChild(main[a].shift());
-        frag.appendChild(line3[a].shift());
+      var cur = [...tb.querySelectorAll(".subrow-pc, .ct-row")].map(function (r) {
+        return String(r.getAttribute("data-act-acct")).toLowerCase();
       });
-      var reg = tb.querySelector(".agentreg-row");
-      if (reg) frag.appendChild(reg);
-      tb.appendChild(frag);
-      done = true;
-    });
-    // Mobile: the pinned register row keeps its slot; data rows reorder after it
-    $$("#acc-m-contacts").forEach(function (box) {
-      var rows = {};
-      $$(".im3-row[data-claddr]", box).forEach(function (r) {
-        var k = String(r.getAttribute("data-claddr")).toLowerCase();
-        (rows[k] = rows[k] || []).push(r);
-      });
-      if (!Object.keys(rows).length) return;
+      if (cur.join("|") === seq.join("|")) { moved = true; return; }
       var frag = document.createDocumentFragment();
-      // same pre-validation as the PC block - see the flash-close note there
-      var ok = wantList.every(function (a) { return rows[a] && rows[a].length; });
-      if (!ok) return;
-      wantList.forEach(function (a) {
-        frag.appendChild(rows[a].shift());
-      });
-      // plain append: the pinned register row is not in the fragment, so it
-      // naturally stays first; a null-anchor insertBefore (all rows in want)
-      // silently dropped the whole fragment here - empty list (v0.3.4.2)
-      box.appendChild(frag);
-      done = true;
+      seq.forEach(function (a) { frag.appendChild(main[a]); frag.appendChild(line3[a]); });
+      frag.appendChild(reg);
+      tb.appendChild(frag);
+      moved = true;
     });
-    return done;
+    // Phone: one card per address in #acc-m-contacts; the pinned register
+    // row stays first (data groups always append after it).
+    var cb = document.getElementById("acc-m-contacts");
+    if (cb && cb.querySelector(".im3-row[data-claddr]")) {
+      var rows = {}, unknownM = 0, regM = null;
+      Array.prototype.forEach.call(cb.children, function (el) {
+        if (el.nodeType !== 1) { unknownM++; return; }
+        if (el.hasAttribute("data-reg")) { regM = el; return; }
+        var k = String(el.getAttribute("data-claddr") || "").toLowerCase();
+        if (el.classList.contains("im3-row") && k && !rows[k]) rows[k] = el;
+        else unknownM++;
+      });
+      if (regM && !unknownM) {
+        var seqM = [];
+        var okM = wantList.every(function (a) {
+          if (rows[a]) { seqM.push(a); return true; }
+          return false;
+        });
+        Object.keys(rows).forEach(function (a) { if (!wantSet[a]) okM = false; });
+        if (okM) {
+          var curM = [...cb.querySelectorAll(".im3-row[data-claddr]")].map(function (r) {
+            return String(r.getAttribute("data-claddr")).toLowerCase();
+          });
+          if (curM.join("|") !== seqM.join("|")) {
+            var fragM = document.createDocumentFragment();
+            seqM.forEach(function (a) { fragM.appendChild(rows[a]); });
+            cb.appendChild(fragM);
+            if (cb.firstElementChild !== regM) cb.insertBefore(regM, cb.firstChild);
+          }
+          moved = true;
+        }
+      }
+    }
+    return moved;
   }
   function applyActivity() {
 
@@ -864,6 +905,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     });
 
 
+    applyActivity._hb = byAddr; // live heartbeat data for the 1s fade loop (no per-poll pill swaps)
+
+
     $$("[data-act-acct]").forEach(function (el) {
 
 
@@ -885,11 +929,26 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
 
 
-        var html = s ? hbPillHtml(s) : "";
+        // boss 09-29: the 1s fade loop writes the pill's inline color and
+        // innerHTML serializes it - compare the pill SIGNATURE (state class
+        // + label) instead of the raw html, or every poll reads the colored
+        // pill as changed and re-creates it (the per-poll swap = snap-back).
 
 
 
-        if (pill.innerHTML !== html) pill.innerHTML = html;
+        var key2 = s ? hbPillKey(s) : "";
+
+
+
+        var cur2 = pill.firstChild;
+
+
+
+        var sig2 = cur2 && cur2.nodeType === 1 ? cur2.className + "\u0001" + cur2.textContent : "";
+
+
+
+        if (sig2 !== (key2 ? "hb-pill hb-" + key2 + "\u0001" + t("hb." + key2) : "")) pill.innerHTML = hbPillHtml(s);
 
 
 
@@ -951,10 +1010,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // with no convergence possible. actData empty = nothing to reorder
       // against; the next successful pull re-runs applyActivity anyway.
       if (!same && have.length && actData) {
-        // boss 09-29 PC flicker: order flips used to trigger a full
-        // loadAccounts rewrite nearly every poll - the whole page churned.
-        // Reorder the existing nodes in place; fall back to the debounced
-        // rebuild only when an address has no rendered row yet.
+        // boss 09-29 round two: an order flip MOVES the existing rows via the
+        // one shared routine (PC + phone, logic identical); the debounced
+        // rebuild below is only the fallback for rows the move cannot place
+        // (brand-new contact, stale row, state row) - never the flicker path.
         if (!reorderAccountsDom(want)) {
           applyActivity._reloading = true;
           setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 150);
