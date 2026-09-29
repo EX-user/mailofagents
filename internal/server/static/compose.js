@@ -1191,7 +1191,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           (noSubjectInfo(m.subject)
             ? // boss 09-30: a no-information subject gets NO redundant (no
               // subject) label - the preview line carries the unread dot.
-              '<div class="thread-prev' + subjCls + '">' + unreadMark + esc(m.preview || "") + "</div>"
+              '<div class="thread-prev' + subjCls + ' thread-prev-multi">' + unreadMark + esc(m.preview || "") + "</div>"
             : '<div class="thread-subj' + subjCls + '">' + esc(m.subject) + "</div>" +
               '<div class="thread-prev">' + esc(m.preview || "") + "</div>") +
           '<div class="thread-full hidden"></div>' +

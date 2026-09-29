@@ -3085,6 +3085,14 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     font-size: 12px; line-height: 26px; text-align: center; color: var(--muted);
   }
   #tab-compose.im .thread-av img { width: 100%; height: 100%; display: block; border-radius: 9px; }
+  /* boss 0.3.4.2 addendum: no-subject capsules have no subject line, so the
+     folded preview is the whole face of the letter - let it breathe to 3
+     lines (clamp, ellipsis on the cut) instead of the one-line nowrap. */
+  #tab-compose.im .thread-item .thread-prev.thread-prev-multi {
+    white-space: normal;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden; text-overflow: ellipsis; word-break: break-word; overflow-wrap: anywhere;
+  }
   /* the visible subject line (boss: the silent Re:-fill was baffling) —
      it always shows exactly what the next send will carry: the user's own
      subject, the predicted "Re: <newest> (auto)", or a tap-to-fill prompt */
