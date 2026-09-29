@@ -1049,12 +1049,31 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   })();
 
 
-  document.addEventListener("compose:sent", function () {
+  document.addEventListener("compose:sent", function (ev) {
 
 
     actLastPull = 0; // boss rc2: a just-sent mail must reorder the list at once
 
 
+    // boss 09-29 local short path: the server pull is three SERIAL round-
+    // trips, which read as a ~1s lag before the accounts order corrected
+    // after a send. Bump the recipient rows from local state and re-apply
+    // now - zero network; the next pull confirms with server truth.
+    var det = ev.detail || {};
+    var now = Math.floor(Date.now() / 1000);
+    var subj = String(det.subject || "");
+    var d = (actData = actData || {});
+    var rows = (d.subs = d.subs || []).concat(d.contacts = d.contacts || []);
+    String(det.to || "").split(",").forEach(function (raw) {
+      var addr = String(raw).trim().toLowerCase();
+      if (!addr) return;
+      rows.forEach(function (s) {
+        if (String(s.address).toLowerCase() !== addr) return;
+        s.latest_at = now;
+        if (subj) s.latest_subject = subj;
+      });
+    });
+    applyActivity();
   });
 
 
