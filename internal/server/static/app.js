@@ -783,14 +783,20 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       });
       if (!Object.keys(main).length) return;
       var frag = document.createDocumentFragment();
-      var ok = true;
-      wantList.forEach(function (a) {
+      // boss 09-29 (settings-card flash-close, root cause): the old loop
+      // kept moving later addresses after a miss (forEach return only skips
+      // the iteration), then aborted - rows already moved into the fragment
+      // were stranded in a discarded fragment and destroyed. Validate the
+      // whole order first; move rows only when every address resolves.
+      var ok = wantList.every(function (a) {
         var m = main[a], l = line3[a];
-        if (!m || !m.length || !l || !l.length) { ok = false; return; }
-        frag.appendChild(m.shift());
-        frag.appendChild(l.shift());
+        return m && m.length && l && l.length;
       });
       if (!ok) return;
+      wantList.forEach(function (a) {
+        frag.appendChild(main[a].shift());
+        frag.appendChild(line3[a].shift());
+      });
       var reg = tb.querySelector(".agentreg-row");
       if (reg) frag.appendChild(reg);
       tb.appendChild(frag);
@@ -805,13 +811,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       });
       if (!Object.keys(rows).length) return;
       var frag = document.createDocumentFragment();
-      var ok = true;
-      wantList.forEach(function (a) {
-        var q = rows[a];
-        if (!q || !q.length) { ok = false; return; }
-        frag.appendChild(q.shift());
-      });
+      // same pre-validation as the PC block - see the flash-close note there
+      var ok = wantList.every(function (a) { return rows[a] && rows[a].length; });
       if (!ok) return;
+      wantList.forEach(function (a) {
+        frag.appendChild(rows[a].shift());
+      });
       // plain append: the pinned register row is not in the fragment, so it
       // naturally stays first; a null-anchor insertBefore (all rows in want)
       // silently dropped the whole fragment here - empty list (v0.3.4.2)
@@ -2195,6 +2200,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       var errContactsRow = contactsFailed ? im3StateRowHtml("err", "acc.errContacts", "acc.retryTap", "contacts") : "";
       var emptyRow = (!subsFailed && !contactsFailed && subsList.length === 0 && contactRaw === 0) ? im3StateRowHtml("empty", "acc.emptyTitle", "acc.emptySub", null) : "";
       var avBankM = avHarvest(ctBox);
+      // boss 09-29 (settings-card flash-close): the poll rebuild wiped the
+      // open .im3-overlay (its .on lived only in the old DOM) - capture the
+      // open card's address and re-apply it after the rewire.
+      var onOvl = ctBox.querySelector(".im3-overlay.on");
+      var openOvl = onOvl ? onOvl.getAttribute("data-ovl") : null;
       ctBox.innerHTML = regRow + errSubsRow + clRows + errContactsRow + emptyRow;
       avRestore(ctBox, avBankM);
       var regEl = ctBox.querySelector("[data-reg]");
@@ -2203,6 +2213,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         if (b) b.click();
       });
       accWireList(ctBox);
+      if (openOvl) {
+        var reOvl = ctBox.querySelector('.im3-overlay[data-ovl="' + openOvl + '"]');
+        if (reOvl) reOvl.classList.add("on"); // settings card survives the rebuild
+      }
       wireErrRetry(ctBox);
       avHydrate(ctBox);
       avRemoteHydrate(ctBox); // 0021: registry-backed real avatars
