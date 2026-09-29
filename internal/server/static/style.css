@@ -3130,7 +3130,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5;
     display: flex; flex-direction: column; gap: 6px;
     background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
-    /* boss 0.3.4.2: no shadow - the front-end uses none anywhere else */
+    /* boss 0.3.4.2: whisper shadow - none at all read as flat/odd, the old
+       0 8px 22px rgba(0,0,0,.4) read as heavy; this is the middle draft */
+    box-shadow: 0 2px 8px rgba(0,0,0,.10);
     padding: 4px 8px;
   }
   #tab-compose.im #im-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
