@@ -78,7 +78,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (document.visibilityState === "hidden") return;
     const seq = ++badgeSeq;
     try {
-      const d = await api("/api/inbox?limit=1");
+      const d = await api("/api/inbox?limit=1&badge=1"); // badge=1: server skips the audit row - a poll reads nothing
       if (seq !== badgeSeq) return; // a newer refresh superseded this one
       var cur = d.unread_count || 0;
       if (cur > prevInboxUnread) {
