@@ -58,6 +58,17 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     var val = document.getElementById("im-irt-val");
     if (val) {
       var v = composeInReplyTo || "\u2014";
+      if (composeInReplyTo) {
+        // boss 0.3.4.2: the line reads irt|prefix subject, cut to one line by
+        // the ellipsis CSS. Prefix/subject derive from the anchored capsule's
+        // own dataset (no state to track); a vanished capsule falls back bare.
+        var abtn = document.querySelector('#compose-thread .thread-action[data-mid="' + composeInReplyTo + '"]');
+        if (abtn) {
+          var apfx = abtn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
+          var asubj = (abtn.dataset.subj || "").trim();
+          v = composeInReplyTo + "|" + apfx + (asubj ? " " + asubj : "");
+        } else v = composeInReplyTo + "|";
+      }
       if (val.textContent !== v) val.textContent = v;
     }
     var x = document.getElementById("im-irt-x");
@@ -272,7 +283,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   function imInputGrow(el) {
     if (!el || el.tagName !== "TEXTAREA") return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 86) + "px";
+    el.style.height = Math.min(el.scrollHeight, 88) + "px";
   }
   function syncImBar() {
     var bar = document.getElementById("im-input");
@@ -2100,6 +2111,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     }
     function exitFullForm() {
       sec.classList.remove("im-full");
+      // boss 0.3.4.2: returning from the full form clears the irt anchor -
+      // the bar's attachment line depends on it and goes with it.
+      if (composeInReplyTo) { composeInReplyTo = null; renderInReplyTo(); }
       // Boss: the conversation page is single-To - a multi-value To the
       // user typed on the full form clips to its first address here too.
       var toEl = $("#compose-to");

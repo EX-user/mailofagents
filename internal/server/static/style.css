@@ -3141,7 +3141,7 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     flex: 1 1 auto; min-width: 0; min-height: 0; padding: 4px 0; border: none;
     background: transparent; color: var(--text); font-size: 13.5px; outline: none;
     font-family: inherit; line-height: 1.45; resize: none;
-    overflow-y: auto; overflow-x: hidden; max-height: 86px;
+    overflow-y: auto; overflow-x: hidden; max-height: 88px;
   }
   /* boss 0.3.4.2: the send glyph must sit dead-center - flex box centers
      the glyph on both axes (line-height alone rides the font baseline) */
