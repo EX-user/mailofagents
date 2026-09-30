@@ -3156,9 +3156,14 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     width: 30px; height: 30px; min-height: 0; padding: 0; flex: 0 0 auto;
     border-radius: 50%; border: 1px solid var(--border); background: transparent;
     color: var(--muted); font-size: 17px; line-height: 1;
+    /* 1041 (boss, 1001): baseline/optical measurement - the + glyph
+       ink sits 1px above the bar centerline; nudge it down. */
+    transform: translateY(1px);
   }
   #tab-compose.im #im-main #im-input {
-    flex: 1 1 auto; min-width: 0; min-height: 0; padding: 4px 0; border: none;
+    /* 1041: the first text line ink sits 1px below the bar
+       centerline (canvas TextMetrics) - asymmetric padding lifts it. */
+    flex: 1 1 auto; min-width: 0; min-height: 0; padding: 3px 0 5px; border: none;
     background: transparent; color: var(--text); font-size: 13.5px; outline: none;
     font-family: inherit; line-height: 1.45; resize: none;
     overflow-y: auto; overflow-x: hidden; max-height: 88px;
