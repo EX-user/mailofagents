@@ -2269,7 +2269,39 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
     flex: 1 1 auto; min-height: 0; max-height: none;
     overflow-y: auto;
   }
-  #tab-inbox .inbox-pager { flex: 0 0 auto; margin-top: 10px; margin-bottom: 0; }
+  /* 1042 (boss, 1001): the mobile inbox pager swaps its bulky control
+     row for the floating capsule the PC side uses - chevron buttons +
+     slim page input in one 999px pill, right-aligned, freeing vertical
+     space for the list (flex gives the pane the difference). */
+  #tab-inbox .inbox-pager {
+    flex: 0 0 auto; margin: 8px 10px 8px auto; width: max-content;
+    display: flex; align-items: center; gap: 0; justify-content: flex-end;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 6px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
+  }
+  #tab-inbox .inbox-pager button {
+    width: 30px; height: 24px; min-height: 0; padding: 0;
+    border: none; border-radius: 999px; font-size: 0; color: transparent;
+    background-color: transparent;
+    background-repeat: no-repeat; background-position: center; background-size: 14px 14px;
+  }
+  #tab-inbox .inbox-pager button:hover { background-color: rgba(100, 116, 139, 0.14); }
+  #tab-inbox .inbox-pager button[data-i18n="pager.prev"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'/%3E%3C/svg%3E");
+  }
+  #tab-inbox .inbox-pager button[data-i18n="pager.next"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236b7280'%3E%3Cpath d='M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'/%3E%3C/svg%3E");
+  }
+  #tab-inbox .inbox-pager .muted { display: none; }
+  #tab-inbox .inbox-pager input[type="number"] {
+    width: 40px; text-align: center; margin: 0 2px; padding: 3px 0; font-size: 12px;
+    background: transparent; border: none; color: var(--text);
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  #tab-inbox .inbox-pager input[type="number"]:focus { outline: none; box-shadow: none; }
+  #tab-inbox .inbox-pager input[type="number"]::-webkit-outer-spin-button,
+  #tab-inbox .inbox-pager input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 }
 
 /* Superior 09-02: one-screen Inbox on PC as well — same measured flex
