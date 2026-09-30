@@ -2264,6 +2264,7 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   #inbox-grid {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column;
+    position: relative; /* 1042: anchor for the floating pager */
   }
   #inbox-grid > .pane {
     flex: 1 1 auto; min-height: 0; max-height: none;
@@ -2273,12 +2274,16 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
      row for the floating capsule the PC side uses - chevron buttons +
      slim page input in one 999px pill, right-aligned, freeing vertical
      space for the list (flex gives the pane the difference). */
+  /* 1042 round 2 (boss, 1001): the capsule floats INSIDE the list
+     viewport (absolute, bottom-right) - zero flex height, the list
+     owns the full column. */
   #tab-inbox .inbox-pager {
-    flex: 0 0 auto; margin: 8px 10px 8px auto; width: max-content;
+    position: absolute; right: 12px; bottom: 10px; z-index: 5;
+    margin: 0; width: max-content;
     display: flex; align-items: center; gap: 0; justify-content: flex-end;
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 999px; padding: 2px 6px;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
   }
   #tab-inbox .inbox-pager button {
     width: 30px; height: 24px; min-height: 0; padding: 0;
@@ -3208,6 +3213,11 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     display: inline-flex; align-items: center; justify-content: center; line-height: 1;
   }
   #tab-compose.im #im-bar #compose-attachments { margin: 0; }
+  /* 1041 (boss, 1001 round 4): the EMPTY attachment list still flexed,
+       so the bar gap padded 6px above #im-main and pushed the whole
+       button group down inside the bar - boss saw the circles sit low
+       in the screenshot. An empty list display:none's the gap too. */
+  #tab-compose.im #im-bar #compose-attachments:empty { display: none; }
   /* 附件卡提密（boss：信息密度低）：单行 chip——📎 名（省略）·大小·× 同排 */
   /* boss test-server report: base .attach-card allows flex-wrap - a long
      filename pushed the size chip onto a second line before the name ever
