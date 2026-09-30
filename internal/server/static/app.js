@@ -1151,7 +1151,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         var has = !!unreadBy[String(el.getAttribute("data-act-acct")).toLowerCase()];
         if (av.classList.contains("has-unread") !== has) av.classList.toggle("has-unread", has);
       }
-      var line3 = el.querySelector(".im3-line3");
+      // 0.3.5 (boss staging note): the PC table shape carries the latest
+      // line in a sibling .line3-row as .pc-line3 - the .im3-line3-only
+      // query patched phone cards and never the PC row, so after a send
+      // the order topped but the message line stayed stale until a
+      // rebuild. One selector covers both shapes.
+      var line3 = el.querySelector(".im3-line3, .pc-line3");
       if (line3) {
         var lh = accLatestHtml(s);
         if (line3.innerHTML !== lh) line3.innerHTML = lh;
