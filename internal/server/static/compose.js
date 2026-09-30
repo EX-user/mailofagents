@@ -47,32 +47,30 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // boss 09-29: the ＋ panel's irt line - display + cancel for the anchor
   // (boss asked to SEE the irt parameter and clear it; it now stays empty
   // unless set explicitly). Painted from renderInReplyTo and the 400ms tick.
+  // boss 09-30 v2: the line carries BOTH parameters - it shows while an
+  // anchor is set OR the subject field holds a non-no-information subject,
+  // and × clears both (the capsule actions refill them). The subject half
+  // reads the live field, so the line predicts exactly what the next send
+  // carries (same honesty rule as the send-title above the bar).
   function imIrtPaint() {
     var line = document.getElementById("im-irt-line");
     if (!line) return;
     var sec = document.getElementById("tab-compose");
-    // boss 09-30 (corrected): the line rides ABOVE the input line and shows
-    // only while an anchor is set; empty state hides it entirely (the full
-    // form's own irt row takes over when the form owns the page).
-    line.classList.toggle("hidden", !(sec && sec.classList.contains("im") && composeInReplyTo));
+    // boss 09-30 (corrected): the line rides ABOVE the input line; the
+    // empty state hides it entirely (the full form's own irt row takes
+    // over when the form owns the page).
+    var subjEl = document.getElementById("compose-subject");
+    var subjLive = !!(subjEl && !noSubjectInfo(subjEl.value));
+    var show = !!(sec && sec.classList.contains("im") && (composeInReplyTo || subjLive));
+    line.classList.toggle("hidden", !show);
     var val = document.getElementById("im-irt-val");
     if (val) {
-      var v = composeInReplyTo || "\u2014";
-      if (composeInReplyTo) {
-        // boss 0.3.4.2: the line reads irt|prefix subject, cut to one line by
-        // the ellipsis CSS. Prefix/subject derive from the anchored capsule's
-        // own dataset (no state to track); a vanished capsule falls back bare.
-        var abtn = document.querySelector('#compose-thread .thread-action[data-mid="' + composeInReplyTo + '"]');
-        if (abtn) {
-          var apfx = abtn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
-          var asubj = (abtn.dataset.subj || "").trim();
-          v = composeInReplyTo + "|" + apfx + (asubj ? " " + asubj : "");
-        } else v = composeInReplyTo + "|";
-      }
+      var sv = subjEl ? (subjEl.value || "").trim() : "";
+      var v = (composeInReplyTo || "\u2014") + "|" + (noSubjectInfo(sv) ? "" : sv);
       if (val.textContent !== v) val.textContent = v;
     }
     var x = document.getElementById("im-irt-x");
-    if (x) x.classList.toggle("hidden", !composeInReplyTo);
+    if (x) x.classList.toggle("hidden", !show);
   }
 
   // Manual anchor entry, Cc-autocomplete style. Typing filters the recent
@@ -259,8 +257,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     draftPrevKey = key;
     syncImBar();
   }
-  // Reply/Follow-up/Forward prefill the body themselves — they anchor the
-  // bucket instead of reconciling (spec: 锚定后用户的手改也进桶).
+  // Reply/Follow-up/Forward write To/Subject/the anchor themselves and
+  // leave the body alone (boss 09-30 v2) - they anchor the bucket instead
+  // of reconciling (spec: 锚定后用户的手改也进桶).
   function draftAnchor(toRaw) {
     draftPrevKey = draftKey(toRaw);
     clearTimeout(draftTimer);
@@ -1278,22 +1277,21 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       $$(".thread-action", threadEl).forEach(function (btn) {
         btn.addEventListener("click", function (e) {
           e.stopPropagation(); // don't trigger the item's expand toggle
-          // Boss: reply/follow-up live in the body (and the in-reply-to
-          // anchor) - the subject field stays untouched. To snaps to the
-          // one peer being replied to (the conversation page is single-to).
+          // Boss 09-30 v2: capsule reply/follow-up restore the PC behavior
+          // on the conversation page too - To snaps to the one peer, the
+          // in-reply-to anchor is set, and the SUBJECT field is filled
+          // again (prefix always prepends; an anchorless letter leaves the
+          // field empty so the send still stamps the no-info word). The
+          // old body-prefix cue is retired - the field carries it now, the
+          // irt line shows it, and the bar's × clears both.
           $("#compose-to").value = btn.dataset.target;
           composeInReplyTo = btn.dataset.mid || null;
+          var pfx = btn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
+          var s2 = (btn.dataset.subj || "").trim();
+          $("#compose-subject").value = s2 ? (pfx + " " + s2) : "";
           renderInReplyTo();
-          if (imMode()) {
-            // Boss 09-29 (refined): tapping the capsule RESETS the body to
-            // prefix + that letter's subject - the visible "who I am
-            // replying to" cue (subject itself goes out as the no-info word).
-            var pfx = btn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
-            var s2 = (btn.dataset.subj || "").trim();
-            $("#compose-body").value = s2 ? (pfx + " " + s2) : pfx;
-            syncImBar();
-            $("#im-input").focus();
-          }
+          imPaintHead();
+          if (imMode()) { syncImBar(); $("#im-input").focus(); }
           else $("#compose-body").focus();
           $("#compose-status").textContent = "Replying to " + btn.dataset.target;
           syncComposeSplit();
@@ -2102,8 +2100,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         return;
       }
       if (e.target.closest("#im-irt-x")) {
+        // boss 09-30 v2: the bar carries irt + subject, so × clears BOTH
+        // (the line dies with the pair; a capsule tap refills them).
         composeInReplyTo = null;
+        $("#compose-subject").value = "";
         renderInReplyTo();
+        imPaintHead();
         return;
       }
       if (e.target.closest("#im-cc")) {
