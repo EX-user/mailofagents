@@ -152,6 +152,25 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (prefs) prefs.addEventListener("click", function () { activateTab("profile"); });
     // S2 protocol: domain modules request tab switches via DOM events.
   document.addEventListener("badge:refresh", function () { refreshInboxBadge(); });
+
+  // 0.3.5 (boss staging note): the accounts unread dot clears the same
+  // tick a letter is consumed (compose thread reads, inbox detail reads,
+  // mark-all) - no 5s pull wait. Coalesced: a thread burst consumes N
+  // letters and one applyActivity pass covers them all.
+  var mailReadTimer = null;
+  document.addEventListener("inbox:read", function (ev) {
+    var det = ev.detail || {};
+    var d = (actData = actData || {});
+    var ub = (d.unreadBySender = d.unreadBySender || {});
+    if (det.all) { Object.keys(ub).forEach(function (k) { delete ub[k]; }); }
+    else {
+      var addr = String(det.from || "").toLowerCase();
+      if (addr && ub[addr]) delete ub[addr];
+    }
+    if (mailReadTimer) return;
+    mailReadTimer = setTimeout(function () { mailReadTimer = null; applyActivity(); }, 60);
+  });
+
   document.addEventListener("accounts:refresh", function () { loadAccounts(); });
   document.addEventListener("nav:activate", function (ev) {
     var tab = (ev.detail || {}).tab;

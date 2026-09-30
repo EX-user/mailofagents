@@ -1625,7 +1625,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     try {
       try {
         await api("/api/inbox/mark-all-read", { method: "POST" });
-      } catch (e) {
+        // 0.3.5: all dots clear the same tick.
+        document.dispatchEvent(new CustomEvent("inbox:read", { detail: { all: true } }));      } catch (e) {
         // Endpoint absent (older server): page through the inbox and read
         // each unread message via /api/message — slower but same effect.
         if (String(e.message).indexOf("404") === -1) throw e;
@@ -1854,7 +1855,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       // The Inbox tab is the viewer's own mail, so /api/message works for both
       // roles (admin satisfies account auth).
       const m = await api("/api/message?id=" + encodeURIComponent(id));
-      // Final render includes the nav row (earlier only the loading frame
+      // 0.3.5: the accounts unread dot clears the same tick (no 5s pull
+      // wait) - the read consumed this letter server-side.
+      document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "" } }));      // Final render includes the nav row (earlier only the loading frame
       // had it — data arrival wiped it; feedback root cause); the letter
       // itself lives in the scroll region below the nav band.
       detail.innerHTML = inboxDetailFrame(

@@ -1266,8 +1266,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         var seen = !!tabEl && !tabEl.classList.contains("hidden") && document.visibilityState === "visible";
         all.filter(function (m) { return m.dir === "in" && m.unread; }).forEach(function (m) {
           if (!seen) return;
-          api("/api/message?id=" + encodeURIComponent(m.id), { keepSession: true }).catch(function () {});
-        });
+          api("/api/message?id=" + encodeURIComponent(m.id), { keepSession: true })
+            .then(function () {
+              // 0.3.5 (boss staging note): the accounts unread dot clears
+              // the same tick the letter is consumed - no 5s pull wait.
+              document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "" } }));
+            })
+            .catch(function () {});        });
       }
       // Wire Reply/Follow-up buttons: fill the compose form's To + Subject.
       $$(".thread-action", threadEl).forEach(function (btn) {
