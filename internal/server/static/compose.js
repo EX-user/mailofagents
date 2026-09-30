@@ -1227,7 +1227,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-loaded="0">' +
           avBox +
           '<div class="thread-card">' +
-          '<div class="thread-meta"><b>' + arrow + "</b> · <small>" + fmtTime(m.ts) + "</small>" +
+          // 1039 (boss, 1001): in IM conversation mode the direction arrow
+          // ("← 收信 · " / "→ 已发 · ") drops from the capsule meta - the
+          // left/right placement already tells direction there; the clock
+          // stays. Non-IM thread view keeps the arrow as before.
+          '<div class="thread-meta">' + (imOrder ? "" : "<b>" + arrow + "</b> · ") + "<small>" + fmtTime(m.ts) + "</small>" +
           ' <span class="thread-toggle">' + esc(t("thread.expand")) + '</span> ' + actionBtn + '</div>' +
           (noSubjectInfo(m.subject)
             ? // boss 09-30: a no-information subject gets NO redundant (no
