@@ -55,6 +55,12 @@ type Duty struct {
 	hbDisabled atomic.Bool
 	hbLast     atomic.Int64 // unix nano: last successful upload
 	hbState    string       // last uploaded state (mu)
+
+	// long-unread detection (boss spec 2026-10-01): per-mail push counts.
+	// A wake that carries unread pushes each of those mails once; a count
+	// past 3 rounds means the session keeps getting re-pushed mail it
+	// never cleared — the digest then reminds it HOW to clear unread.
+	pushCounts map[string]int
 }
 
 func NewDuty(cfg *Config, fresh, compactBeforeWake bool) *Duty {
@@ -65,6 +71,7 @@ func NewDuty(cfg *Config, fresh, compactBeforeWake bool) *Duty {
 		fresh:             fresh,
 		compactBeforeWake: compactBeforeWake,
 		urgentCh:          make(chan struct{}, 1),
+		pushCounts:        map[string]int{},
 	}
 	// LoadConfigs already validated the schedule; a parse failure here just
 	// means the feature stays off (direct NewDuty callers bypass validation).
@@ -275,15 +282,23 @@ func (d *Duty) loadState() {
 		return
 	}
 	var s struct {
-		SessionID string `json:"session_id"`
+		SessionID  string         `json:"session_id"`
+		PushCounts map[string]int `json:"push_counts"`
 	}
 	if json.Unmarshal(b, &s) == nil {
 		d.sessionID = s.SessionID
+		if s.PushCounts != nil { // keep the NewDuty-initialized map otherwise
+			d.pushCounts = s.PushCounts
+		}
 	}
 }
 
 func (d *Duty) saveState() {
-	b, _ := json.Marshal(map[string]string{"session_id": d.sessionID})
+	st := map[string]any{"session_id": d.sessionID}
+	if len(d.pushCounts) > 0 {
+		st["push_counts"] = d.pushCounts
+	}
+	b, _ := json.Marshal(st)
 	tmp := d.statePath() + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return
@@ -557,6 +572,24 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.noteFailure("poll: " + short)
 		return
 	}
+	// Long-unread bookkeeping (boss spec 2026-10-01): every wake that
+	// carries the unread list is a push round for each of those mails.
+	// Counts persist across restarts (state file); mails that leave the
+	// unread set are pruned, so "持续 N 轮" stays strictly consecutive.
+	maxRounds := 0
+	for _, m := range unread {
+		d.pushCounts[m.ID]++
+		if d.pushCounts[m.ID] > maxRounds {
+			maxRounds = d.pushCounts[m.ID]
+		}
+	}
+	if len(unread) > 0 {
+		live := map[string]int{}
+		for _, m := range unread {
+			live[m.ID] = d.pushCounts[m.ID]
+		}
+		d.pushCounts = live
+	}
 	dutyDue := d.dutyDue()
 	// Heartbeat: instead of a log line, the account's board row shows the
 	// live queue size and uptime (plain log line when the board is off).
@@ -666,7 +699,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			}
 		}
 	}()
-	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil))
+	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil, maxRounds))
 	close(hbStop)
 	<-hbDone
 	if urgentDone != nil {

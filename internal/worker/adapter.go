@@ -82,7 +82,7 @@ func PickAdapter(id string) Adapter { return pickAdapter(id) }
 // its history. timeBeat (duty_window_min due) and compactNotice
 // (compact_notice_tokens due) ride at the top so the agent can run due
 // scheduled tasks / persist memory before compaction happens.
-func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNotice string, stats MailStats, statsOK bool) string {
+func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNotice string, stats MailStats, statsOK bool, maxRounds int) string {
 	var b strings.Builder
 	if !resumed {
 		tpl := strings.NewReplacer(
@@ -141,6 +141,15 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 				i+1, len(mails), oneLine(m.From), oneLine(m.Subject),
 				time.Unix(m.ReceivedAt, 0).Format("01-02 15:04"),
 				oneLine(clampRunes(m.Preview, 60)))
+		}
+		// Long-unread reminder (boss spec 2026-10-01): a mail pushed for
+		// more than 3 wake rounds means the session keeps receiving it
+		// without ever clearing unread — likely it forgot HOW. Re-teach
+		// the two moves: GET the body (which clears unread) and the
+		// server's self-description endpoint.
+		if maxRounds > 3 {
+			fmt.Fprintf(&b, "\n[未销信提醒] 以上未读中已有连续 %d 轮未被销掉的信：你很可能已看过但未销未读（未读信件会被反复推送）。销未读的方法：用 GET 拉取信体即自动销掉该封未读——GET %s/api/message?id=<信件id>（凭据同本提示词）。若忘了系统用法，查看所连接系统的自述端点：GET %s/api/info。\n",
+				maxRounds, strings.TrimRight(cfg.Server, "/"), strings.TrimRight(cfg.Server, "/"))
 		}
 	}
 	return b.String()

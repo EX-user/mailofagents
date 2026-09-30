@@ -142,7 +142,7 @@ func TestDigestStripsControlBytes(t *testing.T) {
 		{From: "peer@x", Subject: "PE/MZ 判定\x00 结果", Preview: "分片\x01补发中\x7f…", ReceivedAt: 1757000000},
 		{From: "ot\x00her@x", Subject: "plain", Preview: "body", ReceivedAt: 1757000001},
 	}
-	d := Digest(cfg, mails, true, "", "", MailStats{}, false)
+	d := Digest(cfg, mails, true, "", "", MailStats{}, false, 0)
 	if strings.ContainsAny(d, "\x00\x01\x7f") {
 		t.Fatalf("digest carries control bytes: %q", d)
 	}
@@ -151,5 +151,38 @@ func TestDigestStripsControlBytes(t *testing.T) {
 	}
 	if !strings.Contains(d, "other@x") {
 		t.Fatalf("from field not sanitized: %q", d)
+	}
+}
+
+func TestDigestLongUnreadReminder(t *testing.T) {
+	// boss spec 2026-10-01: a session that never clears unread keeps
+	// getting the same mails re-pushed. Past 3 rounds (exclusive, so 4+),
+	// the digest must re-teach the two moves after the unread listing:
+	// GET the body clears the unread, and /api/info self-describes the
+	// connected system. Below the threshold the note must stay absent.
+	cfg := &Config{Prompt: "wake", Address: "a@x", Password: "p", Server: "https://s.example", Workdir: "/w"}
+	mails := []MailSummary{
+		{ID: "01M", From: "peer@x", Subject: "stale", Preview: "p", ReceivedAt: 1757000000},
+	}
+	low := Digest(cfg, mails, true, "", "", MailStats{}, false, 3)
+	if strings.Contains(low, "未销信提醒") {
+		t.Fatalf("reminder must stay absent at 3 rounds: %q", low)
+	}
+	high := Digest(cfg, mails, true, "", "", MailStats{}, false, 4)
+	if !strings.Contains(high, "未销信提醒") {
+		t.Fatalf("reminder absent at 4 rounds: %q", high)
+	}
+	if !strings.Contains(high, "GET https://s.example/api/message?id=") {
+		t.Fatalf("reminder must teach the GET-body endpoint: %q", high)
+	}
+	if !strings.Contains(high, "GET https://s.example/api/info") {
+		t.Fatalf("reminder must point at the self-description endpoint: %q", high)
+	}
+	if strings.Contains(low, "未销信提醒") && false {
+		t.Fatal("unreachable")
+	}
+	empty := Digest(cfg, nil, true, "", "", MailStats{}, false, 9)
+	if strings.Contains(empty, "未销信提醒") {
+		t.Fatalf("reminder must require an unread listing: %q", empty)
 	}
 }
