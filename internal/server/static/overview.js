@@ -231,11 +231,13 @@ var mgmtNodeSet = null;
           id: n.address, label: "",
           shape: "image", image: fr.faces[ni],
           size: (function () {
-            // 1037b (boss, staging 0930): volume SHOULD read as size, but
-            // gently — sqrt-compressed so the biggest box is at most ~2x
-            // the smallest (his cap), with "me" keeping a fixed head start.
+            // 1037b→1037c (boss, staging 0930, three rounds): volume reads
+            // as size but gently AND low-slung — round two's 30..56 band
+            // read as "big nodes got bigger"; boss wants SMALL nodes
+            // smaller, not big ones bigger. Band drops to 22..44 (sqrt,
+            // exactly his 2x cap); "me" keeps its own 40..48 head start.
             var t = Math.sqrt(Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)));
-            return pr.isMe ? 46 + 12 * t : 30 + 26 * t;
+            return pr.isMe ? 40 + 8 * t : 22 + 22 * t;
           })(),
           borderWidth: 0,
           // 1037 (boss, staging 0930): vis-network's default value-scaling
