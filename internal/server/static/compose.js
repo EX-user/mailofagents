@@ -1138,6 +1138,41 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // Load the conversation between admin and the address in "To".
   // Combines admin's sent-to-that-address + that-address's mail-to-admin.
   // Both are read-only and rely on the admin Basic auth already cached.
+  // boss 1001: a small LRU pool of rendered per-peer thread fragments.
+  // Re-entering compose for ANY of the last N peers paints its stored
+  // fragment instantly (a true cache, not just the current holder); a
+  // deferred silent refresh then confirms with the server. Pool entries
+  // keep their scroll position; event listeners (newmail/inbox:read)
+  // refresh both the live list and any parked entry for that peer.
+  var THREAD_POOL_MAX = 10;
+  var threadPool = new Map(); // peer(lowercase) -> {html, scrollTop, savedAt}
+
+  function threadPoolGet(peer) {
+    var k = String(peer || "").toLowerCase();
+    if (!k || !threadPool.has(k)) return null;
+    var e = threadPool.get(k);
+    threadPool.delete(k);
+    threadPool.set(k, e); // LRU touch
+    return e;
+  }
+  function threadPoolSave(peer, threadEl) {
+    var k = String(peer || "").toLowerCase();
+    if (!k || !threadEl || !threadEl.querySelector(".thread-item")) return;
+    if (threadPool.has(k)) threadPool.delete(k);
+    var holder = document.getElementById("thread-holder");
+    threadPool.set(k, {
+      html: threadEl.innerHTML,
+      scrollTop: (imMode() && holder && threadEl.parentElement === holder) ? holder.scrollTop : 0,
+      savedAt: Date.now(),
+    });
+    while (threadPool.size > THREAD_POOL_MAX) {
+      threadPool.delete(threadPool.keys().next().value);
+    }
+  }
+  function threadPoolDrop(peer) {
+    threadPool.delete(String(peer || "").toLowerCase());
+  }
+
   async function loadComposeThread(opts) {
     const to = ($("#compose-to").value || "").trim();
     const threadEl = $("#compose-thread");
@@ -1147,6 +1182,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     var keepScrollTop = (opts && opts.keepScroll && imMode())
       ? ((document.getElementById("thread-holder") || {}).scrollTop || 0)
       : null;
+    // boss 1001 pool: before parking the live fragment, stow it under its
+    // peer so switching conversations preserves each rendered list.
+    var livePeer = threadEl.getAttribute("data-peer") || "";
+    if (livePeer && livePeer !== to.toLowerCase()) threadPoolSave(livePeer, threadEl);
     if (!to) {
       titleEl.textContent = t("compose.recentConv");
       threadEl.className = "thread-list muted";
@@ -1164,6 +1203,23 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // The bank feeds the render site's avRestore (the silent path would
     // re-harvest the very same nodes, so one early harvest serves both).
     var avBankT = window.__avHarvest ? window.__avHarvest(threadEl) : null;
+    // boss 1001 pool: a stored fragment for THIS peer paints before the
+    // fetch (real cache hit - switching conversations feels instant too);
+    // the fetch still runs and swaps in fresh data when it lands.
+    var poolHit = opts && opts.pool !== false ? threadPoolGet(to) : null;
+    if (poolHit) {
+      threadEl.setAttribute("data-peer", to.toLowerCase());
+      threadEl.innerHTML = poolHit.html;
+      if (imMode()) {
+        var h5 = document.getElementById("thread-holder");
+        if (h5) h5.scrollTop = poolHit.scrollTop || 0;
+      }
+      if (window.__avRestore) {
+        window.__avRestore(threadEl, null);
+        if (window.__avHydrate) window.__avHydrate(threadEl);
+        if (window.__avRemoteHydrate) window.__avRemoteHydrate(threadEl);
+      }
+    }
     if (threadEl.getAttribute("data-peer") !== to.toLowerCase()) threadEl.textContent = t("common.loading");
 
     try {
@@ -1259,6 +1315,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       } else {
         threadEl.innerHTML = html;
       }
+      // boss 1001 pool: the fresh render re-stows under its peer (LRU).
+      threadPoolSave(to, threadEl);
       // 0.3.4 IM semantics (boss 09-29): opening the conversation reads
       // it - each unread incoming letter is fetched once (the detail GET
       // marks it read server-side), so the next accounts poll clears the
@@ -2041,6 +2099,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         if (v1 && v1.toLowerCase() === v0.toLowerCase()) loadComposeThread({ keepScroll: true });
       }, 60);
     } else {
+      // boss 1001 pool: no live same-peer list - a parked fragment for the
+      // To peer still paints instantly; no entry at all means the plain
+      // network load path (first visit for that conversation).
       loadComposeThread();
     }
     ensureComposeShowcaseVisibility();
@@ -2053,12 +2114,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // re-pulls the open peer's thread. No-to state: loadComposeThread
   // no-ops into its placeholder, so the listener stays dumb.
   document.addEventListener("inbox:newmail", function (ev) {
+    var from2 = String((ev.detail || {}).from || "").toLowerCase();
+    // boss 1001 pool: a PARKED entry for that peer refreshes lazily - the
+    // entry is dropped so the next open re-fetches (correctness over
+    // speculatively rendering a hidden list).
+    if (from2 && threadPool.has(from2)) threadPoolDrop(from2);
     // boss 09-30: a bystander's letter must not flash the open conversation.
     // Reload only when the new mail is FROM the open peer (either side of a
     // display-name form); a no-to state keeps the placeholder, not a reload.
     var to2 = ($("#compose-to").value || "").trim().toLowerCase();
     if (!to2) return;
-    var from2 = String((ev.detail || {}).from || "").toLowerCase();
     if (from2 && to2.indexOf(from2) < 0 && from2.indexOf(to2) < 0) return;
     loadComposeThread();
   });
