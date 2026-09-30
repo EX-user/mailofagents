@@ -2152,9 +2152,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     }
     function exitFullForm() {
       sec.classList.remove("im-full");
-      // boss 0.3.4.2: returning from the full form clears the irt anchor -
-      // the bar's attachment line depends on it and goes with it.
-      if (composeInReplyTo) { composeInReplyTo = null; renderInReplyTo(); }
+      // boss 0930 v3: the irt anchor now SURVIVES the round trip (retires
+      // the 0.3.4.2 clearing - its "bar's attachment line" rationale died
+      // with that bar design; the current irt line shows and × clears the
+      // anchor, so silently dropping it here only lost replies).
+      renderInReplyTo();
       // Boss: the conversation page is single-To - a multi-value To the
       // user typed on the full form clips to its first address here too.
       var toEl = $("#compose-to");
