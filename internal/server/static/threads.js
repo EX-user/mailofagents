@@ -61,6 +61,14 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
         : "/api/subs/" + encodeURIComponent(owner) + "/message?id=" + encodeURIComponent(m.id);
       return api(path, { keepSession: true }).then(function (d) {
         var msg = d && (d.message || d);
+        // boss 1001 dot audit #4: a self-read here must say so - the
+        // Topics pill used to die alone while the accounts dot and nav
+        // badge waited a full poll cycle. Other-owner reads are
+        // read-only and emit nothing.
+        if (owner === me) {
+          document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "" } }));
+          document.dispatchEvent(new CustomEvent("badge:refresh"));
+        }
         return (msg && msg.body) || m.preview || "";
       });
     });
