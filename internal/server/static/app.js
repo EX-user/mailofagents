@@ -1508,6 +1508,28 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     return '<span class="cl-av-img cl-identicon">' + esc((addr[0] || "?").toUpperCase()) + "</span>";
   }
 
+  // Graph faces (overview) draw the same robots as everything else: sync
+  // data-URI base. (0.3.5 graph shape, boss 口径: 盒子里有个圆头像 - the box
+  // face bakes the robot or the real avatar INSIDE the node SVG.)
+  window.__avDataUri = function (addr) {
+    var a = String(addr || "").toLowerCase();
+    return "data:image/svg+xml;utf8," + encodeURIComponent(avRobotSvg(a, avSha256(a)));
+  };
+  // Graph faces embed avatars as DATA URIs: a data:-loaded SVG may not
+  // reference blob:/http: resources, so hand back bytes read as data URL.
+  // hash (when known) cache-busts the fetch so an avatar change lands.
+  window.__avAvatarDataUri = function (addr, hash, cb) {
+    var q = hash ? "?v=" + encodeURIComponent(hash) : "";
+    fetch("/api/avatar/" + encodeURIComponent(String(addr || "")) + q, { headers: { Authorization: basicAuth() } })
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.blob(); })
+      .then(function (b) {
+        var fr = new FileReader();
+        fr.onload = function () { cb(fr.result); };
+        fr.onerror = function () { cb(null); };
+        fr.readAsDataURL(b);
+      }).catch(function () { cb(null); });
+  };
+
   function ensureOwnAvatarHash() {
     const sess = getSession();
     if (!sess || ownAvatarHashDone) { renderOwnAvatar(); return; }

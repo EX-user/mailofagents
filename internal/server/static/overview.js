@@ -157,12 +157,24 @@ var mgmtNodeSet = null;
     nodes.forEach(function (n) { mgmtMaxVol = Math.max(mgmtMaxVol, n.volume || 0); });
     var kindByAddr = {};
     nodes.forEach(function (n) { kindByAddr[String(n.address).toLowerCase()] = n.kind || "external"; });
-    el.innerHTML = '<div class="muted">' + t("common.loading") + "</div>";
-    loadVisNetwork().then(function () {
-      var myAddr = ((getSession() || {}).address || "").toLowerCase();
-      var vn = new vis.DataSet(nodes.map(function (n) {
+    var facesReady = (function () {
+      var myAddrLc = ((getSession() || {}).address || "").toLowerCase();
+      // 0.3.5 graph shape (boss 口径: 盒子里有个圆头像，未设置头像按账户页
+      // 同款机器人填充): the node face is a BAKED SVG in the box palette
+      // (ring/bg/kind colors, name + volume lines) with a circular avatar
+      // inset at the left - real avatar bytes when the payload carries
+      // avatar_hash, the deterministic robot otherwise (the same generator
+      // as every other avatar surface). Faces resolve BEFORE the network
+      // builds so they never flash-swap, and render at 1.6x to hold
+      // presence at fit-zoom. Layout physics (volume value/mass, spring
+      // tiers) are untouched - only the face changed.
+      var XML_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+      function escXml(s) {
+        return String(s || "").replace(/[&<>"']/g, function (ch) { return XML_MAP[ch]; });
+      }
+      var prep = nodes.map(function (n) {
         var kind = n.kind || "external";
-        var isMe = kind === "self";
+        var isMe = kind === "self" || String(n.address || "").toLowerCase() === myAddrLc;
         var st = livenessByAddr[String(n.address || "").toLowerCase()];
         var border = isMe ? "#1d4ed8"
           : kind === "sub" ? (st === "strong" ? "#2e9e5b" : st === "weak" ? "#d9a419" : "#9aa4b2")
@@ -170,58 +182,62 @@ var mgmtNodeSet = null;
         var bg = isMe ? "#dbeafe"
           : kind === "sub" ? (st === "strong" ? "#dcf2e4" : st === "weak" ? "#f7edd4" : "#eceff3")
           : "#f2f4f7";
-        var wl = windowLabel(graphPrefs.days);
-        // 播放特性一（上级 0.2.5）：「我」节点大一号更醒目——scaling 上限
-        // 抬高 + 字号加大，其余节点照旧。
-        var nodeScaling = isMe
-          ? { min: 20, max: 38, label: { enabled: false } }
-          : { min: 8, max: 26, label: { enabled: false } };
-        var nodeFont = { face: "ui-monospace, Consolas, monospace", size: isMe ? 12 : 11, color: "#23303f" };
+        return { n: n, kind: kind, isMe: isMe, border: border, bg: bg };
+      });
+      function nodeFace(pr) {
+        var n = pr.n, border = pr.border, bg = pr.bg;
+        var name = pr.isMe ? t("mgmt.meLabel") : shortAddr(n.address);
+        var sub2 = pr.kind !== "external" ? windowLabel(graphPrefs.days) + " " + (n.volume || 0) : "";
+        // face is drawn at 1.6x so it keeps presence at the graph's fit-zoom
+        var FS = 1.6, H = Math.round(46 * FS), pad = Math.round(10 * FS), avD = Math.round(32 * FS);
+        var avX = pad + 2, tx = avX + avD + Math.round(10 * FS);
+        var wName = name.length * 7.4 * FS + 4;
+        var wSub = sub2.length * 6.3 * FS + 4;
+        var W = Math.ceil(tx + Math.max(wName, wSub) + pad + 2);
+        var cid = "g" + Math.abs(String(n.address).split("").reduce(function (a, ch) { return (a * 31 + ch.charCodeAt(0)) | 0; }, 7));
+        return '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '">' +
+          '<rect x="1" y="1" width="' + (W - 2) + '" height="' + (H - 2) + '" rx="' + Math.round(7 * FS) + '" fill="' + bg + '" stroke="' + border + '" stroke-width="' + (pr.isMe ? 4 : 2.5) + '"/>' +
+          '<clipPath id="' + cid + '"><circle cx="' + (avX + avD / 2) + '" cy="' + H / 2 + '" r="' + avD / 2 + '"/></clipPath>' +
+          '<image x="' + avX + '" y="' + ((H - avD) / 2) + '" width="' + avD + '" height="' + avD + '" clip-path="url(#' + cid + ')" href="' + pr.uri + '"/>' +
+          '<circle cx="' + (avX + avD / 2) + '" cy="' + H / 2 + '" r="' + avD / 2 + '" fill="none" stroke="' + border + '" stroke-width="' + Math.round(1.5 * FS) + '"/>' +
+          '<text x="' + tx + '" y="' + Math.round(20 * FS) + '" font-family="ui-monospace, Consolas, monospace" font-size="' + Math.round(12 * FS) + '" font-weight="600" fill="#23303f">' + escXml(name) + '</text>' +
+          (sub2 ? '<text x="' + tx + '" y="' + Math.round(36 * FS) + '" font-family="ui-monospace, Consolas, monospace" font-size="' + Math.round(10.5 * FS) + '" fill="#5b6b7e">' + escXml(sub2) + '</text>' : "") +
+          '</svg>';
+      }
+      function faceUri(svg) { return "data:image/svg+xml;utf8," + encodeURIComponent(svg); }
+      return Promise.all(prep.map(function (pr) {
+        return new Promise(function (res) {
+          if (pr.n.avatar_hash && window.__avAvatarDataUri) {
+            window.__avAvatarDataUri(pr.n.address, pr.n.avatar_hash, function (u) {
+              res(u || (window.__avDataUri ? window.__avDataUri(pr.n.address) : ""));
+            });
+          } else {
+            res(window.__avDataUri ? window.__avDataUri(pr.n.address) : "");
+          }
+        });
+      })).then(function (uris) {
         return {
-          id: n.address, label: (isMe ? t("mgmt.meLabel") : shortAddr(n.address)) +
-            (kind !== "external" ? "\n" + wl + " " + (n.volume || 0) : ""),
-          shape: "box", borderWidth: isMe ? 2 : 1,
-          color: { background: bg, border: border },
-          font: nodeFont,
-          value: Math.max(1, n.volume || 1), scaling: nodeScaling,
+          faces: uris.map(function (u, ni) { return faceUri(nodeFace({ n: prep[ni].n, kind: prep[ni].kind, isMe: prep[ni].isMe, border: prep[ni].border, bg: prep[ni].bg, uri: u })); }),
+          prep: prep
+        };
+      });
+    })();
+    loadVisNetwork().then(function () {
+      var myAddr = ((getSession() || {}).address || "").toLowerCase();
+      facesReady.then(function (fr) {
+      var vn = new vis.DataSet(nodes.map(function (n, ni) {
+        var pr = fr.prep[ni];
+        return {
+          id: n.address, label: "",
+          shape: "image", image: fr.faces[ni],
+          size: pr.isMe ? 46 : 37,
+          borderWidth: 0,
+          value: Math.max(1, n.volume || 1),
           mass: 1 + 3 * Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)),
-          title: shortAddr(n.address) + (kind !== "external" ? " · " + wl + " " + (n.volume || 0) : ""),
-          _kind: kind, _border: border, _bg: bg, avatar_hash: n.avatar_hash || ""
+          title: shortAddr(n.address) + (pr.kind !== "external" ? " · " + windowLabel(graphPrefs.days) + " " + (n.volume || 0) : ""),
+          _kind: pr.kind, _border: pr.border, _bg: pr.bg, avatar_hash: n.avatar_hash || ""
         };
       }));
-
-      // 0.3.5 (boss item 7): real avatars on the graph - nodes whose
-      // payload carries avatar_hash upgrade from the box shape to a
-      // circular image once their bytes arrive (auth via basicAuth; the
-      // objectURL is cached per addr|hash so re-renders cost nothing,
-      // and a failed fetch keeps the box shape).
-      var avUrlCache = window.__graphAvUrls || (window.__graphAvUrls = {});
-      vn.get().forEach(function (n) {
-        if (!n.avatar_hash) return;
-        var addr = String(n.id || "").toLowerCase();
-        var key = addr + "|" + n.avatar_hash;
-        var isMeN = (n.kind || "external") === "self";
-        var upgrade = function (imgEl) {
-          vn.update({ id: n.id, shape: "circularImage", image: { unselected: imgEl, selected: imgEl },
-
-            size: isMeN ? 26 : 16,
-            color: { background: n._bg, border: n._border }, borderWidth: isMeN ? 2 : 1 });
-        };
-        var hit = avUrlCache[key];
-        if (hit === "none") return;
-        if (hit) { upgrade(hit); return; } // decoded Image element
-        fetch("/api/avatar/" + encodeURIComponent(addr) + "?v=" + n.avatar_hash,
-          { headers: { Authorization: basicAuth() } })
-          .then(function (r) { if (!r.ok) throw 0; return r.blob(); })
-          .then(function (b) {
-            var u = URL.createObjectURL(b);
-            var im = new Image();
-            im.onload = function () { avUrlCache[key] = im; upgrade(im); };
-            im.onerror = function () { avUrlCache[key] = "none"; };
-            im.src = u;
-          })
-          .catch(function () { avUrlCache[key] = "none"; });
-      });
 
       var ve = [];
       // Data-adaptive normalization: every scale is RELATIVE to the largest
@@ -402,8 +418,9 @@ var mgmtNodeSet = null;
         }
         if (jump) document.dispatchEvent(new CustomEvent("mgmt:browse-account", { detail: { address: jump } }));
       });
-    }).catch(function () {
-      el.innerHTML = '<p class="muted">' + esc(t("mgmt.graphLoadFail")) + "</p>";
+      }).catch(function () {
+        el.innerHTML = '<p class="muted">' + esc(t("mgmt.graphLoadFail")) + "</p>";
+      });
     });
   }
 
