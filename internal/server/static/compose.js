@@ -1274,6 +1274,17 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
               // 0.3.5 (boss staging note): the accounts unread dot clears
               // the same tick the letter is consumed - no 5s pull wait.
               document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "" } }));
+              // boss 1001 dot audit #1: the render above stamped this
+              // capsule unread and nothing re-renders here - strip the
+              // capsule's own dot/bold the same tick or it stays on a
+              // letter that is already read server-side.
+              var it2 = threadEl.querySelector('.thread-item[data-mid="' + m.id + '"]');
+              if (it2) {
+                var d2 = it2.querySelector(".unread-dot");
+                if (d2) d2.remove();
+                var s3 = it2.querySelector(".thread-subj-unread");
+                if (s3) s3.classList.remove("thread-subj-unread");
+              }
             })
             .catch(function () {});        });
       }
@@ -1427,6 +1438,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       if (subj) subj.classList.remove("thread-subj-unread");
       const dot = $(".unread-dot", item);
       if (dot) dot.remove();
+      // boss 1001 dot audit #3: a regular consume must say so - the
+      // automatic read-on-open of this very letter clears the accounts dot
+      // (inbox:read), the manual expand used to leave it lit until the
+      // next accounts pull. Admin expansion is read-only, emits nothing.
+      const cur2 = getSession();
+      if (cur2 && !cur2.is_admin) {
+        document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: ($("#compose-to").value || "").split(",")[0].trim() } }));
+        document.dispatchEvent(new CustomEvent("badge:refresh"));
+      }
     } else {
       // Collapse.
       full.classList.add("hidden");
@@ -2015,6 +2035,17 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     var from2 = String((ev.detail || {}).from || "").toLowerCase();
     if (from2 && to2.indexOf(from2) < 0 && from2.indexOf(to2) < 0) return;
     loadComposeThread();
+  });
+  // boss 1001 dot audit #6b: a consume elsewhere (inbox detail, mark-all,
+  // mail-tab read) must converge the open thread's capsule dots the same
+  // tick - the thread used to keep its dots until some unrelated reload.
+  document.addEventListener("inbox:read", function (ev) {
+    var det = ev.detail || {};
+    if (det.all) { loadComposeThread(); return; }
+    var to3 = ($("#compose-to").value || "").trim().toLowerCase();
+    if (!to3) return;
+    var f3 = String(det.from || "").toLowerCase();
+    if (f3 && (to3.indexOf(f3) >= 0 || f3.indexOf(to3) >= 0)) loadComposeThread();
   });
 
   // ---- 0.3.5 件2: the one-line IM bar + ＋ panel (boss-approved v3) ----

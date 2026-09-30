@@ -162,10 +162,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var det = ev.detail || {};
     var d = (actData = actData || {});
     var ub = (d.unreadBySender = d.unreadBySender || {});
-    if (det.all) { Object.keys(ub).forEach(function (k) { delete ub[k]; }); }
+    if (det.all) { Object.keys(ub).forEach(function (k) { delete ub[k]; }); actMutNote("delall", ""); }
     else {
       var addr = String(det.from || "").toLowerCase();
-      if (addr && ub[addr]) delete ub[addr];
+      if (addr && ub[addr]) { delete ub[addr]; actMutNote("del", addr); }
     }
     if (mailReadTimer) return;
     mailReadTimer = setTimeout(function () { mailReadTimer = null; applyActivity(); }, 60);
@@ -184,6 +184,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var d = (actData = actData || {});
     var ub = (d.unreadBySender = d.unreadBySender || {});
     ub[addr] = (ub[addr] || 0) + 1;
+    actMutNote("bump", addr);
     if (mailNewTimer) return;
     mailNewTimer = setTimeout(function () { mailNewTimer = null; applyActivity(); }, 60);
   });
@@ -1339,6 +1340,18 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   }
 
 
+  // boss 1001 dot audit #7: local dot edits (same-tick clear/bump) are
+  // journaled with a sequence number; a pull that started before the
+  // edit replays the journal onto its fresh payload, so an in-flight
+  // response can neither resurrect a cleared dot nor drop a bump.
+  var actMutSeq = 0;
+  var actMutLog = [];
+  function actMutNote(type, addr) {
+    actMutSeq++;
+    actMutLog.push({ seq: actMutSeq, type: type, addr: addr });
+    if (actMutLog.length > 64) actMutLog.shift();
+  }
+
   async function pullActivity() {
 
 
@@ -1346,6 +1359,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
 
     actPulling = true;
+    var seq0 = actMutSeq;
 
 
     try {
@@ -1366,6 +1380,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       await api("/api/mgmt/unread-by-sender", { keepSession: true }).then(function (du) { d.unreadBySender = (du && du.by_sender) || {}; }, function () { d.unreadBySender = {}; });
 
 
+      if (seq0 !== actMutSeq) {
+        var ubf = d.unreadBySender = d.unreadBySender || {};
+        actMutLog.forEach(function (e) {
+          if (e.seq <= seq0) return;
+          if (e.type === "del") delete ubf[e.addr];
+          else if (e.type === "bump") ubf[e.addr] = (ubf[e.addr] || 0) + 1;
+          else if (e.type === "delall") Object.keys(ubf).forEach(function (k) { delete ubf[k]; });
+        });
+      }
       actData = d;
 
 
