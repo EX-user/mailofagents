@@ -3142,10 +3142,10 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5;
     display: flex; flex-direction: column; gap: 6px;
     background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
-    /* 1038 (boss, staging 0930): the round-three removal read as fully
-       flat - bring the shadow back one notch fainter than the old .10
-       whisper so there is depth without weight. */
-    box-shadow: 0 1px 6px rgba(0,0,0,.06);
+    /* 1038b (boss, staging 0930): .06 read as still too faint - one
+       notch deeper, spread widened with it, still under the retired
+       .10 whisper. */
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
     padding: 4px 8px;
   }
   #tab-compose.im #im-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
