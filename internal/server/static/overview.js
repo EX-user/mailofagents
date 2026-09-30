@@ -230,9 +230,17 @@ var mgmtNodeSet = null;
         return {
           id: n.address, label: "",
           shape: "image", image: fr.faces[ni],
-          size: pr.isMe ? 46 : 37,
+          size: (function () {
+            // 1037b (boss, staging 0930): volume SHOULD read as size, but
+            // gently — sqrt-compressed so the biggest box is at most ~2x
+            // the smallest (his cap), with "me" keeping a fixed head start.
+            var t = Math.sqrt(Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)));
+            return pr.isMe ? 46 + 12 * t : 30 + 26 * t;
+          })(),
           borderWidth: 0,
-          value: Math.max(1, n.volume || 1),
+          // 1037 (boss, staging 0930): vis-network's default value-scaling
+          // (min10/max30 linear) stretched the spread ~3x (vol 31 vs 1) —
+          // value stays off; the tier above owns the size mapping now.
           mass: 1 + 3 * Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)),
           title: shortAddr(n.address) + (pr.kind !== "external" ? " · " + windowLabel(graphPrefs.days) + " " + (n.volume || 0) : ""),
           _kind: pr.kind, _border: pr.border, _bg: pr.bg, avatar_hash: n.avatar_hash || ""
