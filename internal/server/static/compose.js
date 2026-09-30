@@ -1138,10 +1138,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // Load the conversation between admin and the address in "To".
   // Combines admin's sent-to-that-address + that-address's mail-to-admin.
   // Both are read-only and rely on the admin Basic auth already cached.
-  async function loadComposeThread() {
+  async function loadComposeThread(opts) {
     const to = ($("#compose-to").value || "").trim();
     const threadEl = $("#compose-thread");
     const titleEl = $("#thread-title");
+    // boss 1001: a deferred re-entry refresh rides the scroll through the
+    // silent swap (captured before any DOM wipe) instead of re-seating.
+    var keepScrollTop = (opts && opts.keepScroll && imMode())
+      ? ((document.getElementById("thread-holder") || {}).scrollTop || 0)
+      : null;
     if (!to) {
       titleEl.textContent = t("compose.recentConv");
       threadEl.className = "thread-list muted";
@@ -1336,9 +1341,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         // list has no overflow), and the im-mode node move/class flip can
         // land after this render - seat now and re-seat on the next frame
         // and once more after the tick's node move.
-        scrollImThreadBottom();
-        requestAnimationFrame(scrollImThreadBottom);
-        setTimeout(scrollImThreadBottom, 250);
+        // boss 1001: the deferred re-entry refresh keeps the user's scroll
+        // instead (the swap must not yank the view back to the latest).
+        if (keepScrollTop != null) {
+          var h4 = document.getElementById("thread-holder");
+          if (h4) h4.scrollTop = keepScrollTop;
+        } else {
+          scrollImThreadBottom();
+          requestAnimationFrame(scrollImThreadBottom);
+          setTimeout(scrollImThreadBottom, 250);
+        }
       } // start at the latest
     } catch (e) {
       threadEl.className = "thread-list";
@@ -2016,7 +2028,21 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   document.addEventListener("compose:entered", function () {
     ensureComposeAccounts();
     draftReconcile(); // re-entering loads the peer's bucket if untouched
-    loadComposeThread();
+    // boss 1001: re-entry must feel like a SWITCH, not a load. The event
+    // bus (peer-filtered newmail, inbox:read) keeps the rendered thread
+    // fresh even while the page is hidden, so a same-peer rendered list
+    // paints as-is (no reload, no scroll reset) and a deferred silent
+    // refresh confirms with the server, scroll riding through the swap.
+    var t0 = $("#compose-thread");
+    var v0 = ($("#compose-to").value || "").trim();
+    if (v0 && t0 && t0.getAttribute("data-peer") === v0.toLowerCase() && t0.querySelector(".thread-item")) {
+      setTimeout(function () {
+        var v1 = ($("#compose-to").value || "").trim();
+        if (v1 && v1.toLowerCase() === v0.toLowerCase()) loadComposeThread({ keepScroll: true });
+      }, 60);
+    } else {
+      loadComposeThread();
+    }
     ensureComposeShowcaseVisibility();
     fitComposeOneScreen();
     setTimeout(fitComposeOneScreen, 250); // second pass: late fonts/layout
