@@ -231,13 +231,12 @@ var mgmtNodeSet = null;
           id: n.address, label: "",
           shape: "image", image: fr.faces[ni],
           size: (function () {
-            // 1037b→1037c (boss, staging 0930, three rounds): volume reads
-            // as size but gently AND low-slung — round two's 30..56 band
-            // read as "big nodes got bigger"; boss wants SMALL nodes
-            // smaller, not big ones bigger. Band drops to 22..44 (sqrt,
-            // exactly his 2x cap); "me" keeps its own 40..48 head start.
+            // 1037b→1037d (boss, staging 0930, four rounds): his [1,2] vs
+            // [0.5,1] framing = the whole band sits an octave too high —
+            // halve it, ratio unchanged. Band drops 22..44 → 11..22; "me"
+            // rides one notch above its volume twin (12..24).
             var t = Math.sqrt(Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)));
-            return pr.isMe ? 40 + 8 * t : 22 + 22 * t;
+            return pr.isMe ? 12 + 12 * t : 11 + 11 * t;
           })(),
           borderWidth: 0,
           // 1037 (boss, staging 0930): vis-network's default value-scaling
