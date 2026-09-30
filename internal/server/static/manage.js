@@ -1100,6 +1100,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         item.classList.remove("unread");
         const dot = $(".unread-dot", item);
         if (dot) dot.remove();
+        // boss 1001 dot audit #2: a self-read must say so - the accounts
+        // dot and nav badge used to wait for their own polls while the
+        // inbox detail read cleared everything same tick.
+        document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "" } }));
+        document.dispatchEvent(new CustomEvent("badge:refresh"));
       }
       detail.innerHTML = inboxDetailFrame(
         '<div class="detail-row"><b>From:</b> ' + esc(m.from) + "</div>" +
@@ -1262,6 +1267,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       item.classList.remove("unread");
       const dot = $(".unread-dot", item);
       if (dot) dot.remove();
+      // boss 1001 dot audit #2: same as the Browse self-read - propagate
+      // the consume so the accounts dot and nav badge clear same tick.
+      document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: msg.from || subAddr } }));
+      document.dispatchEvent(new CustomEvent("badge:refresh"));
     }
     const sentToMe = myAddr && String(msg.from || "").toLowerCase() === String(subAddr).toLowerCase() &&
       (msg.to || []).some(function (a) { return String(a).toLowerCase() === myAddr; });
@@ -1642,6 +1651,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           offset += 50;
           if (offset >= (d.total_count || 0)) break;
         }
+        // boss 1001 dot audit #6a: the fallback consumed every letter, so
+        // it must announce the full clear like the endpoint branch does -
+        // the accounts dots used to wait for the accounts poll.
+        document.dispatchEvent(new CustomEvent("inbox:read", { detail: { all: true } }));
       }
       status.textContent = t("inbox.markAllDone");
       toast(t("inbox.markAllDone"));
@@ -1846,7 +1859,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     // Auto-preload (newest message on inbox load) stays on the List tab on
     // mobile — only a user tap flips to Message.
     if (!auto) revealDetailOnMobile("inbox-grid", detail);
+    var hadUnread = false;
     if (item) {
+      hadUnread = item.classList.contains("unread");
       item.classList.remove("unread");
       const dot = $(".unread-dot", item);
       if (dot) dot.remove();
@@ -1904,6 +1919,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       const fwdBtn = $("#btn-inbox-forward");
       if (fwdBtn) fwdBtn.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:forward", { detail: { m: m } })); });
     } catch (e) {
+      // boss 1001 dot audit #8: roll the optimistic removal back on error -
+      // the inbox list must not say read while the accounts dot (server
+      // truth, untouched by the failed fetch) says unread until re-entry.
+      if (item && hadUnread && !item.classList.contains("unread")) {
+        item.classList.add("unread");
+        item.insertAdjacentHTML("afterbegin", '<span class="unread-dot" title="unread">●</span>');
+      }
       // Keep the nav row on errors too — the reader can still step away.
       detail.innerHTML = inboxDetailFrame('<p class="muted">' + esc(t("common.error", { msg: e.message })) + "</p>");
       wireInboxNav(detail, item);
@@ -2376,9 +2398,14 @@ document.addEventListener("manage:entered", function () {
         list.insertBefore(frag, list.firstChild);
         // Advance anchor after successful merge.
         inboxAnchorId = fresh[0].id;
-        // Update the inbox-status line with the new total.
+        // Update the inbox-status line with the new total - the unread
+        // segment recomputes from the DOM (boss 1001 dot audit #10: the
+        // text used to freeze at "+N new" and disagree with the dots).
         var st = $("#inbox-status");
-        if (st) st.textContent = "+" + fresh.length + " new";
+        if (st) {
+          var u2 = list.querySelectorAll(".mail-item.unread").length;
+          st.textContent = "+" + fresh.length + " new · " + t("inbox.unreadCnt", { u: u2 });
+        }
       } catch (e) {
         console.error("inbox:incremental error:", e.message);
         silentFullLoad();
