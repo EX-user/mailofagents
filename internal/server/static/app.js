@@ -171,6 +171,23 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     mailReadTimer = setTimeout(function () { mailReadTimer = null; applyActivity(); }, 60);
   });
 
+  // boss 10-01: arrival gets the same-tick face too. The badge poll's
+  // newmail beat lights the inbox and the open thread instantly, but the
+  // accounts-row dot reads actData.unreadBySender and used to wait for
+  // the next pull (up to a full poll cycle). Mirror the inbox:read short
+  // path: bump the sender's key locally and re-render; the next pull
+  // confirms with server truth. Truthiness only - the face has no count.
+  var mailNewTimer = null;
+  document.addEventListener("inbox:newmail", function (ev) {
+    var addr = String((ev.detail || {}).from || "").trim().toLowerCase();
+    if (addr.indexOf("@") < 0) return;
+    var d = (actData = actData || {});
+    var ub = (d.unreadBySender = d.unreadBySender || {});
+    ub[addr] = (ub[addr] || 0) + 1;
+    if (mailNewTimer) return;
+    mailNewTimer = setTimeout(function () { mailNewTimer = null; applyActivity(); }, 60);
+  });
+
   document.addEventListener("accounts:refresh", function () { loadAccounts(); });
   document.addEventListener("nav:activate", function (ev) {
     var tab = (ev.detail || {}).tab;
