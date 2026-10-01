@@ -1299,7 +1299,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // 1053b: the server caps previews at 100 runes with NO ellipsis -
     // a full-cap preview is the reliable "this letter is longer"
     // signal, stamped here for the measure pass.
-    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0" data-prevlen="' + esc(String(Array.from(m.preview || "").length)) + '">' +
+    // 1054 (boss): letters WITH attachments always keep the expand
+    // button - a preview can never show an attachment.
+    const nFiles = (m.files && m.files.length) ? m.files.length : (m.files || 0);
+    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0" data-prevlen="' + esc(String(Array.from(m.preview || "").length)) + '" data-files="' + esc(String(nFiles)) + '">' +
       avBox +
       '<div class="thread-card">' +
       // 1039 (boss, 1001): in IM conversation mode the direction arrow
@@ -1367,7 +1370,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // (60 runes) may be a truncation - keep the toggle. At or below,
     // the preview is genuinely short: the old fit check decides.
     const capped = parseInt(item.dataset.prevlen || "0", 10) > 60;
-    const cut = capped || (prev.classList.contains("thread-prev-multi")
+    const hasFiles = parseInt(item.dataset.files || "0", 10) > 0;
+    const cut = capped || hasFiles || (prev.classList.contains("thread-prev-multi")
       ? prev.scrollHeight > prev.clientHeight + 1
       : prev.scrollWidth > prev.clientWidth + 1);
     if (!cut) {
