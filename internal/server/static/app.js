@@ -74,7 +74,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // reported "badge clears with a lag"). Only the latest call may write.
   let badgeSeq = 0;
   var prevLatestId = null;
-  var prevBadgeCount = -1;
   async function refreshInboxBadge() {
     if (!getSession()) { setInboxBadge(0); return; }
     // Background tabs skip the tick — the badge refreshes on visibility
@@ -113,17 +112,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         document.dispatchEvent(new CustomEvent("inbox:newmail", { detail: { from: latestMail ? (latestMail.from || "") : "", letter: beatLetter } }));
       }
       setInboxBadge(cur);
-      // boss 10-01 dot alignment: the nav badge (this 5s poll) and the
-      // accounts-row dots (a separate, slower activity pull) are two
-      // refresh channels - any state change WITHOUT a local event (a
-      // consume in another tab, another device) left them disagreeing
-      // for up to a full activity-pull cycle. When the badge COUNT
-      // changes, drag the activity pull to the same beat so the row
-      // dots re-sync to server truth within the same observation.
-      if (cur !== prevBadgeCount && typeof pullActivity === "function") {
+      // boss 10-01 single master clock: the instant the badge poll
+      // returns, the activity pull rides the same beat - channel two
+      // keeps NO clock of its own (its interval is retired below), so
+      // the row dots can never drift from the badge observation.
+      // pullActivity self-gates on the accounts panel being visible;
+      // hidden panels cost nothing.
+      if (typeof pullActivity === "function") {
         try { pullActivity(); } catch (_) {}
       }
-      prevBadgeCount = cur;
     } catch (_) { /* badge is best-effort */ }
   }
   setInterval(refreshInboxBadge, 5000);
@@ -1473,7 +1470,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     } catch (_) {}
 
 
-    setInterval(function () { if (!document.hidden && accountsPanelVisible()) pullActivity(); }, POLL_MS);
+    // boss 10-01: RETIRED - the activity pull is chained to the badge poll (single master clock); only the visibility-return refresh keeps its own trigger
 
 
     document.addEventListener("visibilitychange", function () {
