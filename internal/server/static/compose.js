@@ -1323,6 +1323,15 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     if (!cut) {
       tg.style.display = "none";
       item.dataset.nofull = "1";
+    } else {
+      // 1053 (boss bug): the verdict is width/font dependent, so a
+      // re-measure (pooled restore, late font swap) may flip it - the
+      // toggle comes back and the stale nofull stamp clears, or a
+      // truncated letter would sit there with no way to expand.
+      tg.style.display = "";
+      delete item.dataset.nofull;
+    }
+    if (!cut) {
       // boss 1046 round 2: hiding the toggle must NOT skip the
       // read-on-open fetch - the detail GET is what clears the
       // unread dot. Fully-shown capsules pull it silently once,
@@ -1523,6 +1532,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // no-churn skip the repaint may become the long-lived DOM, and dead
       // reply/expand buttons must not survive it.
       $$(".thread-item", threadEl).forEach(threadWireItem);
+      // 1053 (boss bug): the nofull verdict rode in with the saved HTML,
+      // but it was decided under the OLD width/fonts - re-measure the
+      // restored items or a truncated letter can sit there with no
+      // expand toggle at all.
+      requestAnimationFrame(function () { $$(".thread-item", threadEl).forEach(threadMeasureNofull); });
     }
     if (threadEl.getAttribute("data-peer") !== to.toLowerCase()) threadEl.textContent = t("common.loading");
 
