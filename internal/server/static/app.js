@@ -4924,11 +4924,18 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   const ADMIN_ONLY_TABS = ["settings", "audit"];
 
   function applyRole(isAdmin) {
+    let visible = 0;
     $$(".tab").forEach(function (b) {
       const tab = b.dataset.tab;
       const adminOnly = ADMIN_ONLY_TABS.indexOf(tab) !== -1;
-      b.classList.toggle("hidden", adminOnly && !isAdmin);
+      const hide = adminOnly && !isAdmin;
+      b.classList.toggle("hidden", hide);
+      if (!hide) visible++;
     });
+    // 1047 (boss): the bottom nav type scale keys off the button count -
+    // exactly-four gets the larger bold label, other sets keep the fit size.
+    const nav = document.querySelector("nav");
+    if (nav) nav.dataset.tabs = String(visible);
   }
 
   // An over-wide address auto-scrolls (ping-pong) instead of just clipping:
