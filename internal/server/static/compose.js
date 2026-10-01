@@ -1327,12 +1327,31 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // read-on-open fetch - the detail GET is what clears the
       // unread dot. Fully-shown capsules pull it silently once,
       // right here (same endpoint contract as toggleThreadItem).
-      const mid = item.dataset.mid;
-      const cur = getSession();
-      const path = (cur && !cur.is_admin)
-        ? "/api/message?id=" + encodeURIComponent(mid)
-        : "/admin/message?id=" + encodeURIComponent(mid);
-      api(path).catch(function () {});
+      // boss 10-01 dot consistency: the pull is only meaningful for an
+      // UNREAD capsule (read ones are already consumed - the GET was
+      // pure waste), and it must converge like read-on-open does -
+      // dispatch the read event and erase this capsule's own dot - or
+      // the nav badge clears on the next poll while the accounts row
+      // keeps its dot until the next activity pull (the boss-reported
+      // row-on/nav-off divergence).
+      if (item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) {
+        const mid = item.dataset.mid;
+        const cur = getSession();
+        const peerAddr = ((item.parentElement || {}).getAttribute || function () { return ""; })("data-peer") || "";
+        if (cur && !cur.is_admin) {
+          api("/api/message?id=" + encodeURIComponent(mid), { keepSession: true })
+            .then(function () {
+              document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: peerAddr, src: "thread" } }));
+              var d5 = item.querySelector(".unread-dot");
+              if (d5) d5.remove();
+              var s5 = item.querySelector(".thread-subj-unread");
+              if (s5) s5.classList.remove("thread-subj-unread");
+            })
+            .catch(function () {});
+        } else {
+          api("/admin/message?id=" + encodeURIComponent(mid)).catch(function () {});
+        }
+      }
     }
   }
   // boss 1001 no-churn verify support: the DOM-side fingerprint of what is
@@ -1473,7 +1492,18 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       threadEl.innerHTML = poolHit.html;
       if (imMode()) {
         var h5 = document.getElementById("thread-holder");
-        if (h5) h5.scrollTop = poolHit.scrollTop || 0;
+        // boss 10-01: a merged arrival rides in the slot as an UNREAD
+        // capsule - restoring the saved scroll would park the viewport on
+        // the old reading position while the new letter sits below the
+        // fold (and a no-change verify then skips any re-seat). New
+        // content seats to the newest; no new content keeps the position.
+        if (threadEl.querySelector(".unread-dot") || threadEl.querySelector(".thread-subj-unread")) {
+          scrollImThreadBottom();
+          requestAnimationFrame(scrollImThreadBottom);
+          setTimeout(scrollImThreadBottom, 250);
+        } else if (h5) {
+          h5.scrollTop = poolHit.scrollTop || 0;
+        }
       }
       if (window.__avRestore) {
         window.__avRestore(threadEl, null);
