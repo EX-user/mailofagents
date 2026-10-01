@@ -41,3 +41,32 @@ func TestPushCountsStateRoundTrip(t *testing.T) {
 		t.Fatalf("round trip: last_err = %q", d2.lastErr)
 	}
 }
+
+func TestWakeInFlightResumeFlag(t *testing.T) {
+	// 恢复现场 ③b (alice ruling + three guards): the in-flight marker
+	// persists across restarts, and the resume consumes it once — guard 1
+	// (一次性): a resume that dies again takes the normal path.
+	dir := t.TempDir()
+	cfg := &Config{StateFile: filepath.Join(dir, "state.json")}
+	d := NewDuty(cfg, false, false)
+	if err := os.WriteFile(cfg.StateFile,
+		[]byte(`{"session_id":"s1","wake_in_flight":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d.loadState()
+	if !d.wakeInFlight || d.sessionID != "s1" {
+		t.Fatalf("load: inFlight=%v session=%q", d.wakeInFlight, d.sessionID)
+	}
+
+	// clear + persist (what Run does before resumeWake)
+	d.mu.Lock()
+	d.wakeInFlight = false
+	d.saveState()
+	d.mu.Unlock()
+
+	d2 := NewDuty(cfg, false, false)
+	d2.loadState()
+	if d2.wakeInFlight {
+		t.Fatal("guard 1 violated: flag survived the clear")
+	}
+}
