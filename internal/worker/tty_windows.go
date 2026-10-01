@@ -46,13 +46,20 @@ type mouseEventRecord struct {
 // diagnostic counters (boss demo round 3: events=0 while Shift-select was
 // active — need to see whether records arrive at all and of which type)
 var (
-	recCount  = new(int64)
-	keyCount  = new(int64)
-	mouseIn   = new(int64)
-	modeSeen  = new(int64)
+	recCount = new(int64)
+	keyCount = new(int64)
+	mouseIn  = new(int64)
+	modeSeen = new(int64)
 )
 
-func addi(p *int64, v int64) { for { c := *p; if atomic.CompareAndSwapInt64(p, c, c+v) { return } } }
+func addi(p *int64, v int64) {
+	for {
+		c := *p
+		if atomic.CompareAndSwapInt64(p, c, c+v) {
+			return
+		}
+	}
+}
 
 var (
 	kernel32           = syscall.NewLazyDLL("kernel32.dll")

@@ -191,6 +191,22 @@ func (b *Board) CurrentState(tag string) string {
 	return ""
 }
 
+// SeedNote pre-seeds a row's stream box with one line during the
+// constructor phase (call before the duty loop starts — same-thread, no
+// race). 恢复现场 ③a: a restarted row says why the last run stopped.
+func SeedNote(tag, note string) { board.SeedNote(tag, note) }
+
+func (b *Board) SeedNote(tag, note string) {
+	b.mu.Lock()
+	if note != "" {
+		b.rowEvents[tag] = append(b.rowEvents[tag], note)
+	}
+	b.mu.Unlock()
+	if b.enabled || b.dumpDir != "" {
+		b.render()
+	}
+}
+
 // CurrentCtx reports a row's ctx readout source (the per-wake high-water
 // of CLI-reported usage; 0 when the row has none). The duty persists it so
 // ctx survives worker restarts — boss 2026-10-01: ctx should be visible

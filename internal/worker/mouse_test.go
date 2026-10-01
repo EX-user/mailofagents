@@ -207,7 +207,6 @@ func TestWatchActionsStopAndCompact(t *testing.T) {
 	}
 }
 
-
 // TestWatchActionsCopySession: the copy action emits an OSC52 sequence with
 // the bound session id (base64); empty session stays silent.
 func TestWatchActionsCopySession(t *testing.T) {
