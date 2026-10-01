@@ -1144,7 +1144,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // deferred silent refresh then confirms with the server. Pool entries
   // keep their scroll position; event listeners (newmail/inbox:read)
   // refresh both the live list and any parked entry for that peer.
+  // boss 1001: the size is a device display preference (the pool itself
+  // lives in page memory), stored browser-local like the theme.
   var THREAD_POOL_MAX = 10;
+  function threadPoolMax() {
+    var v = parseInt(localStorage.getItem("compose_thread_pool_max") || "0", 10);
+    return (v >= 1 && v <= 50) ? v : THREAD_POOL_MAX;
+  }
   var threadPool = new Map(); // peer(lowercase) -> {html, scrollTop, savedAt}
 
   function threadPoolGet(peer) {
@@ -1158,6 +1164,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   function threadPoolSave(peer, threadEl) {
     var k = String(peer || "").toLowerCase();
     if (!k || !threadEl || !threadEl.querySelector(".thread-item")) return;
+    // boss 1001 correctness rule: a slot may only hold content whose own
+    // data-peer IS the key - if the list and the key ever disagree, bail
+    // instead of stowing mixed content (boss: 无论如何不要混杂).
+    if (threadEl.getAttribute("data-peer") !== k) return;
     if (threadPool.has(k)) threadPool.delete(k);
     var holder = document.getElementById("thread-holder");
     threadPool.set(k, {
@@ -1165,18 +1175,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       scrollTop: (imMode() && holder && threadEl.parentElement === holder) ? holder.scrollTop : 0,
       savedAt: Date.now(),
     });
-    while (threadPool.size > THREAD_POOL_MAX) {
+    while (threadPool.size > threadPoolMax()) {
       threadPool.delete(threadPool.keys().next().value);
     }
   }
   function threadPoolDrop(peer) {
     threadPool.delete(String(peer || "").toLowerCase());
   }
+  // boss 1001 correctness rule: only the LATEST load may paint. Two
+  // overlapping loads (peer switched mid-fetch) used to race the DOM -
+  // the loser's render would stamp its own data-peer over the winner's
+  // content, the exact mixing the boss forbids. Stale loads abandon.
+  var threadLoadSeq = 0;
 
   async function loadComposeThread(opts) {
     const to = ($("#compose-to").value || "").trim();
     const threadEl = $("#compose-thread");
     const titleEl = $("#thread-title");
+    var mySeq = ++threadLoadSeq;
     // boss 1001: a deferred re-entry refresh rides the scroll through the
     // silent swap (captured before any DOM wipe) instead of re-seating.
     var keepScrollTop = (opts && opts.keepScroll && imMode())
@@ -1244,6 +1260,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         ? await api("/api/thread?with=" + encodeURIComponent(firstPeer || to) + "&limit=50")
         : await api("/admin/thread?account=" + encodeURIComponent("admin@" + composeDomain) +
             "&with=" + encodeURIComponent(firstPeer || to) + "&limit=50");
+      // boss 1001 correctness rule: a load superseded by a newer one must
+      // not paint - its content belongs to a peer that is no longer on the
+      // field (the mix the boss forbids). The pool-hit paint above is
+      // synchronous (no interleave); everything after this await is not.
+      if (mySeq !== threadLoadSeq) return;
       const all = (threadRes.messages || []).map(function (m) {
         return m.dir === "out"
           ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to }
@@ -1256,6 +1277,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       if (!all.length) {
         threadEl.className = "thread-list muted";
         threadEl.textContent = "No conversation with " + to + " yet.";
+        // boss 1001 correctness rule: the stamp must ALWAYS follow the
+        // painted content - the empty face used to leave the previous
+        // peer's stamp, so field and list could disagree until a reload.
+        threadEl.setAttribute("data-peer", to.toLowerCase());
         // boss 09-29 addendum: a peer with NO conversation lands in the full
         // compose form - the conversation view has nothing to show. The
         // explicit back button still works (no reload runs on exit).
@@ -1336,7 +1361,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
             .then(function () {
               // 0.3.5 (boss staging note): the accounts unread dot clears
               // the same tick the letter is consumed - no 5s pull wait.
-              document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "" } }));
+              // boss 1001: src:"thread" marks the thread's OWN consume - it
+              // converges its capsule dots right below, so the audit #6b
+              // listener must not fire a redundant full reload on it.
+              document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "", src: "thread" } }));
               // boss 1001 dot audit #1: the render above stamped this
               // capsule unread and nothing re-renders here - strip the
               // capsule's own dot/bold the same tick or it stays on a
@@ -2130,11 +2158,18 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // boss 1001 dot audit #6b: a consume elsewhere (inbox detail, mark-all,
   // mail-tab read) must converge the open thread's capsule dots the same
   // tick - the thread used to keep its dots until some unrelated reload.
+  // boss 1001 refinement: only reload when there is something to converge -
+  // the thread's own read-on-open converges itself (src:"thread") and a
+  // reload with no markers left would just churn node identity (the
+  // convrefresh ① invariant).
   document.addEventListener("inbox:read", function (ev) {
     var det = ev.detail || {};
-    if (det.all) { loadComposeThread(); return; }
+    var threadEl = $("#compose-thread");
+    if (det.src === "thread") return;
+    var hasMarkers = !!(threadEl && threadEl.querySelector(".unread-dot, .thread-subj-unread"));
+    if (det.all) { if (hasMarkers) loadComposeThread(); return; }
     var to3 = ($("#compose-to").value || "").trim().toLowerCase();
-    if (!to3) return;
+    if (!to3 || !hasMarkers) return;
     var f3 = String(det.from || "").toLowerCase();
     if (f3 && (to3.indexOf(f3) >= 0 || f3.indexOf(to3) >= 0)) loadComposeThread();
   });
