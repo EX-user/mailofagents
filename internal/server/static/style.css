@@ -3273,9 +3273,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
      pill label centers for real - UA button centering let the line
      sag 1.5px inside the 44px touch target. */
   #tab-compose.im #im-bar #im-sheet:not(.hidden) {
-    display: flex; justify-content: space-between;
+    display: flex; justify-content: space-evenly; column-gap: 0; row-gap: 10px;
   }
-  #tab-compose.im #thread-holder #im-sheet:not(.hidden) { justify-content: space-between; }
+  #tab-compose.im #thread-holder #im-sheet:not(.hidden) { justify-content: space-evenly; column-gap: 0; row-gap: 10px; }
   #tab-compose.im #im-bar #im-sheet:not(.hidden) button {
     display: inline-flex; align-items: center; justify-content: center;
     /* line-height:1 kills the CJK strut sag (ink sat 1.5px low in the
@@ -3306,6 +3306,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   #tab-compose.im #im-bar #im-sheet:not(.hidden) {
     order: 1;
     display: flex; flex-direction: row; flex-wrap: wrap; gap: 5px;
+    /* 1045 round 4 (boss): equal springs - column gap would bias the
+       middle spaces over the edges, so the row carries all spacing. */
+    column-gap: 0; row-gap: 10px;
     border-bottom: 1px solid var(--border); padding: 2px 2px 6px; margin: 0;
   }
   /* 控件本体不透明、背板保持透明（boss 终裁）：滚过的内容只从控件之间的
