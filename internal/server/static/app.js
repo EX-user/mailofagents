@@ -99,7 +99,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         // boss 09-30: carry the latest sender so a listener scoped to one
         // conversation can tell its peer's mail from a bystander's.
         prevLatestId = latestId;
-        document.dispatchEvent(new CustomEvent("inbox:newmail", { detail: { from: latestMail ? (latestMail.from || "") : "" } }));
+        // boss 1001 incremental merge (display first, verify after):
+        // the beat carries the letter's OWN summary so the conversation
+        // face paints it with ZERO extra requests; the verify pull that
+        // follows the same tick confirms against server truth.
+        var beatLetter = latestMail ? {
+          id: latestMail.id || "",
+          subject: latestMail.subject || "",
+          preview: latestMail.preview || "",
+          ts: latestMail.received_at || 0,
+        } : null;
+        document.dispatchEvent(new CustomEvent("inbox:newmail", { detail: { from: latestMail ? (latestMail.from || "") : "", letter: beatLetter } }));
       }
       setInboxBadge(cur);
     } catch (_) { /* badge is best-effort */ }

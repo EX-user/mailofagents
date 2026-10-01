@@ -1118,6 +1118,21 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       composeAttachmentIds = [];
       renderComposeAttachments(composeAttachmentItems);
       loadComposeThread();
+      // boss 1001 incremental: the sent letter also rides into a PARKED
+      // slot for this peer - switching back paints it instantly instead of
+      // one round-trip stale (the live list just reloaded above). Preview
+      // mirrors the server's rune-100 cut; the verify pull corrects any
+      // sub-second timestamp skew on the next visit.
+      (function () {
+        var runes = Array.from(bodyText || "");
+        threadPoolMerge(toRaw.toLowerCase(), {
+          id: res.message_id,
+          dir: "out",
+          subject: subject,
+          preview: runes.length > 100 ? runes.slice(0, 100).join("") : (bodyText || ""),
+          ts: Math.floor(Date.now() / 1000),
+        });
+      })();
     } catch (e) {
       status.textContent = t("common.error", { msg: e.message });
       // v0.2.8.1 (1021): the server's plain-text reason (e.g. "too many
@@ -1173,6 +1188,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     threadPool.set(k, {
       html: threadEl.innerHTML,
       scrollTop: (imMode() && holder && threadEl.parentElement === holder) ? holder.scrollTop : 0,
+      im: imMode(), // boss 1001 incremental: merge insertion end (im = newest last, list = newest first)
       savedAt: Date.now(),
     });
     while (threadPool.size > threadPoolMax()) {
@@ -1181,6 +1197,213 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   }
   function threadPoolDrop(peer) {
     threadPool.delete(String(peer || "").toLowerCase());
+  }
+  // boss 1001 incremental (display first, server truth verifies after):
+  // a newmail beat that carries the letter's own summary MERGES it into a
+  // parked slot instead of dropping the page - switching back paints the
+  // arrival with zero requests. Id-dedupe keeps a replayed beat from
+  // doubling the item; the slot's saved render order decides which end
+  // the letter joins (im: newest last, list: newest first).
+  function threadPoolMerge(peer, letter) {
+    var k = String(peer || "").toLowerCase();
+    if (!k || !letter || !letter.id || !threadPool.has(k)) return;
+    var e = threadPool.get(k);
+    var probe = document.createElement("div");
+    probe.innerHTML = e.html;
+    if (probe.querySelector('.thread-item[data-mid="' + letter.id + '"]')) return; // dedupe
+    var dir = letter.dir === "out" ? "out" : "in";
+    var m = { dir: dir, id: letter.id, subject: letter.subject || "", preview: letter.preview || "",
+      ts: letter.ts || 0, peer: k, from: dir === "in" ? k : undefined, unread: dir === "in" };
+    probe.insertAdjacentHTML(e.im ? "beforeend" : "afterbegin", threadItemHtml(m, !!e.im, threadSelfAddr()));
+    e.html = probe.innerHTML;
+  }
+  function threadSelfAddr() {
+    var c = getSession();
+    return c && !c.is_admin ? (c.address || "") : ("admin@" + composeDomain);
+  }
+  // One thread capsule, as rendered by the list - shared by the full
+  // render, the incremental paints and the parked-slot merges so every
+  // letter on the field is the same markup.
+  function threadItemHtml(m, imOrder, selfAddr) {
+    const arrow = m.dir === "out" ? t("thread.sentLabel") : t("thread.receivedLabel"); // 历史残留收编 i18n（boss）
+    const cls = m.dir === "out" ? "thread-out" : "thread-in";
+    const unreadMark = (m.dir === "in" && m.unread) ? '<span class="unread-dot" title="unread">●</span>' : "";
+    const subjCls = (m.dir === "in" && m.unread) ? " thread-subj-unread" : "";
+    // Quick action button: "Reply" for received, "Follow up" for sent.
+    // Clicking merges the peer into To and sets the in-reply-to anchor;
+    // the subject field stays untouched (boss: it lives in the body).
+    const actionLabel = m.dir === "in" ? t("thread.reply") : t("thread.followUp");
+    const actionTarget = m.dir === "in" ? (m.from || m.peer) : m.peer;
+    const actionKind = m.dir === "in" ? "re" : "fwd";
+    const actionBtn = '<span class="thread-action" data-target="' + esc(actionTarget) +
+      '" data-mid="' + esc(m.id) + '" data-act="' + actionKind +
+      '" data-subj="' + esc(m.subject || "") + '">' + actionLabel + '</span>';
+    // 0.3.4.2 capsule avatars: own letters show the self address,
+    // incoming show the actual sender (falls back to the peer).
+    const avAddr = m.dir === "in" ? (m.from || m.peer) : selfAddr;
+    const avBox = imOrder ? '<div class="thread-av" data-av="' + esc(avAddr) + '" data-avremote="1">' +
+      esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>' : "";
+    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0">' +
+      avBox +
+      '<div class="thread-card">' +
+      // 1039 (boss, 1001): in IM conversation mode the direction arrow
+      // ("← 收信 · " / "→ 已发 · ") drops from the capsule meta - the
+      // left/right placement already tells direction there; the clock
+      // stays. Non-IM thread view keeps the arrow as before.
+      '<div class="thread-meta">' + (imOrder ? "" : "<b>" + arrow + "</b> · ") + "<small>" + fmtTime(m.ts) + "</small>" +
+      ' <span class="thread-toggle">' + esc(t("thread.expand")) + '</span> ' + actionBtn + '</div>' +
+      (noSubjectInfo(m.subject)
+        ? // boss 09-30: a no-information subject gets NO redundant (no
+          // subject) label - the preview line carries the unread dot.
+          '<div class="thread-prev' + subjCls + ' thread-prev-multi">' + unreadMark + esc(m.preview || "") + "</div>"
+        : '<div class="thread-subj' + subjCls + '">' + esc(m.subject) + "</div>" +
+          '<div class="thread-prev">' + esc(m.preview || "") + "</div>") +
+      '<div class="thread-full hidden"></div>' +
+      '</div>' +
+      "</div>";
+  }
+  // Wire ONE freshly created capsule (reply/follow-up + click-to-expand).
+  // Every paint site (full render, pool repaint, incremental insert) calls
+  // this on its fresh nodes - a node is wired exactly once at birth.
+  function threadWireItem(item) {
+    var btn = $(".thread-action", item);
+    if (btn) btn.addEventListener("click", function (e) {
+      e.stopPropagation(); // don't trigger the item's expand toggle
+      // Boss 09-30 v2: capsule reply/follow-up restore the PC behavior
+      // on the conversation page too - To snaps to the one peer, the
+      // in-reply-to anchor is set, and the SUBJECT field is filled
+      // again (prefix always prepends; an anchorless letter leaves the
+      // field empty so the send still stamps the no-info word). The
+      // old body-prefix cue is retired - the field carries it now, the
+      // irt line shows it, and the bar's × clears both.
+      $("#compose-to").value = btn.dataset.target;
+      composeInReplyTo = btn.dataset.mid || null;
+      var pfx = btn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
+      var s2 = (btn.dataset.subj || "").trim();
+      $("#compose-subject").value = s2 ? (pfx + " " + s2) : "";
+      renderInReplyTo();
+      imPaintHead();
+      if (imMode()) { syncImBar(); $("#im-input").focus(); }
+      else $("#compose-body").focus();
+      $("#compose-status").textContent = "Replying to " + btn.dataset.target;
+      syncComposeSplit();
+    });
+    const full = $(".thread-full", item);
+    item.addEventListener("click", function (e) {
+      if (window.getSelection && window.getSelection().toString()) return;
+      // If already expanded and the click landed inside the full body, leave it open.
+      if (full && !full.classList.contains("hidden") && full.contains(e.target)) return;
+      // Special case: if the click is on the header while collapsed, expand.
+      // If on the header while expanded, collapse. The item-level handler
+      // already covers "click anywhere to expand"; this meta handler covers
+      // "click header to collapse".
+      toggleThreadItem(item);
+    });
+  }
+  // 1046 per item: a letter the capsule already shows in full gets NO
+  // expand toggle and its header click won't expand. "Fully shown" is
+  // measurable after layout (rAF) so fonts/avatars don't skew the pass.
+  function threadMeasureNofull(item) {
+    const prev = $(".thread-prev", item);
+    const tg = $(".thread-toggle", item);
+    if (!prev || !tg) return;
+    const cut = prev.classList.contains("thread-prev-multi")
+      ? prev.scrollHeight > prev.clientHeight + 1
+      : prev.scrollWidth > prev.clientWidth + 1;
+    if (!cut) {
+      tg.style.display = "none";
+      item.dataset.nofull = "1";
+      // boss 1046 round 2: hiding the toggle must NOT skip the
+      // read-on-open fetch - the detail GET is what clears the
+      // unread dot. Fully-shown capsules pull it silently once,
+      // right here (same endpoint contract as toggleThreadItem).
+      const mid = item.dataset.mid;
+      const cur = getSession();
+      const path = (cur && !cur.is_admin)
+        ? "/api/message?id=" + encodeURIComponent(mid)
+        : "/admin/message?id=" + encodeURIComponent(mid);
+      api(path).catch(function () {});
+    }
+  }
+  // boss 1001 no-churn verify support: the DOM-side fingerprint of what is
+  // painted (ids, directions, read state, timestamps - render order is the
+  // sequence). Equal to the fetch-side fingerprint means the truth shows
+  // EXACTLY what the field shows and the swap is skipped wholesale.
+  function threadDomFp(el) {
+    var out = [];
+    $$(".thread-item", el).forEach(function (item) {
+      out.push((item.getAttribute("data-mid") || "") + ":" +
+        (item.classList.contains("thread-out") ? "out" : "in") + ":" +
+        ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" +
+        (item.getAttribute("data-ts") || "0"));
+    });
+    return out.join("|");
+  }
+  // boss 1001 incremental: the OPEN conversation paints the beat's letter
+  // with ZERO requests (display first); the verify fetch that follows the
+  // same tick swaps in server truth only when something actually differs.
+  function threadPaintIncremental(letter, from2) {
+    if (!letter || !letter.id || !from2) return;
+    var threadEl = $("#compose-thread");
+    var to = ($("#compose-to").value || "").trim().toLowerCase();
+    if (!threadEl || !to || threadEl.getAttribute("data-peer") !== to) return;
+    if (!threadEl.querySelector(".thread-item")) return; // nothing rendered yet - the load path owns the first paint
+    if (threadEl.querySelector('.thread-item[data-mid="' + letter.id + '"]')) return; // dedupe
+    var m = { dir: "in", id: letter.id, subject: letter.subject || "", preview: letter.preview || "",
+      ts: letter.ts || 0, peer: from2, from: from2, unread: true };
+    var im2 = imMode();
+    threadEl.insertAdjacentHTML(im2 ? "beforeend" : "afterbegin",
+      threadItemHtml(m, im2, threadSelfAddr()));
+    var node = im2 ? threadEl.lastElementChild : threadEl.firstElementChild;
+    if (node && node.classList.contains("thread-item")) {
+      threadWireItem(node); // fresh node, wired at birth like every render
+      requestAnimationFrame(function () { threadMeasureNofull(node); });
+      threadReadOnOpen([m], threadEl);
+      if (im2) scrollImThreadBottom(); // land on the arrival
+    }
+  }
+  // 0.3.4 IM semantics (boss 09-29): opening the conversation reads it -
+  // each unread incoming letter is fetched once (the detail GET marks it
+  // read server-side), so the next accounts poll clears the dots
+  // everywhere. Self-limiting: afterwards there is nothing to fetch.
+  // Regular accounts only (admin previews never write state). Runs on
+  // BOTH the full render and the no-churn skip - unread letters must be
+  // consumed even when the verify finds nothing to change.
+  function threadReadOnOpen(list, threadEl) {
+    var c = getSession();
+    if (!c || c.is_admin) return;
+    // 0.3.5 (boss "5,6,7 quick"): reading happens when the user can
+    // SEE - the read-on-open body-fetch must not run for a hidden
+    // compose page, or the peer's letter is consumed before the badge
+    // ever lights (reddot A1/A2 reproduced on the shipped bytes). The
+    // letters keep their dots; the next VISIBLE render reads them.
+    var tabEl = document.getElementById("tab-compose");
+    var seen = !!tabEl && !tabEl.classList.contains("hidden") && document.visibilityState === "visible";
+    list.forEach(function (m) {
+      if (m.dir !== "in" || !m.unread) return;
+      if (!seen) return;
+      api("/api/message?id=" + encodeURIComponent(m.id), { keepSession: true })
+        .then(function () {
+          // 0.3.5 (boss staging note): the accounts unread dot clears
+          // the same tick the letter is consumed - no 5s pull wait.
+          // boss 1001: src:"thread" marks the thread's OWN consume - it
+          // converges its capsule dots right below, so the audit #6b
+          // listener must not fire a redundant full reload on it.
+          document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "", src: "thread" } }));
+          // boss 1001 dot audit #1: the render above stamped this
+          // capsule unread and nothing re-renders here - strip the
+          // capsule's own dot/bold the same tick or it stays on a
+          // letter that is already read server-side.
+          var it2 = threadEl.querySelector('.thread-item[data-mid="' + m.id + '"]');
+          if (it2) {
+            var d2 = it2.querySelector(".unread-dot");
+            if (d2) d2.remove();
+            var s3 = it2.querySelector(".thread-subj-unread");
+            if (s3) s3.classList.remove("thread-subj-unread");
+          }
+        })
+        .catch(function () {});
+    });
   }
   // boss 1001 correctness rule: only the LATEST load may paint. Two
   // overlapping loads (peer switched mid-fetch) used to race the DOM -
@@ -1222,7 +1445,19 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // boss 1001 pool: a stored fragment for THIS peer paints before the
     // fetch (real cache hit - switching conversations feels instant too);
     // the fetch still runs and swaps in fresh data when it lands.
-    var poolHit = opts && opts.pool !== false ? threadPoolGet(to) : null;
+    // boss 1001 pool: a stored fragment for THIS peer paints before the
+    // fetch (real cache hit - switching conversations feels instant too);
+    // the fetch still runs and swaps in fresh data when it lands.
+    // NOTE (precedence fix): the old form `opts && opts.pool !== false ?
+    // Get(to) : null` evaluated falsy for EVERY plain call (opts undefined)
+    // - the pool never painted on the To-switch path at all. Only an
+    // explicit opt-OUT ({pool:false}) disables the hit.
+    // The hit serves PEER SWITCHES only: when the field already shows this
+    // peer's rendered list, repainting from the slot would discard live UI
+    // state (an expanded capsule, a scroll position mid-read) that the
+    // silent-swap path is contractually preserving through the fetch.
+    var poolHit = (opts && opts.pool === false ||
+      threadEl.getAttribute("data-peer") === to.toLowerCase()) ? null : threadPoolGet(to);
     if (poolHit) {
       threadEl.setAttribute("data-peer", to.toLowerCase());
       threadEl.innerHTML = poolHit.html;
@@ -1235,6 +1470,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         if (window.__avHydrate) window.__avHydrate(threadEl);
         if (window.__avRemoteHydrate) window.__avRemoteHydrate(threadEl);
       }
+      // boss 1001: the repainted pool nodes are FRESH - wire them at birth.
+      // The verify swap used to rewire within a round-trip anyway; with the
+      // no-churn skip the repaint may become the long-lived DOM, and dead
+      // reply/expand buttons must not survive it.
+      $$(".thread-item", threadEl).forEach(threadWireItem);
     }
     if (threadEl.getAttribute("data-peer") !== to.toLowerCase()) threadEl.textContent = t("common.loading");
 
@@ -1290,44 +1530,23 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         }
         return;
       }
+      // boss 1001 no-churn verify (真值校验无变更不得抖动页面): when the
+      // fetched truth is EXACTLY what the field already shows (same peer,
+      // same letters, same read state, same stamps), the swap is skipped
+      // wholesale - no node churn, no avatar re-hydration, no re-seating,
+      // expanded capsules stay expanded. Only the read-on-open pass still
+      // runs, so unread letters are consumed even on a skipped swap.
+      var fpFetch = all.map(function (m) {
+        return m.id + ":" + m.dir + ":" + (m.unread ? 1 : 0) + ":" + m.ts;
+      }).join("|");
+            if (threadEl.getAttribute("data-peer") === to.toLowerCase() &&
+          threadEl.querySelector(".thread-item") && threadDomFp(threadEl) === fpFetch) {
+        threadReadOnOpen(all, threadEl);
+        threadPoolSave(to, threadEl); // keep the parked slot as fresh as the field
+        return;
+      }
       var html = all.map(function (m) {
-        const arrow = m.dir === "out" ? t("thread.sentLabel") : t("thread.receivedLabel"); // 历史残留收编 i18n（boss）
-        const cls = m.dir === "out" ? "thread-out" : "thread-in";
-        const unreadMark = (m.dir === "in" && m.unread) ? '<span class="unread-dot" title="unread">●</span>' : "";
-        const subjCls = (m.dir === "in" && m.unread) ? " thread-subj-unread" : "";
-        // Quick action button: "Reply" for received, "Follow up" for sent.
-        // Clicking merges the peer into To and sets the in-reply-to anchor;
-        // the subject field stays untouched (boss: it lives in the body).
-        const actionLabel = m.dir === "in" ? t("thread.reply") : t("thread.followUp");
-        const actionTarget = m.dir === "in" ? (m.from || m.peer) : m.peer;
-        const actionKind = m.dir === "in" ? "re" : "fwd";
-        const actionBtn = '<span class="thread-action" data-target="' + esc(actionTarget) +
-          '" data-mid="' + esc(m.id) + '" data-act="' + actionKind +
-          '" data-subj="' + esc(m.subject || "") + '">' + actionLabel + '</span>';
-        // 0.3.4.2: avatar rides the capsule in IM mode only - peer left,
-        // own right (row-reverse in CSS). Standard data-av box markup so
-        // app.js hydration (real avatar / robot fallback) applies as-is.
-        const avAddr = m.dir === "in" ? (m.from || m.peer) : selfAddr;
-        const avBox = imOrder ? '<div class="thread-av" data-av="' + esc(avAddr) + '" data-avremote="1">' +
-          esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>' : "";
-        return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-loaded="0">' +
-          avBox +
-          '<div class="thread-card">' +
-          // 1039 (boss, 1001): in IM conversation mode the direction arrow
-          // ("← 收信 · " / "→ 已发 · ") drops from the capsule meta - the
-          // left/right placement already tells direction there; the clock
-          // stays. Non-IM thread view keeps the arrow as before.
-          '<div class="thread-meta">' + (imOrder ? "" : "<b>" + arrow + "</b> · ") + "<small>" + fmtTime(m.ts) + "</small>" +
-          ' <span class="thread-toggle">' + esc(t("thread.expand")) + '</span> ' + actionBtn + '</div>' +
-          (noSubjectInfo(m.subject)
-            ? // boss 09-30: a no-information subject gets NO redundant (no
-              // subject) label - the preview line carries the unread dot.
-              '<div class="thread-prev' + subjCls + ' thread-prev-multi">' + unreadMark + esc(m.preview || "") + "</div>"
-            : '<div class="thread-subj' + subjCls + '">' + esc(m.subject) + "</div>" +
-              '<div class="thread-prev">' + esc(m.preview || "") + "</div>") +
-          '<div class="thread-full hidden"></div>' +
-          '</div>' +
-          "</div>";
+        return threadItemHtml(m, imOrder, selfAddr); // shared renderer (also feeds the incremental paints)
       }).join("");
       threadEl.setAttribute("data-peer", to.toLowerCase()); // same-peer refreshes swap silently
       // 0.3.4.2: same decode-free recycle as 06586e1 - polls re-render this
@@ -1348,111 +1567,19 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // fonts/avatars don't skew the first pass.
       if (imOrder) {
         requestAnimationFrame(function () {
-          $$(".thread-item", threadEl).forEach(function (item) {
-            const prev = $(".thread-prev", item);
-            const tg = $(".thread-toggle", item);
-            if (!prev || !tg) return;
-            const cut = prev.classList.contains("thread-prev-multi")
-              ? prev.scrollHeight > prev.clientHeight + 1
-              : prev.scrollWidth > prev.clientWidth + 1;
-            if (!cut) {
-              tg.style.display = "none";
-              item.dataset.nofull = "1";
-              // boss 1046 round 2: hiding the toggle must NOT skip the
-              // read-on-open fetch - the detail GET is what clears the
-              // unread dot. Fully-shown capsules pull it silently once,
-              // right here (same endpoint contract as toggleThreadItem).
-              const mid = item.dataset.mid;
-              const cur = getSession();
-              const path = (cur && !cur.is_admin)
-                ? "/api/message?id=" + encodeURIComponent(mid)
-                : "/admin/message?id=" + encodeURIComponent(mid);
-              api(path).catch(function () {});
-            }
-          });
+          $$(".thread-item", threadEl).forEach(threadMeasureNofull);
         });
       }
       // boss 1001 pool: the fresh render re-stows under its peer (LRU).
       threadPoolSave(to, threadEl);
       // 0.3.4 IM semantics (boss 09-29): opening the conversation reads
-      // it - each unread incoming letter is fetched once (the detail GET
-      // marks it read server-side), so the next accounts poll clears the
-      // dots everywhere. Self-limiting: afterwards there is nothing to
-      // fetch. Regular accounts only (admin previews never write state).
-      if (isRegular) {
-        // 0.3.5 (boss "5,6,7 quick"): reading happens when the user can
-        // SEE - the read-on-open body-fetch must not run for a hidden
-        // compose page, or the peer's letter is consumed before the badge
-        // ever lights (reddot A1/A2 reproduced on the shipped bytes). The
-        // letters keep their dots; the next VISIBLE render reads them.
-        var tabEl = document.getElementById("tab-compose");
-        var seen = !!tabEl && !tabEl.classList.contains("hidden") && document.visibilityState === "visible";
-        all.filter(function (m) { return m.dir === "in" && m.unread; }).forEach(function (m) {
-          if (!seen) return;
-          api("/api/message?id=" + encodeURIComponent(m.id), { keepSession: true })
-            .then(function () {
-              // 0.3.5 (boss staging note): the accounts unread dot clears
-              // the same tick the letter is consumed - no 5s pull wait.
-              // boss 1001: src:"thread" marks the thread's OWN consume - it
-              // converges its capsule dots right below, so the audit #6b
-              // listener must not fire a redundant full reload on it.
-              document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "", src: "thread" } }));
-              // boss 1001 dot audit #1: the render above stamped this
-              // capsule unread and nothing re-renders here - strip the
-              // capsule's own dot/bold the same tick or it stays on a
-              // letter that is already read server-side.
-              var it2 = threadEl.querySelector('.thread-item[data-mid="' + m.id + '"]');
-              if (it2) {
-                var d2 = it2.querySelector(".unread-dot");
-                if (d2) d2.remove();
-                var s3 = it2.querySelector(".thread-subj-unread");
-                if (s3) s3.classList.remove("thread-subj-unread");
-              }
-            })
-            .catch(function () {});        });
-      }
-      // Wire Reply/Follow-up buttons: fill the compose form's To + Subject.
-      $$(".thread-action", threadEl).forEach(function (btn) {
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation(); // don't trigger the item's expand toggle
-          // Boss 09-30 v2: capsule reply/follow-up restore the PC behavior
-          // on the conversation page too - To snaps to the one peer, the
-          // in-reply-to anchor is set, and the SUBJECT field is filled
-          // again (prefix always prepends; an anchorless letter leaves the
-          // field empty so the send still stamps the no-info word). The
-          // old body-prefix cue is retired - the field carries it now, the
-          // irt line shows it, and the bar's × clears both.
-          $("#compose-to").value = btn.dataset.target;
-          composeInReplyTo = btn.dataset.mid || null;
-          var pfx = btn.dataset.act === "fwd" ? t("compose.followUpPrefix") : "Re:";
-          var s2 = (btn.dataset.subj || "").trim();
-          $("#compose-subject").value = s2 ? (pfx + " " + s2) : "";
-          renderInReplyTo();
-          imPaintHead();
-          if (imMode()) { syncImBar(); $("#im-input").focus(); }
-          else $("#compose-body").focus();
-          $("#compose-status").textContent = "Replying to " + btn.dataset.target;
-          syncComposeSplit();
-        });
-      });
-      // Click-to-expand anywhere on the item; but once expanded, the content
-      // area (.thread-full) does NOT collapse on click (so the user can select
-      // text freely). Only the header (.thread-meta / .thread-toggle) collapses.
-      // Drag-selecting text never triggers a toggle.
-      $$(".thread-item", threadEl).forEach(function (item) {
-        const full = $(".thread-full", item);
-        const meta = $(".thread-meta", item);
-        item.addEventListener("click", function (e) {
-          if (window.getSelection && window.getSelection().toString()) return;
-          // If already expanded and the click landed inside the full body, leave it open.
-          if (full && !full.classList.contains("hidden") && full.contains(e.target)) return;
-          // Special case: if the click is on the header while collapsed, expand.
-          // If on the header while expanded, collapse. The item-level handler
-          // already covers "click anywhere to expand"; this meta handler covers
-          // "click header to collapse".
-          toggleThreadItem(item);
-        });
-      });
+      // it (regular accounts only; admin previews never write state) -
+      // extracted so the no-churn skip path runs it too.
+      if (isRegular) threadReadOnOpen(all, threadEl);
+      // Wire Reply/Follow-up buttons + click-to-expand: every freshly
+      // rendered capsule is wired at birth (shared with the incremental
+      // paints so a skipped swap never leaves dead buttons).
+      $$(".thread-item", threadEl).forEach(threadWireItem);
       if (imOrder) {
         // boss 09-29: entering from the accounts row must land on the latest
         // letter. The HOLDER is the scroller in conversation mode (the inner
@@ -2177,16 +2304,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // no-ops into its placeholder, so the listener stays dumb.
   document.addEventListener("inbox:newmail", function (ev) {
     var from2 = String((ev.detail || {}).from || "").toLowerCase();
-    // boss 1001 pool: a PARKED entry for that peer refreshes lazily - the
-    // entry is dropped so the next open re-fetches (correctness over
-    // speculatively rendering a hidden list).
-    if (from2 && threadPool.has(from2)) threadPoolDrop(from2);
+    var letter = (ev.detail && ev.detail.letter) || null;
+    // boss 1001 incremental (display first, server truth verifies after):
+    // a beat that carries the letter's own summary MERGES it into a PARKED
+    // slot instead of dropping the page - switching back paints the arrival
+    // with zero requests. A summary-less beat (older shape) keeps the old
+    // conservative drop.
+    if (from2 && letter) threadPoolMerge(from2, letter);
+    else if (from2 && threadPool.has(from2)) threadPoolDrop(from2);
     // boss 09-30: a bystander's letter must not flash the open conversation.
     // Reload only when the new mail is FROM the open peer (either side of a
     // display-name form); a no-to state keeps the placeholder, not a reload.
     var to2 = ($("#compose-to").value || "").trim().toLowerCase();
     if (!to2) return;
     if (from2 && to2.indexOf(from2) < 0 && from2.indexOf(to2) < 0) return;
+    // boss 1001 incremental: the open conversation paints the beat's letter
+    // with ZERO requests, then the verify pull confirms - and a verify that
+    // finds nothing changed does not touch the DOM at all (no churn).
+    if (letter) threadPaintIncremental(letter, from2 || to2);
     loadComposeThread();
   });
   // boss 1001 dot audit #6b: a consume elsewhere (inbox detail, mark-all,
