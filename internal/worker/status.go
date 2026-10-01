@@ -404,15 +404,7 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 	bld.WriteString(sep + "\n")
 	for _, r := range rows {
 		fmt.Fprintf(&bld, "%s\n", statusLine(r, w))
-		// Never-woken row: an empty box reads as a malfunction (boss
-		// 2026-10-01 field report — chief vs critic, one box blank, no
-		// ctx). The box carries CLI stream events and the header carries
-		// ctx, both of which exist only after a wake; say so instead.
-		content := rolls[r.tag]
-		if len(content) == 0 {
-			content = []string{"no wake yet — first wake fills this box · ctx appears once the CLI reports usage"}
-		}
-		fmt.Fprintf(&bld, "%s\n", indentBlock(textBox(rollContent(content), rollRows, w-2), 2))
+		fmt.Fprintf(&bld, "%s\n", indentBlock(textBox(rollContent(rolls[r.tag]), rollRows, w-2), 2))
 	}
 	bld.WriteString(sep + "\n")
 	bld.WriteString("[worker-log]\n")
