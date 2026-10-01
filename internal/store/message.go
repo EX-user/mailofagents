@@ -285,12 +285,18 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 	if err != nil {
 		return nil, err
 	}
-	want := limit + offset
+	// boss 1002 production report: the merged-total cap starved one side -
+	// with heavy inbound volume the 50 newest were ALL incoming and the
+	// account's OWN letters vanished from the conversation entirely. A
+	// conversation is BOTH sides' words: each DIRECTION contributes its own
+	// newest (limit+offset) letters, time-interleaved for the reply.
+	want := limit + offset // per side now
 	var merged []ThreadEntry
 	err = s.db.View(func(tx *bolt.Tx) error {
 		mb := tx.Bucket(bMessages)
 		ub := tx.Bucket(bUnread)
 		scan := func(bucket []byte, dir string) error {
+			sideCount := 0
 			b := tx.Bucket(bucket)
 			if b == nil || mb == nil {
 				return nil
@@ -332,8 +338,9 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 					ms.Unread = ub.Get(indexKey(acc.UUID, id)) != nil
 				}
 				merged = append(merged, ThreadEntry{MessageSummary: ms, Dir: dir})
-				if len(merged) >= want {
-					return nil // early stop: the newest matches are collected
+				sideCount++
+				if sideCount >= want {
+					return nil // early stop: THIS side's newest matches are collected
 				}
 			}
 			return nil
@@ -353,9 +360,9 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 		return []ThreadEntry{}, nil
 	}
 	merged = merged[offset:]
-	if len(merged) > limit {
-		merged = merged[:limit]
-	}
+	// No merged-total limit trim: each side already contributed at most
+	// (limit+offset) of its OWN newest - trimming the merge would starve
+	// the lighter side again (the boss-reported "my own letters vanished").
 	return merged, nil
 }
 
