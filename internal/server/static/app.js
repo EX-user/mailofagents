@@ -181,7 +181,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       if (addr && ub[addr]) { delete ub[addr]; actMutNote("del", addr); }
     }
     if (mailReadTimer) return;
-    mailReadTimer = setTimeout(function () { mailReadTimer = null; applyActivity(); }, 60);
+    // boss 10-01: the NAV badge used to wait for the next 5s poll after a
+    // read - with letters now painting instantly (incremental merge) the
+    // up-to-5s lingering dot became conspicuous. Refresh the badge in the
+    // same coalesced tick: the poll is idempotent server truth, no drift.
+    mailReadTimer = setTimeout(function () { mailReadTimer = null; applyActivity(); refreshInboxBadge(); }, 60);
   });
 
   // boss 10-01: arrival gets the same-tick face too. The badge poll's
