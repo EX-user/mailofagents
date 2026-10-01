@@ -263,8 +263,17 @@ type ThreadEntry struct {
 // ReadThread returns the bilateral conversation between the account and one
 // peer: messages the account sent whose recipients include the peer ("out")
 // plus messages the account received from the peer ("in"), newest first.
-// Case-insensitive address match. Full index scan per side — fine at current
-// scale (thousands); revisit with a peer index if volume grows.
+// Case-insensitive address match.
+//
+// boss 1001 (加载池子不对): the old implementation sampled a bounded window
+// (limit+offset+200) of the SHARED inbox/sent indexes and picked the peer's
+// letters out of it - heavy traffic from anyone else pushed a peer's letters
+// beyond the window and they silently vanished from the conversation ("a's
+// mail gradually squeezes b's out"). This walk is per-peer and exhaustive
+// per side: newest-first cursor, filtered by peer, early stop once
+// limit+offset matches are collected. Recent conversations stay cheap, old
+// ones cannot fall out of a window; deeper history paginates via offset.
+// The Mail/Manage inbox remains the full-fidelity query surface.
 func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEntry, error) {
 	if limit <= 0 {
 		limit = 50
@@ -276,32 +285,66 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 	if err != nil {
 		return nil, err
 	}
-	// Scan a generous window per side, then merge. The window must exceed
-	// limit+offset so pagination reaches deep-enough entries on one side.
-	window := limit + offset + 200
-	inbox, err := s.readIndex(bInbox, acc.UUID, acc.UUID, window, 0)
-	if err != nil {
-		return nil, err
-	}
-	sent, err := s.readIndex(bSent, acc.UUID, acc.UUID, window, 0)
-	if err != nil {
-		return nil, err
-	}
+	want := limit + offset
 	var merged []ThreadEntry
-	for _, m := range inbox {
-		if strings.EqualFold(m.From, peer) {
-			e := ThreadEntry{MessageSummary: m, Dir: "in"}
-			merged = append(merged, e)
-		}
-	}
-	for _, m := range sent {
-		for _, r := range m.To {
-			if strings.EqualFold(r, peer) {
-				e := ThreadEntry{MessageSummary: m, Dir: "out"}
-				merged = append(merged, e)
-				break
+	err = s.db.View(func(tx *bolt.Tx) error {
+		mb := tx.Bucket(bMessages)
+		ub := tx.Bucket(bUnread)
+		scan := func(bucket []byte, dir string) error {
+			b := tx.Bucket(bucket)
+			if b == nil || mb == nil {
+				return nil
 			}
+			prefix := indexKey(acc.UUID, "")
+			prefixStr := string(prefix)
+			// Ascending ULID = oldest first; walk backwards for newest-first.
+			var ids []string
+			c := b.Cursor()
+			for k, _ := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), prefixStr); k, _ = c.Next() {
+				ids = append(ids, string(k[len(prefix):]))
+			}
+			for i := len(ids) - 1; i >= 0; i-- {
+				id := ids[i]
+				val := mb.Get([]byte(id))
+				if val == nil {
+					continue
+				}
+				var msg Message
+				if err := json.Unmarshal(val, &msg); err != nil {
+					continue
+				}
+				match := false
+				if dir == "in" {
+					match = strings.EqualFold(msg.From, peer)
+				} else {
+					for _, r := range msg.To {
+						if strings.EqualFold(r, peer) {
+							match = true
+							break
+						}
+					}
+				}
+				if !match {
+					continue
+				}
+				ms := summarize(msg)
+				if ub != nil {
+					ms.Unread = ub.Get(indexKey(acc.UUID, id)) != nil
+				}
+				merged = append(merged, ThreadEntry{MessageSummary: ms, Dir: dir})
+				if len(merged) >= want {
+					return nil // early stop: the newest matches are collected
+				}
+			}
+			return nil
 		}
+		if err := scan(bInbox, "in"); err != nil {
+			return err
+		}
+		return scan(bSent, "out")
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.SliceStable(merged, func(i, j int) bool {
 		return merged[i].ReceivedAt > merged[j].ReceivedAt
