@@ -3144,14 +3144,19 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   /* 1052 (boss): a little tail turns the capsule into an IM bubble -
      it points at the sender's avatar and mirrors on the outbound
      side. background:inherit keeps the accent tint continuity. */
+  /* 1052 v2 (boss): a CURVED bubble tip ("气泡小尖" - not an arrow),
+     seated lower so it aims at the avatar's bottom edge instead of
+     clashing with it; mirrors on the outbound side, tint follows
+     the capsule via background:inherit. */
   #tab-compose.im .thread-item .thread-card { position: relative; }
-  #tab-compose.im .thread-item .thread-card::before {
-    content: ""; position: absolute; top: 12px;
-    width: 10px; height: 10px; background: inherit;
-    transform: rotate(45deg);
+  #tab-compose.im .thread-item .thread-card::after {
+    content: ""; position: absolute; top: 24px;
+    width: 12px; height: 15px; background: inherit;
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'><path d='M0 0 C6 3 10 8 12 15 L0 15 Z'/></svg>") center/contain no-repeat;
+    mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'><path d='M0 0 C6 3 10 8 12 15 L0 15 Z'/></svg>") center/contain no-repeat;
   }
-  #tab-compose.im .thread-item.thread-in .thread-card::before { left: -5px; }
-  #tab-compose.im .thread-item.thread-out .thread-card::before { right: -5px; }
+  #tab-compose.im .thread-item.thread-in .thread-card::after { left: -10px; }
+  #tab-compose.im .thread-item.thread-out .thread-card::after { right: -10px; transform: scaleX(-1); }
   #tab-compose.im .thread-item.thread-out { flex-direction: row-reverse; }
   #tab-compose.im .thread-item.thread-out .thread-card {
     background: linear-gradient(color-mix(in srgb, var(--accent) 14%, transparent),
