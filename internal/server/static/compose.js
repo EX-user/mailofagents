@@ -1320,10 +1320,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const prev = $(".thread-prev", item);
     const tg = $(".thread-toggle", item);
     if (!prev || !tg) return;
-    // 1053b (boss): a capped server preview (100 runes, no ellipsis)
-    // means the body was longer - "fits" is then only true about the
-    // preview, not the LETTER, so the toggle stays.
-    const capped = parseInt(item.dataset.prevlen || "0", 10) >= 100;
+    // 1053b final ruling (boss): anything over 0.6x the preview cap
+    // (60 runes) may be a truncation - keep the toggle. At or below,
+    // the preview is genuinely short: the old fit check decides.
+    const capped = parseInt(item.dataset.prevlen || "0", 10) > 60;
     const cut = capped || (prev.classList.contains("thread-prev-multi")
       ? prev.scrollHeight > prev.clientHeight + 1
       : prev.scrollWidth > prev.clientWidth + 1);
