@@ -3154,6 +3154,10 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   /* boss 0.3.4.2: bigger avatar, closer to the screen edge - main's 20px
      side padding reads as wasted gutter on the phone; IM view hugs 8px */
   html:has(#tab-compose.im) main { padding-left: 8px; padding-right: 8px; }
+  /* 1049b (boss bug): leaving IM compose keeps .im on the panel, so
+     this rule's 8px leaked onto the accounts page and un-full-bled
+     the list. The accounts reset re-wins the tie (later source). */
+  body:has(#tab-accounts:not(.hidden)) main { padding-left: 0; padding-right: 0; }
   #tab-compose.im .thread-item { gap: 6px; }
   #tab-compose.im .thread-av img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 9px; }
   /* boss 0.3.4.2 addendum: no-subject capsules have no subject line, so the
