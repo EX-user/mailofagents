@@ -973,8 +973,10 @@ nav::-webkit-scrollbar { display: none; }
   /* The two scrollable zones get a visible boundary (superior feedback):
      ONE rounded box per zone, inner cards flattened to hairline rows and
      clipped by the container — no nested rounded boxes. */
+  /* 1049 (boss): the zone read as a floating rounded card - make it
+     hug the edges: full width, square corners, no boundary box. */
   .sub-list, #acc-m-contacts {
-    border: 1px solid var(--border); border-radius: 10px;
+    border: none; border-radius: 0;
     background: var(--sub-card-bg);
   }
   .sub-list .sub-card, #acc-m-contacts .ct-card {
