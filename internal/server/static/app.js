@@ -74,6 +74,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // reported "badge clears with a lag"). Only the latest call may write.
   let badgeSeq = 0;
   var prevLatestId = null;
+  var prevBadgeCount = -1;
   async function refreshInboxBadge() {
     if (!getSession()) { setInboxBadge(0); return; }
     // Background tabs skip the tick — the badge refreshes on visibility
@@ -112,6 +113,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         document.dispatchEvent(new CustomEvent("inbox:newmail", { detail: { from: latestMail ? (latestMail.from || "") : "", letter: beatLetter } }));
       }
       setInboxBadge(cur);
+      // boss 10-01 dot alignment: the nav badge (this 5s poll) and the
+      // accounts-row dots (a separate, slower activity pull) are two
+      // refresh channels - any state change WITHOUT a local event (a
+      // consume in another tab, another device) left them disagreeing
+      // for up to a full activity-pull cycle. When the badge COUNT
+      // changes, drag the activity pull to the same beat so the row
+      // dots re-sync to server truth within the same observation.
+      if (cur !== prevBadgeCount && typeof pullActivity === "function") {
+        try { pullActivity(); } catch (_) {}
+      }
+      prevBadgeCount = cur;
     } catch (_) { /* badge is best-effort */ }
   }
   setInterval(refreshInboxBadge, 5000);
