@@ -52,7 +52,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // Red dot + count on the Inbox nav tab. Refreshes after each inbox load
   // and on a slow poll (60s) while logged in; hidden at zero.
   function setInboxBadge(n) {
-    const tab = $(".tab[data-tab=inbox]");
+    // boss 1001 (quiet query library): the unread dot lives on the
+    // ACCOUNTS button - Mail is a deliberate lookup surface, not a
+    // shouter. Same signal, different host.
+    const tab = $(".tab[data-tab=accounts]");
     if (!tab) return;
     let badge = $(".tab-badge", tab);
     if (!n) { if (badge) badge.remove(); return; }
