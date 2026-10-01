@@ -188,6 +188,19 @@ func (b *Board) CurrentState(tag string) string {
 	return ""
 }
 
+// CurrentCtx reports a row's ctx readout source (the per-wake high-water
+// of CLI-reported usage; 0 when the row has none). The duty persists it so
+// ctx survives worker restarts — boss 2026-10-01: ctx should be visible
+// without waiting for the account's next wake.
+func (b *Board) CurrentCtx(tag string) int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if row := b.row(tag); row != nil {
+		return row.ctxTokens
+	}
+	return 0
+}
+
 // Set updates a row's state/detail. State "" = streaming output summary:
 // it rolls into the account's two-line output area instead of the row line.
 func (b *Board) Set(tag, state, detail string) {

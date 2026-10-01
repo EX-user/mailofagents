@@ -56,6 +56,11 @@ type Duty struct {
 	hbLast     atomic.Int64 // unix nano: last successful upload
 	hbState    string       // last uploaded state (mu)
 
+	// lastCtx (boss spec 2026-10-01): the row's ctx readout, persisted so
+	// it survives worker restarts — ctx is session state, not worker-
+	// lifetime ephemera. Restored onto the board at duty start.
+	lastCtx int64
+
 	// long-unread detection (boss spec 2026-10-01): per-mail push counts.
 	// A wake that carries unread pushes each of those mails once; a count
 	// past 3 rounds means the session keeps getting re-pushed mail it
@@ -284,9 +289,11 @@ func (d *Duty) loadState() {
 	var s struct {
 		SessionID  string         `json:"session_id"`
 		PushCounts map[string]int `json:"push_counts"`
+		LastCtx    int64          `json:"last_ctx"`
 	}
 	if json.Unmarshal(b, &s) == nil {
 		d.sessionID = s.SessionID
+		d.lastCtx = s.LastCtx
 		if s.PushCounts != nil { // keep the NewDuty-initialized map otherwise
 			d.pushCounts = s.PushCounts
 		}
@@ -295,6 +302,9 @@ func (d *Duty) loadState() {
 
 func (d *Duty) saveState() {
 	st := map[string]any{"session_id": d.sessionID}
+	if d.lastCtx > 0 {
+		st["last_ctx"] = d.lastCtx
+	}
 	if len(d.pushCounts) > 0 {
 		st["push_counts"] = d.pushCounts
 	}
@@ -358,6 +368,11 @@ func (d *Duty) Run(ctx context.Context) {
 		d.resetBinding()
 	} else {
 		d.loadState()
+	}
+	if d.lastCtx > 0 {
+		// ctx is session state (boss 2026-10-01): restore the readout so a
+		// restarted worker shows ctx without waiting for the next wake.
+		board.SetCtx(tag, d.lastCtx)
 	}
 	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v duty_window=%dm session=%q",
 		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.cfg.DutyWindowMin, d.sessionID)
@@ -804,6 +819,9 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.compactPending.Store(false)
 	}
 	d.sessionID = newID // resume chain: id is stable per phase 0, capture anyway
+	if n := board.CurrentCtx(tag); n > 0 {
+		d.lastCtx = n // persist the displayed readout across restarts
+	}
 	d.saveState()
 	d.mu.Unlock()
 	d.failStreak = 0
