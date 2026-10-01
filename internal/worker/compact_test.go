@@ -41,7 +41,7 @@ func TestNewDutyCompactBeforeWakeMarker(t *testing.T) {
 // flight, and compactOnce must NEVER leave a row stuck in COMPACT after
 // it returns (any path: no-op, failure, success).
 func TestCompactOnceNeverSticksCompactState(t *testing.T) {
-	board.AddRow("cptest", time.Now(), 0, 0)
+	board.AddRow("cptest", time.Now(), 0, 0, 0)
 	t.Cleanup(func() { board.rows = nil })
 
 	// no-op path (empty binding): state must stay as-is, never COMPACT

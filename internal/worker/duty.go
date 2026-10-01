@@ -357,22 +357,19 @@ func (d *Duty) watchActions(ctx context.Context) {
 // Run polls until ctx is cancelled (SIGTERM → graceful stop).
 func (d *Duty) Run(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
-	board.AddRow(tag, time.Now(), d.cfg.ContextWindow, d.cfg.CompactNoticeTokens)
-	// Binding workdir: create the last level on startup when missing
-	// (parent must exist — no silent mkdir -p); log-only on failure so the
-	// loop keeps polling (each wake will surface the error too).
-	if err := ensureWorkdir(d.cfg.Workdir); err != nil {
-		d.logf("workdir: %v", err)
-	}
+	// Binding load precedes AddRow (alice review ②): last_ctx rides the
+	// row's constructor, so state must be in hand when the row is born.
 	if d.fresh {
 		d.resetBinding()
 	} else {
 		d.loadState()
 	}
-	if d.lastCtx > 0 {
-		// ctx is session state (boss 2026-10-01): restore the readout so a
-		// restarted worker shows ctx without waiting for the next wake.
-		board.SetCtx(tag, d.lastCtx)
+	board.AddRow(tag, time.Now(), d.cfg.ContextWindow, d.cfg.CompactNoticeTokens, d.lastCtx)
+	// Binding workdir: create the last level on startup when missing
+	// (parent must exist — no silent mkdir -p); log-only on failure so the
+	// loop keeps polling (each wake will surface the error too).
+	if err := ensureWorkdir(d.cfg.Workdir); err != nil {
+		d.logf("workdir: %v", err)
 	}
 	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v duty_window=%dm session=%q",
 		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.cfg.DutyWindowMin, d.sessionID)

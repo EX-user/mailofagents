@@ -122,8 +122,8 @@ func SetMeta(version, logHint string) { board.SetMeta(version, logHint) }
 // Package-level wrappers for external boards drivers (demo-worker):
 func Set(tag, state, detail string)   { board.Set(tag, state, detail) }
 func SetCtx(tag string, tokens int64) { board.SetCtx(tag, tokens) }
-func AddRow(tag string, started time.Time, ctxW, noticeT int64) {
-	board.AddRow(tag, started, ctxW, noticeT)
+func AddRow(tag string, started time.Time, ctxW, noticeT, lastCtx int64) {
+	board.AddRow(tag, started, ctxW, noticeT, lastCtx)
 }
 func Logf(tag, format string, args ...any)           { board.Logf(tag, format, args...) }
 func SubscribeActions(tag string) <-chan boardAction { return board.SubscribeActions(tag) }
@@ -153,12 +153,15 @@ func init() {
 // AddRow registers one account line at board creation time. ctxWindow /
 // noticeTokens are the percentage denominators for the ctx readout (window
 // wins; notice is the fallback; neither = absolute tokens only).
-func (b *Board) AddRow(tag string, started time.Time, ctxWindow, noticeTokens int64) {
+func (b *Board) AddRow(tag string, started time.Time, ctxWindow, noticeTokens, lastCtx int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.rows = append(b.rows, &statusRow{
 		tag: tag, state: "waiting", since: started, started: started,
 		ctxWindow: ctxWindow, noticeTokens: noticeTokens,
+		ctxTokens: lastCtx, // restore-on-construct (alice review ②): the
+		// persisted ctx rides the row's birth — zero race with the first
+		// poll by construction, no post-hoc backfill call.
 	})
 }
 
