@@ -1124,7 +1124,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       hydrateAttachmentPreviews(detail, m);
       const replyBtn = $("#btn-mail-reply");
       if (replyBtn) replyBtn.addEventListener("click", function () {
-        document.dispatchEvent(new CustomEvent("compose:reply", { detail: { to: replyBtn.dataset.replyTo, subject: replyBtn.dataset.replySubject, parentId: replyBtn.dataset.replyId } }));
+        document.dispatchEvent(new CustomEvent("compose:reply", { detail: { to: replyBtn.dataset.replyTo, subject: replyBtn.dataset.replySubject, parentId: replyBtn.dataset.replyId, body: m.body } }));
       });
       const fwdBtn = $("#btn-mail-forward");
       if (fwdBtn) fwdBtn.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:forward", { detail: { m: m } })); });
@@ -1315,7 +1315,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     const rbtn = $("#btn-reply-as-self");
     if (rbtn) rbtn.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:reply-self", { detail: { m: msg } })); });
     const rbtn2 = $("#btn-reply-to-sub");
-    if (rbtn2) rbtn2.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:reply", { detail: { to: subAddr, subject: msg.subject || "", parentId: (msg.id || msg.message_id) } })); });
+    if (rbtn2) rbtn2.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:reply", { detail: { to: subAddr, subject: msg.subject || "", parentId: (msg.id || msg.message_id), body: msg.body } })); });
   }
 
   // composeReplyAsSelf: the superior replies in their own name to the
@@ -1910,11 +1910,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       wireInboxNav(detail, item);
       const replyBtn = $("#btn-inbox-reply");
       if (replyBtn) replyBtn.addEventListener("click", function () {
-        document.dispatchEvent(new CustomEvent("compose:reply", { detail: { to: replyBtn.dataset.replyTo, subject: replyBtn.dataset.replySubject, parentId: replyBtn.dataset.replyId } }));
+        document.dispatchEvent(new CustomEvent("compose:reply", { detail: { to: replyBtn.dataset.replyTo, subject: replyBtn.dataset.replySubject, parentId: replyBtn.dataset.replyId, body: m.body } }));
       });
       const followBtn = $("#btn-inbox-followup");
       if (followBtn) followBtn.addEventListener("click", function () {
-        document.dispatchEvent(new CustomEvent("compose:followUp", { detail: { to: followBtn.dataset.followTo, subject: followBtn.dataset.followSubject, parentId: followBtn.dataset.followId } }));
+        document.dispatchEvent(new CustomEvent("compose:followUp", { detail: { to: followBtn.dataset.followTo, subject: followBtn.dataset.followSubject, parentId: followBtn.dataset.followId, body: m.body } }));
       });
       const fwdBtn = $("#btn-inbox-forward");
       if (fwdBtn) fwdBtn.addEventListener("click", function () { document.dispatchEvent(new CustomEvent("compose:forward", { detail: { m: m } })); });
