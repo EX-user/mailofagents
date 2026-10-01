@@ -3152,8 +3152,8 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   #tab-compose.im .thread-item .thread-card::after {
     content: ""; position: absolute; top: 24px;
     width: 12px; height: 15px; background: inherit;
-    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'><path d='M0 0 C6 3 10 8 12 15 L0 15 Z'/></svg>") center/contain no-repeat;
-    mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'><path d='M0 0 C6 3 10 8 12 15 L0 15 Z'/></svg>") center/contain no-repeat;
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'><path d='M0 0 C8 2 11.5 8 10.5 14.5 L0 14.5 Z'/></svg>") center/contain no-repeat;
+    mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'><path d='M0 0 C8 2 11.5 8 10.5 14.5 L0 14.5 Z'/></svg>") center/contain no-repeat;
   }
   #tab-compose.im .thread-item.thread-in .thread-card::after { left: -10px; }
   #tab-compose.im .thread-item.thread-out .thread-card::after { right: -10px; transform: scaleX(-1); }
