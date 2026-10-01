@@ -3126,6 +3126,11 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   /* 1040 (boss, 1001): the capsule left stroke drops in IM mode -
      direction reads from placement and the tinted fill alone; the
      2px border-left (neutral/accent/success variants) retires. */
+  /* 1045b (boss, 1001): in IM mode a no-subject capsule reads its
+       body line in the SUBJECT type (600/13px/text) - the preview
+       line IS the subject line there. */
+  #tab-compose.im .thread-item .thread-prev-multi { font-weight: 600; font-size: 13px; color: var(--text); }
+  #tab-compose.im .thread-item.thread-in .thread-prev-multi.thread-subj-unread { font-weight: 700; }
   #tab-compose.im .thread-item .thread-card {
     flex: 1 1 auto; min-width: 0; padding: 8px 12px; border-radius: 6px;
     background: var(--panel);
@@ -3252,12 +3257,15 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   #tab-compose.im #im-bar #compose-attachments:not(:empty) .attach-card + .attach-card {
     border-top: 1px dashed var(--border); border-radius: 0 0 8px 8px;
   }
+  /* 1045 (boss, 1001): the sheet buttons go compact and borrow the
+     bar's own language - white surface, 1px border, muted text, one
+     radius - instead of the tinted trio. */
   #tab-compose.im #im-bar #im-sheet:not(.hidden) button {
-    flex: 1 1 30%; min-width: 0; padding: 5px 8px; font-size: 12px;
-    /* boss: flat gray read muddy in light mode - theme surface */
-    background: var(--panel-2); border: 1px solid var(--border);
-    border-radius: 10px; color: var(--accent);
+    flex: 1 1 30%; min-width: 0; padding: 4px 7px; font-size: 12px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; color: var(--muted);
   }
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) button:hover { color: var(--accent); border-color: var(--accent); }
   #tab-compose.im #im-bar #im-sheet:not(.hidden) #compose-cc-row {
     flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 0;
   }
