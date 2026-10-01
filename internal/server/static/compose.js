@@ -1340,6 +1340,38 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       } else {
         threadEl.innerHTML = html;
       }
+      // 1046 (boss, 1001): a letter the capsule already shows in full gets
+      // NO expand toggle and its header click won't expand. "Fully shown"
+      // is measurable after layout: a single-line preview overflows in
+      // scrollWidth, a multi-line one in scrollHeight - no overflow means
+      // the body is completely on screen. Measured post-layout (rAF) so
+      // fonts/avatars don't skew the first pass.
+      if (imOrder) {
+        requestAnimationFrame(function () {
+          $$(".thread-item", threadEl).forEach(function (item) {
+            const prev = $(".thread-prev", item);
+            const tg = $(".thread-toggle", item);
+            if (!prev || !tg) return;
+            const cut = prev.classList.contains("thread-prev-multi")
+              ? prev.scrollHeight > prev.clientHeight + 1
+              : prev.scrollWidth > prev.clientWidth + 1;
+            if (!cut) {
+              tg.style.display = "none";
+              item.dataset.nofull = "1";
+              // boss 1046 round 2: hiding the toggle must NOT skip the
+              // read-on-open fetch - the detail GET is what clears the
+              // unread dot. Fully-shown capsules pull it silently once,
+              // right here (same endpoint contract as toggleThreadItem).
+              const mid = item.dataset.mid;
+              const cur = getSession();
+              const path = (cur && !cur.is_admin)
+                ? "/api/message?id=" + encodeURIComponent(mid)
+                : "/admin/message?id=" + encodeURIComponent(mid);
+              api(path).catch(function () {});
+            }
+          });
+        });
+      }
       // boss 1001 pool: the fresh render re-stows under its peer (LRU).
       threadPoolSave(to, threadEl);
       // 0.3.4 IM semantics (boss 09-29): opening the conversation reads
@@ -1500,6 +1532,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // current user, so /api/message works for both roles for the viewer's own
   // messages — and regular accounts CANNOT call /admin/* (401 → session reset).
   async function toggleThreadItem(item) {
+    // 1046: a capsule that already shows the whole letter doesn't expand.
+    if (item.dataset.nofull === "1") return;
     const full = $(".thread-full", item);
     const toggle = $(".thread-toggle", item);
     const mid = item.dataset.mid;
