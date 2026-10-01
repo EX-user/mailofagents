@@ -1536,11 +1536,36 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // wholesale - no node churn, no avatar re-hydration, no re-seating,
       // expanded capsules stay expanded. Only the read-on-open pass still
       // runs, so unread letters are consumed even on a skipped swap.
+      //
+      // boss 1001 range rule (拉取只与其覆盖时间范围内的缓存比较): the fetch
+      // covers the newest N letters of the peer; letters already on the
+      // field that are OLDER than that window are the fetch's blind spot,
+      // not its contradiction - they are retained (node identity and all),
+      // so the view ACCUMULATES its tail instead of shedding it each time
+      // fresh arrivals slide the window forward.
       var fpFetch = all.map(function (m) {
         return m.id + ":" + m.dir + ":" + (m.unread ? 1 : 0) + ":" + m.ts;
       }).join("|");
-            if (threadEl.getAttribute("data-peer") === to.toLowerCase() &&
-          threadEl.querySelector(".thread-item") && threadDomFp(threadEl) === fpFetch) {
+      var fetchIds = {};
+      var fetchMinTs = 0;
+      all.forEach(function (m) { fetchIds[m.id] = 1; });
+      if (all.length) fetchMinTs = all[all.length - 1].ts; // desc-sorted: last entry is the oldest
+      var samePeerLive = threadEl.getAttribute("data-peer") === to.toLowerCase();
+      var tailNodes = []; // older-than-range nodes, DETACHED only right before the wipe
+      var rangeFp = [];
+      if (samePeerLive) {
+        $$(".thread-item", threadEl).forEach(function (item) {
+          var ts = parseInt(item.getAttribute("data-ts") || "0", 10);
+          var mid = item.getAttribute("data-mid") || "";
+          if (ts && fetchMinTs && ts < fetchMinTs && !fetchIds[mid]) {
+            tailNodes.push(item);
+          } else {
+            rangeFp.push(mid + ":" + (item.classList.contains("thread-out") ? "out" : "in") + ":" +
+              ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" + ts);
+          }
+        });
+      }
+      if (samePeerLive && threadEl.querySelector(".thread-item") && rangeFp.join("|") === fpFetch) {
         threadReadOnOpen(all, threadEl);
         threadPoolSave(to, threadEl); // keep the parked slot as fresh as the field
         return;
@@ -1548,6 +1573,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       var html = all.map(function (m) {
         return threadItemHtml(m, imOrder, selfAddr); // shared renderer (also feeds the incremental paints)
       }).join("");
+      // Range rule, wipe side: park the tail nodes (listeners/expansion ride
+      // along - they are moved, not re-created), then re-seat them at the
+      // OLDER end of the fresh render: im order is oldest-top so the tail
+      // goes back on top; list order is newest-top so it goes back below.
+      var tailFrag = [];
+      tailNodes.forEach(function (node) {
+        tailFrag.push(node.parentNode ? node.parentNode.removeChild(node) : node);
+      });
       threadEl.setAttribute("data-peer", to.toLowerCase()); // same-peer refreshes swap silently
       // 0.3.4.2: same decode-free recycle as 06586e1 - polls re-render this
       // list constantly, harvested avatar boxes keep their decoded bitmaps.
@@ -1558,6 +1591,18 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         if (window.__avRemoteHydrate) window.__avRemoteHydrate(threadEl);
       } else {
         threadEl.innerHTML = html;
+      }
+      // Range rule, re-seat side: the detached tail nodes go back at the
+      // older end (im: above the fresh block; list: below it), keeping
+      // their listeners, expansion state and avatar bitmaps intact.
+      if (tailFrag.length) {
+        if (imOrder) {
+          for (var ti = tailFrag.length - 1; ti >= 0; ti--) {
+            threadEl.insertBefore(tailFrag[ti], threadEl.firstChild);
+          }
+        } else {
+          tailFrag.forEach(function (node) { threadEl.appendChild(node); });
+        }
       }
       // 1046 (boss, 1001): a letter the capsule already shows in full gets
       // NO expand toggle and its header click won't expand. "Fully shown"
