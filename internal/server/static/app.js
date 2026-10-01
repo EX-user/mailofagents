@@ -178,7 +178,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (det.all) { Object.keys(ub).forEach(function (k) { delete ub[k]; }); actMutNote("delall", ""); }
     else {
       var addr = String(det.from || "").toLowerCase();
-      if (addr && ub[addr]) { delete ub[addr]; actMutNote("del", addr); }
+      // boss 10-01: log the del UNCONDITIONALLY. A read that lands before
+      // the first activity pull populated the map used to skip the log -
+      // the in-flight pull then resurrected the row dot while the nav
+      // badge (unread_count poll) stayed clear (row-on/nav-off).
+      if (addr) { delete ub[addr]; actMutNote("del", addr); }
     }
     if (mailReadTimer) return;
     // boss 10-01: the NAV badge used to wait for the next 5s poll after a
