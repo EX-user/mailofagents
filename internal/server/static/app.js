@@ -3596,7 +3596,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       dirEl.innerHTML = '<p class="muted">' + t("portal.noListed") + "</p>";
     } else {
       dirEl.innerHTML = entries.map(function (e) {
-        return '<div class="dir-card">' + portalAvatar(e.address) +
+        return '<div class="dir-card">' + portalAvatar(e.address, e.avatar_hash) +
           '<div><div class="addr">' + esc(e.address) + "</div><div class=\"sig\">" + esc(e.signature || "") + "</div></div></div>";
       }).join("");
     }
@@ -3697,12 +3697,20 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   // portalAvatar builds a deterministic gradient avatar from the address:
   // a simple string hash picks the hue, the first two chars are the initials.
-  function portalAvatar(addr) {
+  function portalAvatar(addr, avatarHash) {
     let h = 0;
     for (let i = 0; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) % 360;
     const ini = (addr.split("@")[0] || "?").slice(0, 2).toUpperCase();
-    return '<div class="avatar" style="background:linear-gradient(135deg,hsl(' + h + ',65%,50%),hsl(' +
-      ((h + 40) % 360) + ',65%,38%))">' + esc(ini) + "</div>";
+    // 1050 (boss): the REAL avatar rides on top when the directory entry
+    // carries an avatar_hash - the public no-wall channel (D1-approved
+    // guest face) serves it; the gradient initials stay underneath as the
+    // instant and fallback face (a 404 just removes the img and leaves them).
+    const real = avatarHash
+      ? '<img alt="" loading="lazy" src="/api/public/avatar?address=' + encodeURIComponent(addr) + '" ' +
+        'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.remove()">'
+      : "";
+    return '<div class="avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg,hsl(' + h + ',65%,50%),hsl(' +
+      ((h + 40) % 360) + ',65%,38%))">' + esc(ini) + real + "</div>";
   }
 
   // spawnPortalParticles adds a handful of slow-floating glyphs for the
