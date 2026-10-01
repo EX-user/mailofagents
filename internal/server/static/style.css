@@ -877,6 +877,10 @@ nav::-webkit-scrollbar { display: none; }
     padding-right: 6px;
     white-space: nowrap;
   }
+  /* 1047 (boss): with exactly four buttons the labels take the roomy
+     type - one notch larger and bold; other sets keep the fit-first
+     12px (applyRole publishes the visible count on nav[data-tabs]). */
+  nav[data-tabs="4"] .tab { font-size: 14px; font-weight: 600; }
 }
 
 /* Stats row wraps instead of overflowing. */
