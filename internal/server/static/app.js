@@ -2882,6 +2882,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       status.textContent = t("prefs.livenessBad");
       return;
     }
+    const poolEl = $("#pref-thread-pool");
+    if (poolEl && poolEl.value !== "") {
+      const pool = parseInt(poolEl.value, 10);
+      if (!isFinite(pool) || pool < 1 || pool > 50) {
+        status.textContent = t("prefs.poolBad");
+        return;
+      }
+      try { localStorage.setItem("compose_thread_pool_max", String(pool)); } catch (_) {}
+    }
     const prefs = {
       audio_autoplay: !!$("#pref-audio-autoplay").checked,
       image_preview: !!$("#pref-image-preview").checked,
@@ -3104,6 +3113,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const lvS = $("#pref-liveness-strong"), lvW = $("#pref-liveness-weak");
       if (lvS) lvS.value = userPrefs.livenessStrongHours;
       if (lvW) lvW.value = userPrefs.livenessWeakHours;
+      const poolEl2 = $("#pref-thread-pool");
+      if (poolEl2) {
+        var pv = parseInt(localStorage.getItem("compose_thread_pool_max") || "0", 10);
+        poolEl2.value = (pv >= 1 && pv <= 50) ? pv : 10;
+      }
       syncPrefLangUI();
       syncPrefThemeUI();
       // Subordinate settings section (moved in from Accounts): regular
