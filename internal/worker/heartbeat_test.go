@@ -213,7 +213,7 @@ func TestBoardCurrentStateFeedsKeepalive(t *testing.T) {
 	// in-wake faces) and no hb("working") was ever emitted. The keepalive
 	// now carries Board.CurrentState — pin the accessor it relies on.
 	tag := "cst-current-state-test"
-	board.AddRow(tag, time.Now(), 0, 0)
+	board.AddRow(tag, time.Now(), 0, 0, 0)
 	defer func() { board.rows = nil }() // rows is package-private; reset for hermeticity
 
 	if got := board.CurrentState(tag); got != "waiting" {

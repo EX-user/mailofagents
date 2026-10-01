@@ -42,13 +42,13 @@ const (
 // line index of the row (1-based) and the display-column ranges (1-based,
 // inclusive) of each button.
 type rowHit struct {
-	line      int
-	stopAt    int
-	stopEnd   int
-	compactAt int
+	line       int
+	stopAt     int
+	stopEnd    int
+	compactAt  int
 	compactEnd int
-	copyAt    int
-	copyEnd   int
+	copyAt     int
+	copyEnd    int
 }
 
 // --- action pub/sub (Board → Duty) ---

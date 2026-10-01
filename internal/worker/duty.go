@@ -56,6 +56,16 @@ type Duty struct {
 	hbLast     atomic.Int64 // unix nano: last successful upload
 	hbState    string       // last uploaded state (mu)
 
+	// lastErr (alice review ③a): the reason the last run stopped — wake
+	// failure, operator stop, panic. Persisted and re-seeded onto the row
+	// after restart: 恢复现场 shows WHY it stopped, crash recovery above all.
+	lastErr string
+
+	// lastCtx (boss spec 2026-10-01): the row's ctx readout, persisted so
+	// it survives worker restarts — ctx is session state, not worker-
+	// lifetime ephemera. Restored onto the board at duty start.
+	lastCtx int64
+
 	// long-unread detection (boss spec 2026-10-01): per-mail push counts.
 	// A wake that carries unread pushes each of those mails once; a count
 	// past 3 rounds means the session keeps getting re-pushed mail it
@@ -284,9 +294,13 @@ func (d *Duty) loadState() {
 	var s struct {
 		SessionID  string         `json:"session_id"`
 		PushCounts map[string]int `json:"push_counts"`
+		LastCtx    int64          `json:"last_ctx"`
+		LastErr    string         `json:"last_err,omitempty"`
 	}
 	if json.Unmarshal(b, &s) == nil {
 		d.sessionID = s.SessionID
+		d.lastCtx = s.LastCtx
+		d.lastErr = s.LastErr
 		if s.PushCounts != nil { // keep the NewDuty-initialized map otherwise
 			d.pushCounts = s.PushCounts
 		}
@@ -295,6 +309,12 @@ func (d *Duty) loadState() {
 
 func (d *Duty) saveState() {
 	st := map[string]any{"session_id": d.sessionID}
+	if d.lastCtx > 0 {
+		st["last_ctx"] = d.lastCtx
+	}
+	if d.lastErr != "" {
+		st["last_err"] = d.lastErr
+	}
 	if len(d.pushCounts) > 0 {
 		st["push_counts"] = d.pushCounts
 	}
@@ -347,17 +367,27 @@ func (d *Duty) watchActions(ctx context.Context) {
 // Run polls until ctx is cancelled (SIGTERM → graceful stop).
 func (d *Duty) Run(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
-	board.AddRow(tag, time.Now(), d.cfg.ContextWindow, d.cfg.CompactNoticeTokens)
+	// Binding load precedes AddRow (alice review ②): last_ctx rides the
+	// row's constructor, so state must be in hand when the row is born.
+	if d.fresh {
+		d.resetBinding()
+	} else {
+		d.loadState()
+	}
+	board.AddRow(tag, time.Now(), d.cfg.ContextWindow, d.cfg.CompactNoticeTokens, d.lastCtx)
+	if d.lastErr != "" {
+		// 恢复现场 ③a (alice review): the row says why the last run
+		// stopped. Consume-on-seed: the reason shows for THIS restart;
+		// a clean run clears it (crash loops don't stack stale errors).
+		board.SeedNote(tag, "last stop: "+d.lastErr)
+		d.lastErr = ""
+		d.saveState()
+	}
 	// Binding workdir: create the last level on startup when missing
 	// (parent must exist — no silent mkdir -p); log-only on failure so the
 	// loop keeps polling (each wake will surface the error too).
 	if err := ensureWorkdir(d.cfg.Workdir); err != nil {
 		d.logf("workdir: %v", err)
-	}
-	if d.fresh {
-		d.resetBinding()
-	} else {
-		d.loadState()
 	}
 	d.logf("duty start: server=%s cli=%s workdir=%s fresh=%v duty_window=%dm session=%q",
 		d.cfg.Server, d.cfg.CLI, d.cfg.Workdir, d.fresh, d.cfg.DutyWindowMin, d.sessionID)
@@ -729,6 +759,10 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			// board 停止 click: operator intent — not a failure (no streak
 			// note, no error row beyond the waiting notice). The queued mail
 			// re-wakes on the next poll.
+			d.mu.Lock()
+			d.lastErr = "stopped by operator"
+			d.saveState()
+			d.mu.Unlock()
 			d.logf("board: wake stopped by operator (mail re-queued)")
 			board.Set(tag, "waiting", "stopped by operator · mail re-queued")
 			d.hb("waiting", "stopped by operator")
@@ -764,6 +798,10 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		board.Set(tag, "error", "wake failed: "+short)
 		d.hb("error", "wake failed: "+short)
 		d.hb("waiting", "wake failed: "+short)
+		d.mu.Lock()
+		d.lastErr = "wake failed: " + short
+		d.saveState()
+		d.mu.Unlock()
 		d.logf("wake failed: %s", short)
 		if wakeCtx.Err() != context.DeadlineExceeded {
 			// A watchdog timeout on a long-running turn is expected and
@@ -804,6 +842,9 @@ func (d *Duty) checkOnce(ctx context.Context) {
 		d.compactPending.Store(false)
 	}
 	d.sessionID = newID // resume chain: id is stable per phase 0, capture anyway
+	if n := board.CurrentCtx(tag); n > 0 {
+		d.lastCtx = n // persist the displayed readout across restarts
+	}
 	d.saveState()
 	d.mu.Unlock()
 	d.failStreak = 0
@@ -848,6 +889,7 @@ func (d *Duty) noteFailure(what string) {
 	addrs := d.contactAddrs()
 	d.mu.Lock()
 	d.failStreak++
+	d.lastErr = what
 	streak := d.failStreak
 	canAlert := len(addrs) > 0 &&
 		streak >= d.cfg.Emergency.FailThreshold &&

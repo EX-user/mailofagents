@@ -25,11 +25,19 @@ func TestPushCountsStateRoundTrip(t *testing.T) {
 	}
 
 	d.pushCounts["01MAIL"] = 5
+	d.lastCtx = 39000
+	d.lastErr = "wake failed: boom"
 	d.saveState()
 
 	d2 := NewDuty(cfg, false, false)
 	d2.loadState()
 	if d2.sessionID != "sess-old" || d2.pushCounts["01MAIL"] != 5 {
 		t.Fatalf("round trip: session=%q counts=%v", d2.sessionID, d2.pushCounts)
+	}
+	if d2.lastCtx != 39000 {
+		t.Fatalf("round trip: last_ctx = %d", d2.lastCtx)
+	}
+	if d2.lastErr != "wake failed: boom" {
+		t.Fatalf("round trip: last_err = %q", d2.lastErr)
 	}
 }

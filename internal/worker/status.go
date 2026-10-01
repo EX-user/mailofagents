@@ -122,8 +122,8 @@ func SetMeta(version, logHint string) { board.SetMeta(version, logHint) }
 // Package-level wrappers for external boards drivers (demo-worker):
 func Set(tag, state, detail string)   { board.Set(tag, state, detail) }
 func SetCtx(tag string, tokens int64) { board.SetCtx(tag, tokens) }
-func AddRow(tag string, started time.Time, ctxW, noticeT int64) {
-	board.AddRow(tag, started, ctxW, noticeT)
+func AddRow(tag string, started time.Time, ctxW, noticeT, lastCtx int64) {
+	board.AddRow(tag, started, ctxW, noticeT, lastCtx)
 }
 func Logf(tag, format string, args ...any)           { board.Logf(tag, format, args...) }
 func SubscribeActions(tag string) <-chan boardAction { return board.SubscribeActions(tag) }
@@ -153,12 +153,15 @@ func init() {
 // AddRow registers one account line at board creation time. ctxWindow /
 // noticeTokens are the percentage denominators for the ctx readout (window
 // wins; notice is the fallback; neither = absolute tokens only).
-func (b *Board) AddRow(tag string, started time.Time, ctxWindow, noticeTokens int64) {
+func (b *Board) AddRow(tag string, started time.Time, ctxWindow, noticeTokens, lastCtx int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.rows = append(b.rows, &statusRow{
 		tag: tag, state: "waiting", since: started, started: started,
 		ctxWindow: ctxWindow, noticeTokens: noticeTokens,
+		ctxTokens: lastCtx, // restore-on-construct (alice review ②): the
+		// persisted ctx rides the row's birth — zero race with the first
+		// poll by construction, no post-hoc backfill call.
 	})
 }
 
@@ -186,6 +189,35 @@ func (b *Board) CurrentState(tag string) string {
 		return row.state
 	}
 	return ""
+}
+
+// SeedNote pre-seeds a row's stream box with one line during the
+// constructor phase (call before the duty loop starts — same-thread, no
+// race). 恢复现场 ③a: a restarted row says why the last run stopped.
+func SeedNote(tag, note string) { board.SeedNote(tag, note) }
+
+func (b *Board) SeedNote(tag, note string) {
+	b.mu.Lock()
+	if note != "" {
+		b.rowEvents[tag] = append(b.rowEvents[tag], note)
+	}
+	b.mu.Unlock()
+	if b.enabled || b.dumpDir != "" {
+		b.render()
+	}
+}
+
+// CurrentCtx reports a row's ctx readout source (the per-wake high-water
+// of CLI-reported usage; 0 when the row has none). The duty persists it so
+// ctx survives worker restarts — boss 2026-10-01: ctx should be visible
+// without waiting for the account's next wake.
+func (b *Board) CurrentCtx(tag string) int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if row := b.row(tag); row != nil {
+		return row.ctxTokens
+	}
+	return 0
 }
 
 // Set updates a row's state/detail. State "" = streaming output summary:
@@ -404,15 +436,7 @@ func renderFrame(w int, launch time.Time, version string, rows []*statusRow, rol
 	bld.WriteString(sep + "\n")
 	for _, r := range rows {
 		fmt.Fprintf(&bld, "%s\n", statusLine(r, w))
-		// Never-woken row: an empty box reads as a malfunction (boss
-		// 2026-10-01 field report — chief vs critic, one box blank, no
-		// ctx). The box carries CLI stream events and the header carries
-		// ctx, both of which exist only after a wake; say so instead.
-		content := rolls[r.tag]
-		if len(content) == 0 {
-			content = []string{"no wake yet — first wake fills this box · ctx appears once the CLI reports usage"}
-		}
-		fmt.Fprintf(&bld, "%s\n", indentBlock(textBox(rollContent(content), rollRows, w-2), 2))
+		fmt.Fprintf(&bld, "%s\n", indentBlock(textBox(rollContent(rolls[r.tag]), rollRows, w-2), 2))
 	}
 	bld.WriteString(sep + "\n")
 	bld.WriteString("[worker-log]\n")

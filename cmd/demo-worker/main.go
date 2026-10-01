@@ -27,11 +27,11 @@ type boardAction = worker.BoardAction
 var states = []string{"working", "waiting", "compact", "arming", "error"}
 
 type demoAccount struct {
-	Tag      string
-	state    string
-	details  map[string]string
-	session  string
-	ctxPct   int
+	Tag     string
+	state   string
+	details map[string]string
+	session string
+	ctxPct  int
 }
 
 func main() {
@@ -70,7 +70,7 @@ func main() {
 		a := &accts[i]
 		a.state = states[i%len(states)]
 		a.session = fmt.Sprintf("01DEMO%s0123456789ABCDE", a.Tag[:1])
-		worker.AddRow(a.Tag, start, 200000, 150000)
+		worker.AddRow(a.Tag, start, 200000, 150000, 0)
 		worker.Set(a.Tag, a.state, a.details[a.state])
 		worker.SetCtx(a.Tag, int64(30000+i*45000))
 	}
