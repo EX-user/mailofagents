@@ -56,6 +56,16 @@ type Duty struct {
 	hbLast     atomic.Int64 // unix nano: last successful upload
 	hbState    string       // last uploaded state (mu)
 
+	// wakeInFlight (恢复现场 ③b, alice ruling + three guards): set while a
+	// wake's CLI turn is running, persisted; a restart that finds it set
+	// means the process died mid-turn — one resume wake finishes the
+	// interrupted round (the mail was already in hand; without this it
+	// silently evaporates). Guards: cleared BEFORE the resume runs
+	// (一次性 — a resume that dies again takes the normal path), the
+	// resume leaves board+log traces (带痕), and its digest self-describes
+	// the interruption (自述).
+	wakeInFlight bool
+
 	// lastErr (alice review ③a): the reason the last run stopped — wake
 	// failure, operator stop, panic. Persisted and re-seeded onto the row
 	// after restart: 恢复现场 shows WHY it stopped, crash recovery above all.
@@ -296,11 +306,13 @@ func (d *Duty) loadState() {
 		PushCounts map[string]int `json:"push_counts"`
 		LastCtx    int64          `json:"last_ctx"`
 		LastErr    string         `json:"last_err,omitempty"`
+		WakeInFlt  bool           `json:"wake_in_flight,omitempty"`
 	}
 	if json.Unmarshal(b, &s) == nil {
 		d.sessionID = s.SessionID
 		d.lastCtx = s.LastCtx
 		d.lastErr = s.LastErr
+		d.wakeInFlight = s.WakeInFlt
 		if s.PushCounts != nil { // keep the NewDuty-initialized map otherwise
 			d.pushCounts = s.PushCounts
 		}
@@ -314,6 +326,9 @@ func (d *Duty) saveState() {
 	}
 	if d.lastErr != "" {
 		st["last_err"] = d.lastErr
+	}
+	if d.wakeInFlight {
+		st["wake_in_flight"] = true
 	}
 	if len(d.pushCounts) > 0 {
 		st["push_counts"] = d.pushCounts
@@ -382,6 +397,15 @@ func (d *Duty) Run(ctx context.Context) {
 		board.SeedNote(tag, "last stop: "+d.lastErr)
 		d.lastErr = ""
 		d.saveState()
+	}
+	if d.wakeInFlight && d.sessionID != "" {
+		// 恢复现场 ③b (alice ruling + three guards): the process died
+		// mid-turn — one resume wake finishes the interrupted round.
+		d.mu.Lock()
+		d.wakeInFlight = false // guard 1 一次性: cleared BEFORE resuming
+		d.saveState()
+		d.mu.Unlock()
+		d.resumeWake(ctx, tag)
 	}
 	// Binding workdir: create the last level on startup when missing
 	// (parent must exist — no silent mkdir -p); log-only on failure so the
@@ -579,6 +603,41 @@ func (d *Duty) watchBeat(wakeCtx context.Context, cancel context.CancelFunc, don
 	}
 }
 
+// resumeWake (恢复现场 ③b) — the wake started, the mail was in hand, the
+// process died mid-turn. One synchronous round at duty start finishes it.
+// Guard 2 带痕: board face + worker log carry the interrupted-wake event;
+// guard 3 自述: the digest's first line tells the agent exactly what
+// happened, so the boss reading the session is never confused.
+func (d *Duty) resumeWake(ctx context.Context, tag string) {
+	board.Set(tag, "arming", "interrupted-wake resume: 上轮进程中断，收尾中…")
+	d.hb("arming", "interrupted-wake resume")
+	d.logf("恢复现场: wake_in_flight 标记在案——上轮唤醒中断于进程中途，续醒收尾")
+	digest := "[interrupted-wake 续醒] 上一轮唤醒进行中时 worker 进程中断，本轮是收尾续醒：请继续完成未竟事务。" +
+		"若检查后并无未竟事务，回复确认即可，无需其他动作。（本条由值守自动生成）"
+	wctx, cancel := context.WithTimeout(ctx, time.Duration(d.cfg.TimeoutSec)*time.Second)
+	defer cancel()
+	newID, _, err := d.adapter.Wake(wctx, d.cfg, d.sessionID, digest)
+	if newID != "" {
+		d.mu.Lock()
+		d.sessionID = newID
+		if n := board.CurrentCtx(tag); n > 0 {
+			d.lastCtx = n
+		}
+		d.saveState()
+		d.mu.Unlock()
+	}
+	if err != nil {
+		short := shortErr(err)
+		board.Set(tag, "waiting", "resume failed: "+short)
+		d.hb("waiting", "resume failed: "+short)
+		d.logf("resume failed: %s", short)
+		return
+	}
+	board.Set(tag, "waiting", "resumed: "+truncate(newID, 24))
+	d.hb("waiting", "resumed after interrupted wake")
+	d.logf("resume ok: interrupted round finished (session %q)", truncate(newID, 24))
+}
+
 func (d *Duty) checkOnce(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
 	// time_beat prologue: consume any minute boundary the poll sleep
@@ -729,7 +788,15 @@ func (d *Duty) checkOnce(ctx context.Context) {
 			}
 		}
 	}()
+	d.mu.Lock()
+	d.wakeInFlight = true // 恢复现场 ③b: crash mid-turn must be discoverable
+	d.saveState()
+	d.mu.Unlock()
 	newID, wakeTokens, err := d.adapter.Wake(wakeCtx, d.cfg, d.sessionID, Digest(d.cfg, unread, resumed, timeBeat, compactNotice, stats, statsErr == nil, maxRounds))
+	d.mu.Lock()
+	d.wakeInFlight = false // any orderly exit (ok/fail/stop/urgent) clears it
+	d.saveState()
+	d.mu.Unlock()
 	close(hbStop)
 	<-hbDone
 	if urgentDone != nil {
