@@ -184,11 +184,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // "Re: " + the original subject. Stacking is deliberate (superior ruling
   // B, 01M14EHTY): anti-stacking lets repeated replies produce identical
   // subjects; every reply adds one more Re:, Gmail/Outlook chain style.
-  function composeReply(toAddress, subject, parentId) {
+  function composeReply(toAddress, subject, parentId, body) {
     composeInReplyTo = parentId || null;
     renderInReplyTo();
     $("#compose-to").value = toAddress || "";
-    var subj = (subject || "").trim();
+    var subj = quoteSubjectBase(subject, body);
     $("#compose-subject").value = subj ? "Re: " + subj : "";
     // Reply never prefills the body (To/Subject only — reviewer's model);
     // it anchors the peer's bucket so the user's edits store into it.
@@ -406,6 +406,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     return /^(短信|消息|sms|message|—)$/i.test(v);
   }
 
+  // 1048 (boss): quoting a no-information subject reads the body instead -
+  // the capsule display already shows the body line, the quote side now
+  // matches: prefix + truncated single-line body.
+  function quoteSubjectBase(subject, body) {
+    if (!noSubjectInfo(subject)) return (subject || "").trim();
+    var text = (body == null ? "" : String(body)).replace(/\s+/g, " ").trim();
+    if (!text) return "";
+    return text.length > 40 ? text.slice(0, 40) + "…" : text;
+  }
+
   // autoDeriveForIm retired (boss 09-29): in-reply-to stays EMPTY unless it
   // is set explicitly - a thread capsule anchors that letter, the panel's
   // irt line shows and clears it. Nothing derives it from the thread.
@@ -609,7 +619,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     renderInReplyTo();
     $("#compose-to").value = "";
     draftAnchor(null); // a forward is a new letter to no one yet
-    var subj = (m.subject || "").trim();
+    var subj = quoteSubjectBase(m.subject, m.body != null ? m.body : m.preview);
     $("#compose-subject").value = subj ? "Fwd: " + subj : "";
     const files = (m.attachments && m.attachments.length) || m.files || 0;
     $("#compose-body").value = "\n\n" +
@@ -920,7 +930,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     composeInReplyTo = (m && (m.id || m.message_id)) || null;
     renderInReplyTo();
     $("#compose-to").value = m.from || "";
-    var subj = (m.subject || "").trim();
+    var subj = quoteSubjectBase(m.subject, m.body != null ? m.body : m.preview);
     $("#compose-subject").value = subj ? "Re: " + subj : "";
     const text = (m.body != null ? m.body : m.preview) || "";
     const quoted = text.split("\n").map(function (l) { return "> " + l; }).join("\n");
@@ -1237,7 +1247,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const actionKind = m.dir === "in" ? "re" : "fwd";
     const actionBtn = '<span class="thread-action" data-target="' + esc(actionTarget) +
       '" data-mid="' + esc(m.id) + '" data-act="' + actionKind +
-      '" data-subj="' + esc(m.subject || "") + '">' + actionLabel + '</span>';
+      '" data-subj="' + esc(quoteSubjectBase(m.subject, m.body != null ? m.body : m.preview)) + '">' + actionLabel + '</span>';
     // 0.3.4.2 capsule avatars: own letters show the self address,
     // incoming show the actual sender (falls back to the peer).
     const avAddr = m.dir === "in" ? (m.from || m.peer) : selfAddr;
@@ -2295,7 +2305,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   });
   document.addEventListener("compose:reply", function (ev) {
     var d = ev.detail || {};
-    composeReply(d.to, d.subject, d.parentId);
+    composeReply(d.to, d.subject, d.parentId, d.body);
   });
   // Superior 01M1AWXF: follow-up on own sent mail — recipients unchanged,
   // irt wired, subject prefixed 跟进/Follow-up instead of Re.
@@ -2304,7 +2314,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     composeInReplyTo = d.parentId || null;
     renderInReplyTo();
     $("#compose-to").value = d.to || "";
-    $("#compose-subject").value = d.subject ? t("compose.followUpPrefix") + " " + d.subject : "";
+    $("#compose-subject").value = (() => { var s = quoteSubjectBase(d.subject, d.body); return s ? t("compose.followUpPrefix") + " " + s : ""; })();
     $("#compose-body").value = "";
     draftAnchor(d.to);
     navActivateCompose();
