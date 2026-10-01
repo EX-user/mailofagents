@@ -236,7 +236,11 @@ var mgmtNodeSet = null;
             // halve it, ratio unchanged. Band drops 22..44 → 11..22; "me"
             // rides one notch above its volume twin (12..24).
             var t = Math.sqrt(Math.min(1, (n.volume || 0) / (mgmtMaxVol || 1)));
-            return pr.isMe ? 12 + 12 * t : 11 + 11 * t;
+            // 1044 (boss, 1001): [0.5,1] -> [0.7,1.4] = the whole band x1.4,
+            // ratio untouched. Also swaps the graph to vis-network 9.x,
+            // whose main canvas is devicePixelRatio-aware (3.33 drew 1:1
+            // and blurred every glyph on hi-dpi screens).
+            return pr.isMe ? 16.8 + 16.8 * t : 15.4 + 15.4 * t;
           })(),
           borderWidth: 0,
           // 1037 (boss, staging 0930): vis-network's default value-scaling
