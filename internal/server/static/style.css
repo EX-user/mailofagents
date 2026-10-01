@@ -3141,6 +3141,17 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     flex: 1 1 auto; min-width: 0; padding: 8px 12px; border-radius: 6px;
     background: var(--panel);
   }
+  /* 1052 (boss): a little tail turns the capsule into an IM bubble -
+     it points at the sender's avatar and mirrors on the outbound
+     side. background:inherit keeps the accent tint continuity. */
+  #tab-compose.im .thread-item .thread-card { position: relative; }
+  #tab-compose.im .thread-item .thread-card::before {
+    content: ""; position: absolute; top: 12px;
+    width: 10px; height: 10px; background: inherit;
+    transform: rotate(45deg);
+  }
+  #tab-compose.im .thread-item.thread-in .thread-card::before { left: -5px; }
+  #tab-compose.im .thread-item.thread-out .thread-card::before { right: -5px; }
   #tab-compose.im .thread-item.thread-out { flex-direction: row-reverse; }
   #tab-compose.im .thread-item.thread-out .thread-card {
     background: linear-gradient(color-mix(in srgb, var(--accent) 14%, transparent),
