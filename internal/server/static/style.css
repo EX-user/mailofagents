@@ -3257,15 +3257,18 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   #tab-compose.im #im-bar #compose-attachments:not(:empty) .attach-card + .attach-card {
     border-top: 1px dashed var(--border); border-radius: 0 0 8px 8px;
   }
-  /* 1045 (boss, 1001): the sheet buttons go compact and borrow the
-     bar's own language - white surface, 1px border, muted text, one
-     radius - instead of the tinted trio. */
-  #tab-compose.im #im-bar #im-sheet:not(.hidden) button {
-    flex: 1 1 30%; min-width: 0; padding: 4px 7px; font-size: 12px;
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 999px; color: var(--muted);
+  /* 1045 round 2 (boss, 1001): the trio shrank (no more 30% stretch),
+     spacing opened up, and the fill is the borderless low-contrast
+     tint - the pill reads as a soft chip, not a boxed button. */
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) {
+    gap: 10px; padding: 4px 4px 8px;
   }
-  #tab-compose.im #im-bar #im-sheet:not(.hidden) button:hover { color: var(--accent); border-color: var(--accent); }
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) button {
+    flex: 0 0 auto; padding: 4px 12px; font-size: 12px;
+    background: rgba(127, 127, 127, 0.10); border: none;
+    border-radius: 999px; color: var(--text);
+  }
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) button:hover { background: rgba(127, 127, 127, 0.18); color: var(--accent); }
   #tab-compose.im #im-bar #im-sheet:not(.hidden) #compose-cc-row {
     flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 0;
   }
