@@ -1253,7 +1253,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const avAddr = m.dir === "in" ? (m.from || m.peer) : selfAddr;
     const avBox = imOrder ? '<div class="thread-av" data-av="' + esc(avAddr) + '" data-avremote="1">' +
       esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>' : "";
-    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0">' +
+    // 1053b: the server caps previews at 100 runes with NO ellipsis -
+    // a full-cap preview is the reliable "this letter is longer"
+    // signal, stamped here for the measure pass.
+    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0" data-prevlen="' + esc(String(Array.from(m.preview || "").length)) + '">' +
       avBox +
       '<div class="thread-card">' +
       // 1039 (boss, 1001): in IM conversation mode the direction arrow
@@ -1317,9 +1320,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const prev = $(".thread-prev", item);
     const tg = $(".thread-toggle", item);
     if (!prev || !tg) return;
-    const cut = prev.classList.contains("thread-prev-multi")
+    // 1053b (boss): a capped server preview (100 runes, no ellipsis)
+    // means the body was longer - "fits" is then only true about the
+    // preview, not the LETTER, so the toggle stays.
+    const capped = parseInt(item.dataset.prevlen || "0", 10) >= 100;
+    const cut = capped || (prev.classList.contains("thread-prev-multi")
       ? prev.scrollHeight > prev.clientHeight + 1
-      : prev.scrollWidth > prev.clientWidth + 1;
+      : prev.scrollWidth > prev.clientWidth + 1);
     if (!cut) {
       tg.style.display = "none";
       item.dataset.nofull = "1";
