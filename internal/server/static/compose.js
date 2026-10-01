@@ -1386,6 +1386,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     var node = im2 ? threadEl.lastElementChild : threadEl.firstElementChild;
     if (node && node.classList.contains("thread-item")) {
       threadWireItem(node); // fresh node, wired at birth like every render
+      // boss 1002 production report: the incremental letter rendered WITHOUT
+      // its avatar - every other paint path (full render, pool repaint) runs
+      // the avatar hydration pass; the incremental insert missed it.
+      if (window.__avRestore) {
+        window.__avRestore(node, null);
+        if (window.__avHydrate) window.__avHydrate(node);
+        if (window.__avRemoteHydrate) window.__avRemoteHydrate(node);
+      }
       requestAnimationFrame(function () { threadMeasureNofull(node); });
       threadReadOnOpen([m], threadEl);
       if (im2) scrollImThreadBottom(); // land on the arrival
