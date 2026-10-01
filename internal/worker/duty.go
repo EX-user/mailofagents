@@ -56,10 +56,6 @@ type Duty struct {
 	hbLast     atomic.Int64 // unix nano: last successful upload
 	hbState    string       // last uploaded state (mu)
 
-	// ctx probe (boss spec 2026-10-01): one best-effort probe round on the
-	// first idle poll, so a never-woken row still gets its ctx readout.
-	ctxProbed bool
-
 	// long-unread detection (boss spec 2026-10-01): per-mail push counts.
 	// A wake that carries unread pushes each of those mails once; a count
 	// past 3 rounds means the session keeps getting re-pushed mail it
@@ -553,38 +549,6 @@ func (d *Duty) watchBeat(wakeCtx context.Context, cancel context.CancelFunc, don
 	}
 }
 
-// ctxProbe (boss spec 2026-10-01): the ctx readout rides CLI usage events,
-// which only exist after a wake — a never-woken row (no unread since
-// worker start) would show no ctx forever. Once per duty lifetime, on the
-// first idle poll, run one probe round: resume the bound session with a
-// trivial prompt so the CLI emits a usage event; the event tee does the
-// rest (box line + header ctx). Best effort — a probe failure just leaves
-// the row ctx-less until a real wake; session rotation applies exactly as
-// a real wake's (same salvage/rotation semantics, state persisted).
-func (d *Duty) ctxProbe(ctx context.Context, tag string, unread int, dueMark string) {
-	if d.ctxProbed {
-		return
-	}
-	d.ctxProbed = true
-	board.Set(tag, "waiting", "ctx probe…")
-	pctx, cancel := context.WithTimeout(ctx, time.Duration(d.cfg.TimeoutSec)*time.Second)
-	defer cancel()
-	newID, _, err := d.adapter.Wake(pctx, d.cfg, d.sessionID,
-		"[ctx probe] 系统自检：只回复 OK 两个字符，不要执行任何其他动作。本条仅用于读取当前会话的上下文占用。")
-	if newID != "" && newID != d.sessionID {
-		d.mu.Lock()
-		d.sessionID = newID
-		d.saveState()
-		d.mu.Unlock()
-	}
-	if err != nil {
-		d.logf("ctx probe failed: %s", shortErr(err))
-	} else {
-		d.logf("ctx probe ok")
-	}
-	board.Set(tag, "waiting", fmt.Sprintf("%d unread%s", unread, dueMark))
-}
-
 func (d *Duty) checkOnce(ctx context.Context) {
 	tag := localPart(d.cfg.Address)
 	// time_beat prologue: consume any minute boundary the poll sleep
@@ -644,7 +608,6 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// first real mail.
 	if len(unread) == 0 && !dutyDue && !d.compactPending.Load() && !d.beatPending.Load() && d.sessionID != "" {
 		d.failStreak = 0
-		d.ctxProbe(ctx, tag, len(unread), dueMark)
 		return
 	}
 	if len(unread) > 0 {
