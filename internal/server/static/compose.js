@@ -2453,9 +2453,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       draftNoteTyping();
       imInputGrow(input);
     });
-    // Chat semantics: Enter sends, exactly like the ➤ button would.
+    // Chat semantics: on a PHYSICAL keyboard Enter sends, Shift+Enter
+    // makes the newline. On touch the soft keyboard has no shift -
+    // every "newline" attempt would fire a letter (boss), so there
+    // Enter falls through to the textarea and the ➤ button owns
+    // sending.
+    var PHYS_KB = !(window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
     input.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send.click(); }
+      if (PHYS_KB && ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send.click(); }
     });
     send.addEventListener("click", function () { $("#btn-send").click(); });
     function closeSheet() { setSheet(false); }
