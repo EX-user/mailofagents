@@ -1171,10 +1171,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // refresh both the live list and any parked entry for that peer.
   // boss 1001: the size is a device display preference (the pool itself
   // lives in page memory), stored browser-local like the theme.
-  var THREAD_POOL_MAX = 10;
+  var THREAD_POOL_MAX = 50; // boss 1002: default raised from 10, no upper bound
   function threadPoolMax() {
     var v = parseInt(localStorage.getItem("compose_thread_pool_max") || "0", 10);
-    return (v >= 1 && v <= 50) ? v : THREAD_POOL_MAX;
+    return (v >= 1) ? v : THREAD_POOL_MAX; // boss 1002: any positive size - no upper bound
   }
   var threadPool = new Map(); // peer(lowercase) -> {html, scrollTop, savedAt}
 

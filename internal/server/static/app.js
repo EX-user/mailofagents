@@ -2927,7 +2927,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const poolEl = $("#pref-thread-pool");
     if (poolEl && poolEl.value !== "") {
       const pool = parseInt(poolEl.value, 10);
-      if (!isFinite(pool) || pool < 1 || pool > 50) {
+      if (!isFinite(pool) || pool < 1) { // boss 1002: no upper bound
         status.textContent = t("prefs.poolBad");
         return;
       }
@@ -3158,7 +3158,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const poolEl2 = $("#pref-thread-pool");
       if (poolEl2) {
         var pv = parseInt(localStorage.getItem("compose_thread_pool_max") || "0", 10);
-        poolEl2.value = (pv >= 1 && pv <= 50) ? pv : 10;
+        poolEl2.value = (pv >= 1) ? pv : 50; // boss 1002: default 50, unbounded
       }
       syncPrefLangUI();
       syncPrefThemeUI();
