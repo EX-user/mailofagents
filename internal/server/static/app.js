@@ -108,6 +108,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           subject: latestMail.subject || "",
           preview: latestMail.preview || "",
           ts: latestMail.received_at || 0,
+          files: latestMail.files || 0, // 1054: the beat must not strip the attachment count either
         } : null;
         document.dispatchEvent(new CustomEvent("inbox:newmail", { detail: { from: latestMail ? (latestMail.from || "") : "", letter: beatLetter } }));
       }
