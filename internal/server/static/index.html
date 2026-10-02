@@ -870,6 +870,8 @@
         <!-- boss 09-30 (corrected): the IRT line (not cc) rides above the
              input line - visible only while an anchor is set, x to clear -->
         <div id="im-irt-line" class="hidden"><span>↩</span><span id="im-irt-val"></span><button type="button" id="im-irt-x" class="attach-x hidden" aria-label="Clear">×</button></div>
+        <!-- 1059 (boss): a non-empty CC stays on the input bar like the attachments - the pull-out sheet folds, this line does not (chips mirror #cc-tags, x removes). -->
+        <div id="im-cc-line" class="hidden"><span>Cc</span><span id="im-cc-chips"></span></div>
         <div id="im-main">
           <button type="button" id="im-plus" title="＋">＋</button>
           <textarea id="im-input" rows="1" data-i18n-ph="compose.imPh" placeholder="Write a message…" autocomplete="off"></textarea>

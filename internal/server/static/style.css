@@ -3433,3 +3433,13 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
    conversation card - visible only while an anchor is set. Opaque surface
    so scrolling capsules never fight its text. */
 #tab-compose.im #im-bar > #im-irt-line { order: 2; background: var(--panel); }
+/* 1059 (boss): a non-empty CC stays on the input bar like the attachments -
+   the pull-out sheet folds, the line must not (chips mirror #cc-tags). */
+#tab-compose.im #im-bar > #im-cc-line { order: 2; background: var(--panel); }
+#tab-compose.im #im-bar #im-cc-line {
+  display: flex; align-items: center; gap: 7px; flex: 1 1 100%; flex-wrap: wrap;
+  min-width: 0; padding: 1px 2px; font-size: 11px; color: var(--muted);
+}
+#tab-compose.im #im-bar #im-cc-line > span:first-child { flex: 0 0 auto; font-weight: 600; }
+#tab-compose.im #im-bar #im-cc-line .cc-chip { font-size: 11px; }
+
