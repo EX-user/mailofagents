@@ -3159,8 +3159,8 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     content: ""; position: absolute; top: 34px;
     width: 13px; height: 13px; background: inherit;
   }
-  #tab-compose.im .thread-item.thread-in .thread-card::after { left: -8px; border-radius: 100% 0 0 0; }
-  #tab-compose.im .thread-item.thread-out .thread-card::after { right: -8px; border-radius: 0 100% 0 0; }
+  #tab-compose.im .thread-item.thread-in .thread-card::after { left: -8px; border-radius: 0 0 0 100%; }
+  #tab-compose.im .thread-item.thread-out .thread-card::after { right: -8px; border-radius: 0 0 100% 0; }
   #tab-compose.im .thread-item.thread-out { flex-direction: row-reverse; }
   #tab-compose.im .thread-item.thread-out .thread-card {
     background: linear-gradient(color-mix(in srgb, var(--accent) 14%, transparent),
