@@ -3167,13 +3167,15 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     /* 1052 v4 (boss): the industry-standard rounded-corner tail - the
      silhouette is dominated by two rounded corners, reading as a
      curved point at the avatar, never a triangle. */
-  #tab-compose.im .thread-item .thread-card::after {
+  /* 1052 v7 (boss): one arc + one straight - quarter-round tail:
+     the straight edges seat against the capsule, the single arc
+     sweeps up toward the avatar. */
+#tab-compose.im .thread-item .thread-card::after {
     content: ""; position: absolute; top: 34px;
     width: 13px; height: 13px; background: inherit;
-    border-radius: 0 100% 0 100%;
   }
-  #tab-compose.im .thread-item.thread-in .thread-card::after { left: -8px; transform: scaleX(-1) rotate(-90deg); }
-  #tab-compose.im .thread-item.thread-out .thread-card::after { right: -8px; transform: rotate(-90deg); }
+  #tab-compose.im .thread-item.thread-in .thread-card::after { left: -8px; border-radius: 100% 0 0 0; }
+  #tab-compose.im .thread-item.thread-out .thread-card::after { right: -8px; border-radius: 0 100% 0 0; }
   #tab-compose.im .thread-item.thread-out { flex-direction: row-reverse; }
   #tab-compose.im .thread-item.thread-out .thread-card {
     background: linear-gradient(color-mix(in srgb, var(--accent) 14%, transparent),
