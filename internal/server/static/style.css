@@ -3172,7 +3172,7 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     width: 13px; height: 13px; background: inherit;
     border-radius: 0 100% 0 100%;
   }
-  #tab-compose.im .thread-item.thread-in .thread-card::after { left: -8px; transform: rotate(90deg); }
+  #tab-compose.im .thread-item.thread-in .thread-card::after { left: -8px; transform: scaleX(-1) rotate(-90deg); }
   #tab-compose.im .thread-item.thread-out .thread-card::after { right: -8px; transform: rotate(-90deg); }
   #tab-compose.im .thread-item.thread-out { flex-direction: row-reverse; }
   #tab-compose.im .thread-item.thread-out .thread-card {
