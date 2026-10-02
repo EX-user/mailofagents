@@ -442,6 +442,32 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       tags.appendChild(chip);
     });
     tags.classList.toggle("hidden", !composeCcChips.length);
+    // 1059 (boss): a non-empty CC stays on the input bar like the
+    // attachments do - the pull-out sheet folds, the line must not.
+    // Mirrored here (single choke point: every chip mutation re-renders).
+    const line = document.getElementById("im-cc-line");
+    if (line) {
+      const chips = document.getElementById("im-cc-chips");
+      chips.textContent = "";
+      composeCcChips.forEach(function (addr, i) {
+        const chip = document.createElement("span");
+        chip.className = "cc-chip";
+        chip.textContent = addr;
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "attach-x";
+        x.textContent = "\u00d7";
+        x.title = t("compose.ccRemove");
+        x.addEventListener("click", function () {
+          composeCcChips.splice(i, 1);
+          renderComposeCc();
+          syncCcVisibility();
+        });
+        chip.appendChild(x);
+        chips.appendChild(chip);
+      });
+      line.classList.toggle("hidden", !composeCcChips.length);
+    }
   }
 
   // commitCcInput turns the raw text into chips (comma or space separated

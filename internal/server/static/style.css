@@ -3197,7 +3197,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
      side padding reads as wasted gutter on the phone; IM view hugs 8px */
   /* 1055 (boss): the avatars use more of the side space - the IM
      gutter narrows to 2px so both avatars sit near the edges. */
-  html:has(#tab-compose.im) main { padding-left: 5px; padding-right: 5px; }
+  /* 1060 (boss): the narrowed gutter is the CONVERSATION page only -
+   scope it to the visible compose tab; other pages keep main gutters. */
+html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 5px; }
   /* 1049b (boss bug): leaving IM compose keeps .im on the panel, so
      this rule's 8px leaked onto the accounts page and un-full-bled
      the list. The accounts reset re-wins the tie (later source). */
@@ -3323,6 +3325,13 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     border-radius: 999px; color: var(--text);
   }
   #tab-compose.im #im-bar #im-sheet:not(.hidden) button:hover { background: rgba(127, 127, 127, 0.18); color: var(--accent); }
+  /* 1060 (boss, adjusted): the pill stays - only the label takes the
+     blue link face (accent + bold). */
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) #im-full {
+    color: var(--accent); font-weight: 700;
+  }
+  /* 1060 (boss): an arrow rides the label, same trick as the back link. */
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) #im-full::before { content: "→\00a0"; font-size: 14px; line-height: 1; }
   /* 1045 round 3 (boss): the trio spans the row edge to edge, and the
      pill label centers for real - UA button centering let the line
      sag 1.5px inside the 44px touch target. */
@@ -3433,3 +3442,13 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
    conversation card - visible only while an anchor is set. Opaque surface
    so scrolling capsules never fight its text. */
 #tab-compose.im #im-bar > #im-irt-line { order: 2; background: var(--panel); }
+/* 1059 (boss): a non-empty CC stays on the input bar like the attachments -
+   the pull-out sheet folds, the line must not (chips mirror #cc-tags). */
+#tab-compose.im #im-bar > #im-cc-line { order: 2; background: var(--panel); }
+#tab-compose.im #im-bar #im-cc-line {
+  display: flex; align-items: center; gap: 7px; flex: 1 1 100%; flex-wrap: wrap;
+  min-width: 0; padding: 1px 2px; font-size: 11px; color: var(--muted);
+}
+#tab-compose.im #im-bar #im-cc-line > span:first-child { flex: 0 0 auto; font-weight: 600; }
+#tab-compose.im #im-bar #im-cc-line .cc-chip { font-size: 11px; }
+
