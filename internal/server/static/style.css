@@ -3168,7 +3168,7 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
      silhouette is dominated by two rounded corners, reading as a
      curved point at the avatar, never a triangle. */
   #tab-compose.im .thread-item .thread-card::after {
-    content: ""; position: absolute; top: 20px;
+    content: ""; position: absolute; top: 34px;
     width: 13px; height: 13px; background: inherit;
     border-radius: 0 100% 0 100%;
   }
