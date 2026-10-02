@@ -17,11 +17,11 @@ var ErrMessageNotFound = errors.New("message not found")
 
 // Message is the stored record for one piece of mail.
 type Message struct {
-	ID          string           `json:"id"`                     // ULID
-	From        string           `json:"from"`                   // sender address
-	To          []string         `json:"to"`                     // recipient addresses
-	CC          []string         `json:"cc,omitempty"`           // carbon-copy addresses (delivered like To; visible to recipients)
-	InReplyTo   string           `json:"in_reply_to,omitempty"`  // parent message ULID; empty = standalone root (threads v0.6.15)
+	ID          string           `json:"id"`                    // ULID
+	From        string           `json:"from"`                  // sender address
+	To          []string         `json:"to"`                    // recipient addresses
+	CC          []string         `json:"cc,omitempty"`          // carbon-copy addresses (delivered like To; visible to recipients)
+	InReplyTo   string           `json:"in_reply_to,omitempty"` // parent message ULID; empty = standalone root (threads v0.6.15)
 	Subject     string           `json:"subject"`
 	Body        string           `json:"body"`
 	Attachments []AttachmentMeta `json:"attachments,omitempty"` // metadata only; content lives in the file store
@@ -274,6 +274,11 @@ type ThreadEntry struct {
 // limit+offset matches are collected. Recent conversations stay cheap, old
 // ones cannot fall out of a window; deeper history paginates via offset.
 // The Mail/Manage inbox remains the full-fidelity query surface.
+type sideStat struct {
+	capped bool
+	minTs  int64
+}
+
 func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEntry, error) {
 	if limit <= 0 {
 		limit = 50
@@ -285,6 +290,14 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 	if err != nil {
 		return nil, err
 	}
+	// boss 1002 ruling (只丢不补): after each side contributes its newest
+	// (limit+offset), the window floor is the LATER of the two sides'
+	// earliest collected stamps - letters older than that are DROPPED (the
+	// deeper side's tail would otherwise form a segment where the other
+	// side merely LOOKS absent - its letters there exist beyond its cap).
+	// A side that collected fewer than want has NO unseen letters, so it
+	// imposes no floor (otherwise the "at least 50 truly recent" guarantee
+	// would break). Never extend - only drop.
 	// boss 1002 production report: the merged-total cap starved one side -
 	// with heavy inbound volume the 50 newest were ALL incoming and the
 	// account's OWN letters vanished from the conversation entirely. A
@@ -295,7 +308,8 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 	err = s.db.View(func(tx *bolt.Tx) error {
 		mb := tx.Bucket(bMessages)
 		ub := tx.Bucket(bUnread)
-		scan := func(bucket []byte, dir string) error {
+		statIn, statOut := sideStat{}, sideStat{}
+		scan := func(bucket []byte, dir string, st *sideStat) error {
 			sideCount := 0
 			b := tx.Bucket(bucket)
 			if b == nil || mb == nil {
@@ -339,16 +353,36 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 				}
 				merged = append(merged, ThreadEntry{MessageSummary: ms, Dir: dir})
 				sideCount++
+				st.minTs = ms.ReceivedAt // newest->oldest walk: last write is the floor candidate
 				if sideCount >= want {
+					st.capped = true
 					return nil // early stop: THIS side's newest matches are collected
 				}
 			}
 			return nil
 		}
-		if err := scan(bInbox, "in"); err != nil {
+		if err := scan(bInbox, "in", &statIn); err != nil {
 			return err
 		}
-		return scan(bSent, "out")
+		if err := scan(bSent, "out", &statOut); err != nil {
+			return err
+		}
+		floor := int64(0)
+		for _, st := range []sideStat{statIn, statOut} {
+			if st.capped && st.minTs > floor {
+				floor = st.minTs
+			}
+		}
+		if floor > 0 {
+			kept := merged[:0]
+			for _, e := range merged {
+				if e.ReceivedAt >= floor {
+					kept = append(kept, e)
+				}
+			}
+			merged = kept
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
