@@ -3107,6 +3107,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
      the chips re-hides it via syncCcVisibility. Input goes transparent on
      the panel surface (boss: the opaque block was ugly). */
   #tab-compose.im #im-sheet #compose-cc-row { display: block; margin: 0; }
+  /* 1061 (boss): the bar cc-line is the display - the pull-out sheet
+   keeps only the input for adding; no duplicate chips inside. */
+  #tab-compose.im #im-sheet #compose-cc-row #cc-tags { display: none !important; }
   #tab-compose.im #im-sheet #compose-cc-row input { background: transparent; }
   /* the conversation header: label + peer + refresh (h3 stays retired) */
   /* 头行/主题行 v6 起休眠；列表即页面主体，输入卡悬浮压其底部。 */
