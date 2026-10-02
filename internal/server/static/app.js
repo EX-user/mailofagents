@@ -1812,7 +1812,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         }
         const out = await res.json();
         window.__avatarHashes = window.__avatarHashes || {};
-        window.__avatarHashes[selfKey] = out.avatar_hash;
+        // 1062 (boss bug): faces flip instantly on every surface. The sync
+        // writes the registry itself - pre-writing it here tripped the
+        // sync's own dedupe ("no change") and the scan never ran.
+        avSyncAvatarsFromActivity([{ address: selfKey, avatar_hash: out.avatar_hash }]);
         toast(t("prof.avatarDone"), "success");
         close();
         renderOwnAvatar();
@@ -2234,7 +2237,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function avRemoteFillOne(el) {
     if (el.hasAttribute("data-avdone")) return; // recycled node: bitmap already decoded
     var addr = el.getAttribute("data-av");
-    var hash = el.getAttribute("data-avhash") || "";
+    // 1062 (boss bug): the poll-fresh registry wins over the paint-time
+    // attribute - a mirrored slot carries a frozen stale hash and would
+    // otherwise serve the old blob forever.
+    var regHash = (window.__avatarHashes || {})[String(addr).toLowerCase()];
+    var hash = regHash !== undefined && regHash !== null ? regHash : (el.getAttribute("data-avhash") || "");
     avatarObjectURL(addr, hash, false).then(function (url) {
       if (!el.isConnected) return;
       el.innerHTML = '<img class="cl-av-img" src="' + url + '" alt="">';
@@ -2255,25 +2262,32 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // unchanged rows cost zero requests and zero DOM writes.
   function avSyncAvatarsFromActivity(subs) {
     var reg = window.__avatarHashes = window.__avatarHashes || {};
+    try { Object.defineProperty(window.__avatarHashes, "sup28@agentmail.local", { set: function (v) { if (!v) console.log("[1062TRAP] empty-hash WRITE stack=", new Error().stack.split("\n").slice(2, 5).join(" | ")); window.__trapVal = v; }, get: function () { return window.__trapVal; }, configurable: true }); } catch (e) {}
     (subs || []).forEach(function (s) {
       var addr = String(s.address || "").toLowerCase();
       if (!addr) return;
       var nh = s.avatar_hash || "";
       if ((reg[addr] || "") === nh) return;
       reg[addr] = nh;
-      var box = null;
-      var nodes = document.querySelectorAll('#tab-accounts [data-avremote]');
+      // 1062 (boss bug): the reset used to scan #tab-accounts only - thread
+      // capsules kept a stale face for the whole browser-cache lifetime.
+      // Reset EVERY matching box on the page (and flip generated thread
+      // boxes to remote when an avatar appears); detached nodes are
+      // covered by the registry fallback at fill time.
+      var nodes = document.querySelectorAll('[data-avremote], #tab-compose [data-av]');
       for (var i = 0; i < nodes.length; i++) {
-        if (String(nodes[i].getAttribute("data-av")).toLowerCase() === addr) { box = nodes[i]; break; }
+        if (String(nodes[i].getAttribute("data-av")).toLowerCase() !== addr) continue;
+        var box = nodes[i];
+        if (!box.isConnected) continue;
+        box.setAttribute("data-avremote", "");
+        box.setAttribute("data-avhash", nh);
+        box.classList.remove("cl-av-img");
+        box.style.background = "";
+        box.removeAttribute("data-avpend");
+        box.removeAttribute("data-avdone");
+        box.textContent = (String(box.getAttribute("data-av"))[0] || "?").toUpperCase();
+        avRemoteFillOne(box);
       }
-      if (!box || !box.isConnected) return; // row not on the page - registry is enough
-      box.setAttribute("data-avhash", nh);
-      box.classList.remove("cl-av-img");
-      box.style.background = "";
-      box.removeAttribute("data-avpend");
-      box.removeAttribute("data-avdone");
-      box.textContent = (String(box.getAttribute("data-av"))[0] || "?").toUpperCase();
-      avRemoteFillOne(box);
     });
   }
   // Hydrate pending generator avatars (async seed -> svg swap-in place).
