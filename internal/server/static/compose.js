@@ -1178,8 +1178,45 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   }
   var threadPool = new Map(); // peer(lowercase) -> {html, scrollTop, savedAt}
 
+  // boss 1002: the pool is page memory, so closing the tab used to wipe
+  // it. A save now also mirrors the slot into localStorage (the drafts'
+  // store); a cold pool hydrates from that mirror on first use, and the
+  // usual server-truth verify pass refreshes whatever came back stale.
+  // Quota overflow just skips the mirror - the memory pool carries on.
+  var POOL_LS_PREFIX = "compose_thread_pool_slot:";
+  function poolMirrorPut(k, e) {
+    try { localStorage.setItem(POOL_LS_PREFIX + k, JSON.stringify(e)); } catch (err) {}
+  }
+  function poolMirrorDrop(k) {
+    try { localStorage.removeItem(POOL_LS_PREFIX + k); } catch (err) {}
+  }
+  function poolMirrorHydrate() {
+    var keys = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf(POOL_LS_PREFIX) === 0) keys.push(key);
+      }
+    } catch (err) { return; }
+    var slots = [];
+    keys.forEach(function (key) {
+      try {
+        var e = JSON.parse(localStorage.getItem(key));
+        if (!e || !e.html) throw 0;
+        slots.push({ key: key, e: e });
+      } catch (err) { poolMirrorDrop(key.slice(POOL_LS_PREFIX.length)); }
+    });
+    slots.sort(function (a, b) { return (b.e.savedAt || 0) - (a.e.savedAt || 0); });
+    slots.forEach(function (r, idx) {
+      var k = r.key.slice(POOL_LS_PREFIX.length);
+      if (idx < threadPoolMax() && !threadPool.has(k)) threadPool.set(k, r.e);
+      else poolMirrorDrop(k); // over the LRU cap (or duplicate) - prune
+    });
+  }
+
   function threadPoolGet(peer) {
     var k = String(peer || "").toLowerCase();
+    if (k && !threadPool.size) poolMirrorHydrate(); // reopen after close: pool comes back
     if (!k || !threadPool.has(k)) return null;
     var e = threadPool.get(k);
     threadPool.delete(k);
@@ -1202,11 +1239,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       savedAt: Date.now(),
     });
     while (threadPool.size > threadPoolMax()) {
-      threadPool.delete(threadPool.keys().next().value);
+      var evict = threadPool.keys().next().value;
+      threadPool.delete(evict);
+      poolMirrorDrop(evict);
     }
+    if (threadPool.has(k)) poolMirrorPut(k, threadPool.get(k));
   }
   function threadPoolDrop(peer) {
-    threadPool.delete(String(peer || "").toLowerCase());
+    var k = String(peer || "").toLowerCase();
+    threadPool.delete(k);
+    poolMirrorDrop(k); // an invalidated slot must not survive a reload either
   }
   // boss 1001 incremental (display first, server truth verifies after):
   // a newmail beat that carries the letter's own summary MERGES it into a
@@ -1226,6 +1268,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       ts: letter.ts || 0, peer: k, from: dir === "in" ? k : undefined, unread: dir === "in" };
     probe.insertAdjacentHTML(e.im ? "beforeend" : "afterbegin", threadItemHtml(m, !!e.im, threadSelfAddr()));
     e.html = probe.innerHTML;
+    poolMirrorPut(k, e);
   }
   function threadSelfAddr() {
     var c = getSession();
