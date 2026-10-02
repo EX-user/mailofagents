@@ -2228,6 +2228,21 @@ input[type="search"].app-input:focus, input[type="text"].app-input:focus {
   }
   #mail-search { order: 4; grid-column: 2; width: 100%; flex: none !important; max-width: none !important; margin-bottom: 8px; }
   #mail-search-status { order: 5; grid-column: 1 / -1; }
+  /* boss 1002 (admin browse polish, screenshot 01M3XC4M): the three
+     control rows ride one 34px centerline like the inbox top row (1043)
+     - selects, the limit box, the search field and the round reload pill
+     share one height and one 8px corner; the limit box stops stretching
+     half the row (fixed width, the folder select keeps the space).
+     Style only - ids, options and behaviour untouched. */
+  #mgmt-browse > .row select,
+  #mgmt-browse > .row input[type="number"] {
+    height: 34px; min-height: 34px; padding-top: 0; padding-bottom: 0;
+    border-radius: 8px;
+  }
+  #mail-search { height: 34px; min-height: 34px; padding-top: 0; padding-bottom: 0; }
+  #btn-load-mail { height: 34px; }
+  #tab-mail .m-pair-fl > label:last-of-type { flex: 0 0 auto; }
+  #tab-mail .m-pair-fl input[type="number"] { width: 90px; }
   #mgmt-browse > .mail-tabs { order: 6; grid-column: 1 / -1; margin-top: 2px; }
   #mgmt-browse > .mail-grid {
     order: 7; grid-column: 1 / -1;
