@@ -3171,7 +3171,10 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
      the straight edges seat against the capsule, the single arc
      sweeps up toward the avatar. */
 #tab-compose.im .thread-item .thread-card::after {
-    content: ""; position: absolute; top: 46px;
+    content: ""; position: absolute;
+    /* 1056 (boss): flat (one-line) bubbles are shorter than the tip
+       seat - clamp so the tip never falls half outside the body. */
+    top: min(46px, calc(100% - 27px));
     width: 13px; height: 13px; background: inherit;
   }
   #tab-compose.im .thread-item.thread-in .thread-card::after { left: -8px; border-radius: 0 0 0 100%; }
