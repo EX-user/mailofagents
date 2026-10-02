@@ -1445,7 +1445,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       out.push((item.getAttribute("data-mid") || "") + ":" +
         (item.classList.contains("thread-out") ? "out" : "in") + ":" +
         ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" +
-        (item.getAttribute("data-ts") || "0"));
+        (item.getAttribute("data-ts") || "0") + ":" +
+        (item.getAttribute("data-files") || "0"));
     });
     return out.join("|");
   }
@@ -1460,7 +1461,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     if (!threadEl.querySelector(".thread-item")) return; // nothing rendered yet - the load path owns the first paint
     if (threadEl.querySelector('.thread-item[data-mid="' + letter.id + '"]')) return; // dedupe
     var m = { dir: "in", id: letter.id, subject: letter.subject || "", preview: letter.preview || "",
-      ts: letter.ts || 0, peer: from2, from: from2, unread: true };
+      ts: letter.ts || 0, peer: from2, from: from2, unread: true, files: letter.files || 0 };
     var im2 = imMode();
     threadEl.insertAdjacentHTML(im2 ? "beforeend" : "afterbegin",
       threadItemHtml(m, im2, threadSelfAddr()));
@@ -1614,6 +1615,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // restored items or a truncated letter can sit there with no
       // expand toggle at all.
       requestAnimationFrame(function () { $$(".thread-item", threadEl).forEach(threadMeasureNofull); });
+      // 1058 (boss): rebuild mirrored expanded capsules whose previews the
+      // sanitize pruned - download-only cards with loaded=1 never self-heal.
+      healRestoredPreviews(threadEl);
     }
     if (threadEl.getAttribute("data-peer") !== to.toLowerCase()) threadEl.textContent = t("common.loading");
 
@@ -1645,10 +1649,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // synchronous (no interleave); everything after this await is not.
       if (mySeq !== threadLoadSeq) return;
       const all = (threadRes.messages || []).map(function (m) {
+        // 1054 (boss): the slim projection used to drop `files` - the server
+        // summary has carried the attachment count all along (summarize()
+        // since v0.1), so data-files stamped 0 and the always-keep-toggle
+        // gate never fired on attachment letters. Carry it through.
         return m.dir === "out"
-          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to }
+          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to, files: m.files || 0 }
           : { dir: "in", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at,
-              peer: firstPeer || to, from: m.from, unread: m.unread };
+              peer: firstPeer || to, from: m.from, unread: m.unread, files: m.files || 0 };
       }).sort(function (a, b) { return b.ts - a.ts; });
       threadNewest = all.length ? all[0] : null; // auto anchor + quote source
       var imOrder = imMode();
@@ -1683,7 +1691,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // so the view ACCUMULATES its tail instead of shedding it each time
       // fresh arrivals slide the window forward.
       var fpFetch = all.map(function (m) {
-        return m.id + ":" + m.dir + ":" + (m.unread ? 1 : 0) + ":" + m.ts;
+        // 1054: files rides the fingerprint - a pooled/mirrored slot painted
+        // before the projection fix carries a wrong data-files="0" and must
+        // lose the no-churn skip once, so the truth repaints it.
+        return m.id + ":" + m.dir + ":" + (m.unread ? 1 : 0) + ":" + m.ts + ":" + (m.files || 0);
       }).join("|");
       var fetchIds = {};
       var fetchMinTs = 0;
@@ -1700,7 +1711,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
             tailNodes.push(item);
           } else {
             rangeFp.push(mid + ":" + (item.classList.contains("thread-out") ? "out" : "in") + ":" +
-              ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" + ts);
+              ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" + ts + ":" +
+              (item.getAttribute("data-files") || "0"));
           }
         });
       }
@@ -1856,6 +1868,45 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // their own mail via /api/message. The thread only shows mail to/from the
   // current user, so /api/message works for both roles for the viewer's own
   // messages — and regular accounts CANNOT call /admin/* (401 → session reset).
+  // 1058 (boss): fetch the letter detail and paint the expanded pane (body
+  // + attachment cards + preview hydration). Extracted from the expand path
+  // so the pool-restore heal can rebuild mirrored capsules with the same
+  // code (1058b: no divergent second copy of the build).
+  async function buildThreadFull(item, full, mid) {
+    full.textContent = t("common.loading");
+    try {
+      const cur = getSession();
+      const path = (cur && !cur.is_admin)
+        ? "/api/message?id=" + encodeURIComponent(mid)
+        : "/admin/message?id=" + encodeURIComponent(mid);
+      const m = await api(path);
+      // v0.5.3: thread expansion shows attachments too (parity with the
+      // inbox/mail detail panes), including image previews.
+      full.innerHTML =
+      (m.cc && m.cc.length ? '<div class="detail-row"><b>Cc:</b> ' + esc(m.cc.join(", ")) + "</div>" : "") +
+      "<pre class=\"thread-body\">" + esc(m.body || "") + "</pre>" + attachmentCards(m);
+      wireAttachmentDownloads(full, m);
+      hydrateAttachmentPreviews(full, m);
+      item.dataset.loaded = "1";
+    } catch (e) {
+      full.textContent = t("common.error", { msg: e.message });
+    }
+  }
+
+  // 1058 (boss): the mirror sanitize empties preview holders (dead blob
+  // defense), so a restored expanded capsule shows download-only cards
+  // with data-loaded="1" and nothing ever re-fetches - the exact "自己发
+  // 的信的附件无法预览" report. Rebuild such panes in place after a pool
+  // paint: one detail GET per affected capsule, nothing else touches.
+  function healRestoredPreviews(root) {
+    $$('.thread-item[data-loaded="1"]', root).forEach(function (item) {
+      const full = $(".thread-full", item);
+      if (!full || full.classList.contains("hidden")) return;
+      if (!$$(".attach-preview", full).some((h) => !h.firstChild)) return;
+      buildThreadFull(item, full, item.dataset.mid);
+    });
+  }
+
   async function toggleThreadItem(item) {
     // 1046: a capsule that already shows the whole letter doesn't expand.
     if (item.dataset.nofull === "1") return;
@@ -1863,28 +1914,18 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const toggle = $(".thread-toggle", item);
     const mid = item.dataset.mid;
     const loaded = item.dataset.loaded === "1";
+    // 1058 (boss): a pool-mirrored slot re-paints an expanded capsule with
+    // its attachment previews PRUNED (blob: urls die across sessions; the
+    // write-time sanitize empties the holders) while data-loaded stays "1" -
+    // the expand path then never re-fetches and the preview stays blank
+    // forever. Empty preview holders under attachment cards are exactly
+    // that state: treat the capsule as unloaded so it rebuilds below.
+    const stalePreviews = loaded && $$(".attach-preview", full).some((h) => !h.firstChild);
 
     if (full.classList.contains("hidden")) {
-      // Expand: load body on first time, then show.
-      if (!loaded) {
-        full.textContent = t("common.loading");
-        try {
-          const cur = getSession();
-          const path = (cur && !cur.is_admin)
-            ? "/api/message?id=" + encodeURIComponent(mid)
-            : "/admin/message?id=" + encodeURIComponent(mid);
-          const m = await api(path);
-          // v0.5.3: thread expansion shows attachments too (parity with the
-          // inbox/mail detail panes), including image previews.
-          full.innerHTML =
-          (m.cc && m.cc.length ? '<div class="detail-row"><b>Cc:</b> ' + esc(m.cc.join(", ")) + "</div>" : "") +
-          "<pre class=\"thread-body\">" + esc(m.body || "") + "</pre>" + attachmentCards(m);
-          wireAttachmentDownloads(full, m);
-          hydrateAttachmentPreviews(full, m);
-          item.dataset.loaded = "1";
-        } catch (e) {
-          full.textContent = t("common.error", { msg: e.message });
-        }
+      // Expand: load body on first time, then show (also on stale previews).
+      if (!loaded || stalePreviews) {
+        await buildThreadFull(item, full, mid);
       }
       full.classList.remove("hidden");
       toggle.textContent = t("thread.collapse");
@@ -2331,9 +2372,17 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // autoplay honors the account preference.
       if (attachIsImage(a) && composePrefs && composePrefs.image_preview === false) { holder.remove(); return; }
       try {
-        const res = await fetch("/api/files/" + encodeURIComponent(a.id) + "/download?code=" + encodeURIComponent(a.access_code), {
-          headers: { Authorization: basicAuth() },
-        });
+        // 1058 (boss): the preview fetch was one-shot - a transient failure
+        // silently degraded the card to download-only forever (loaded=1
+        // never re-fetches). One delayed retry before the quiet fallback.
+        let res = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (attempt) await new Promise((r) => setTimeout(r, 400));
+          res = await fetch("/api/files/" + encodeURIComponent(a.id) + "/download?code=" + encodeURIComponent(a.access_code), {
+            headers: { Authorization: basicAuth() },
+          });
+          if (res.ok) break;
+        }
         if (!res.ok) throw new Error(res.status);
         // Markdown branch (superior): render inline as sanitized HTML —
         // images/styles/audio/video are stripped by the sanitizer, so an
