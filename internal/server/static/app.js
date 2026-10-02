@@ -1286,6 +1286,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     }
 
 
+    // boss 1002 production report (admin PC): the admin Accounts table is a
+    // DIFFERENT renderer (/admin/accounts plain rows - no .subrow-pc/.ct-row
+    // markers by design), so this heal misreads it as a dead build and
+    // rebuilds it every pass - tbody is cleared BEFORE the refetch await,
+    // the table collapses, the page scroll clamps to top (the ~1s
+    // scroll-to-top boss saw). The heal and the reorder above serve the
+    // REGULAR face only; an admin session never has marker rows.
+    var sessAcc = getSession();
+    if (sessAcc && sessAcc.is_admin) {
+      // admin face: skip the regular-face heal entirely
+    } else {
     // boss 09-29 gate leg 1 (dead-build self-heal, the PC half of the
     // entry-flake symmetry): activity data exists but the PC table has no
     // data rows (a mid-chain fetch death left the build unfinished) - one
@@ -1299,6 +1310,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 400);
       }
     }
+    } // end regular-face gate
 
 
     var sum = $("#acc-act-sum");
