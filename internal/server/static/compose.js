@@ -1673,6 +1673,20 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           tailFrag.forEach(function (node) { threadEl.appendChild(node); });
         }
       }
+
+      // boss 1002 (earliest bubbles lose their avatars): the avatar bank
+      // harvests ALL done boxes pre-fetch - including the tail nodes this
+      // swap re-seats - and avRestore MOVES their children out into the
+      // fresh render. A drained tail box keeps data-avdone, so every fill
+      // path (which guards on that flag) skips it forever. Strip the flag
+      // from childless boxes after the re-seat and refill from the cached
+      // objectURL registry - one pass, no re-decode.
+      if (tailFrag.length && window.__avRemoteHydrate) {
+        $$(".thread-av[data-avdone]", threadEl).forEach(function (box) {
+          if (!box.firstChild) box.removeAttribute("data-avdone");
+        });
+        window.__avRemoteHydrate(threadEl);
+      }
       // 1046 (boss, 1001): a letter the capsule already shows in full gets
       // NO expand toggle and its header click won't expand. "Fully shown"
       // is measurable after layout: a single-line preview overflows in
