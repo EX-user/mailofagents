@@ -1171,15 +1171,52 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // refresh both the live list and any parked entry for that peer.
   // boss 1001: the size is a device display preference (the pool itself
   // lives in page memory), stored browser-local like the theme.
-  var THREAD_POOL_MAX = 10;
+  var THREAD_POOL_MAX = 50; // boss 1002: default raised from 10, no upper bound
   function threadPoolMax() {
     var v = parseInt(localStorage.getItem("compose_thread_pool_max") || "0", 10);
-    return (v >= 1 && v <= 50) ? v : THREAD_POOL_MAX;
+    return (v >= 1) ? v : THREAD_POOL_MAX; // boss 1002: any positive size - no upper bound
   }
   var threadPool = new Map(); // peer(lowercase) -> {html, scrollTop, savedAt}
 
+  // boss 1002: the pool is page memory, so closing the tab used to wipe
+  // it. A save now also mirrors the slot into localStorage (the drafts'
+  // store); a cold pool hydrates from that mirror on first use, and the
+  // usual server-truth verify pass refreshes whatever came back stale.
+  // Quota overflow just skips the mirror - the memory pool carries on.
+  var POOL_LS_PREFIX = "compose_thread_pool_slot:";
+  function poolMirrorPut(k, e) {
+    try { localStorage.setItem(POOL_LS_PREFIX + k, JSON.stringify(e)); } catch (err) {}
+  }
+  function poolMirrorDrop(k) {
+    try { localStorage.removeItem(POOL_LS_PREFIX + k); } catch (err) {}
+  }
+  function poolMirrorHydrate() {
+    var keys = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf(POOL_LS_PREFIX) === 0) keys.push(key);
+      }
+    } catch (err) { return; }
+    var slots = [];
+    keys.forEach(function (key) {
+      try {
+        var e = JSON.parse(localStorage.getItem(key));
+        if (!e || !e.html) throw 0;
+        slots.push({ key: key, e: e });
+      } catch (err) { poolMirrorDrop(key.slice(POOL_LS_PREFIX.length)); }
+    });
+    slots.sort(function (a, b) { return (b.e.savedAt || 0) - (a.e.savedAt || 0); });
+    slots.forEach(function (r, idx) {
+      var k = r.key.slice(POOL_LS_PREFIX.length);
+      if (idx < threadPoolMax() && !threadPool.has(k)) threadPool.set(k, r.e);
+      else poolMirrorDrop(k); // over the LRU cap (or duplicate) - prune
+    });
+  }
+
   function threadPoolGet(peer) {
     var k = String(peer || "").toLowerCase();
+    if (k && !threadPool.size) poolMirrorHydrate(); // reopen after close: pool comes back
     if (!k || !threadPool.has(k)) return null;
     var e = threadPool.get(k);
     threadPool.delete(k);
@@ -1202,11 +1239,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       savedAt: Date.now(),
     });
     while (threadPool.size > threadPoolMax()) {
-      threadPool.delete(threadPool.keys().next().value);
+      var evict = threadPool.keys().next().value;
+      threadPool.delete(evict);
+      poolMirrorDrop(evict);
     }
+    if (threadPool.has(k)) poolMirrorPut(k, threadPool.get(k));
   }
   function threadPoolDrop(peer) {
-    threadPool.delete(String(peer || "").toLowerCase());
+    var k = String(peer || "").toLowerCase();
+    threadPool.delete(k);
+    poolMirrorDrop(k); // an invalidated slot must not survive a reload either
   }
   // boss 1001 incremental (display first, server truth verifies after):
   // a newmail beat that carries the letter's own summary MERGES it into a
@@ -1226,6 +1268,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       ts: letter.ts || 0, peer: k, from: dir === "in" ? k : undefined, unread: dir === "in" };
     probe.insertAdjacentHTML(e.im ? "beforeend" : "afterbegin", threadItemHtml(m, !!e.im, threadSelfAddr()));
     e.html = probe.innerHTML;
+    poolMirrorPut(k, e);
   }
   function threadSelfAddr() {
     var c = getSession();
@@ -1253,7 +1296,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const avAddr = m.dir === "in" ? (m.from || m.peer) : selfAddr;
     const avBox = imOrder ? '<div class="thread-av" data-av="' + esc(avAddr) + '" data-avremote="1">' +
       esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>' : "";
-    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0">' +
+    // 1053b: the server caps previews at 100 runes with NO ellipsis -
+    // a full-cap preview is the reliable "this letter is longer"
+    // signal, stamped here for the measure pass.
+    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0" data-prevlen="' + esc(String(Array.from(m.preview || "").length)) + '">' +
       avBox +
       '<div class="thread-card">' +
       // 1039 (boss, 1001): in IM conversation mode the direction arrow
@@ -1317,12 +1363,25 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     const prev = $(".thread-prev", item);
     const tg = $(".thread-toggle", item);
     if (!prev || !tg) return;
-    const cut = prev.classList.contains("thread-prev-multi")
+    // 1053b final ruling (boss): anything over 0.6x the preview cap
+    // (60 runes) may be a truncation - keep the toggle. At or below,
+    // the preview is genuinely short: the old fit check decides.
+    const capped = parseInt(item.dataset.prevlen || "0", 10) > 60;
+    const cut = capped || (prev.classList.contains("thread-prev-multi")
       ? prev.scrollHeight > prev.clientHeight + 1
-      : prev.scrollWidth > prev.clientWidth + 1;
+      : prev.scrollWidth > prev.clientWidth + 1);
     if (!cut) {
       tg.style.display = "none";
       item.dataset.nofull = "1";
+    } else {
+      // 1053 (boss bug): the verdict is width/font dependent, so a
+      // re-measure (pooled restore, late font swap) may flip it - the
+      // toggle comes back and the stale nofull stamp clears, or a
+      // truncated letter would sit there with no way to expand.
+      tg.style.display = "";
+      delete item.dataset.nofull;
+    }
+    if (!cut) {
       // boss 1046 round 2: hiding the toggle must NOT skip the
       // read-on-open fetch - the detail GET is what clears the
       // unread dot. Fully-shown capsules pull it silently once,
@@ -1523,6 +1582,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // no-churn skip the repaint may become the long-lived DOM, and dead
       // reply/expand buttons must not survive it.
       $$(".thread-item", threadEl).forEach(threadWireItem);
+      // 1053 (boss bug): the nofull verdict rode in with the saved HTML,
+      // but it was decided under the OLD width/fonts - re-measure the
+      // restored items or a truncated letter can sit there with no
+      // expand toggle at all.
+      requestAnimationFrame(function () { $$(".thread-item", threadEl).forEach(threadMeasureNofull); });
     }
     if (threadEl.getAttribute("data-peer") !== to.toLowerCase()) threadEl.textContent = t("common.loading");
 
@@ -1651,6 +1715,20 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         } else {
           tailFrag.forEach(function (node) { threadEl.appendChild(node); });
         }
+      }
+
+      // boss 1002 (earliest bubbles lose their avatars): the avatar bank
+      // harvests ALL done boxes pre-fetch - including the tail nodes this
+      // swap re-seats - and avRestore MOVES their children out into the
+      // fresh render. A drained tail box keeps data-avdone, so every fill
+      // path (which guards on that flag) skips it forever. Strip the flag
+      // from childless boxes after the re-seat and refill from the cached
+      // objectURL registry - one pass, no re-decode.
+      if (tailFrag.length && window.__avRemoteHydrate) {
+        $$(".thread-av[data-avdone]", threadEl).forEach(function (box) {
+          if (!box.firstChild) box.removeAttribute("data-avdone");
+        });
+        window.__avRemoteHydrate(threadEl);
       }
       // 1046 (boss, 1001): a letter the capsule already shows in full gets
       // NO expand toggle and its header click won't expand. "Fully shown"
@@ -2453,9 +2531,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       draftNoteTyping();
       imInputGrow(input);
     });
-    // Chat semantics: Enter sends, exactly like the ➤ button would.
+    // Chat semantics: on a PHYSICAL keyboard Enter sends, Shift+Enter
+    // makes the newline. On touch the soft keyboard has no shift -
+    // every "newline" attempt would fire a letter (boss), so there
+    // Enter falls through to the textarea and the ➤ button owns
+    // sending.
+    var PHYS_KB = !(window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
     input.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send.click(); }
+      if (PHYS_KB && ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send.click(); }
     });
     send.addEventListener("click", function () { $("#btn-send").click(); });
     function closeSheet() { setSheet(false); }

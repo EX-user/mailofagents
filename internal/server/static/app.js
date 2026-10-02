@@ -1286,6 +1286,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     }
 
 
+    // boss 1002 production report (admin PC): the admin Accounts table is a
+    // DIFFERENT renderer (/admin/accounts plain rows - no .subrow-pc/.ct-row
+    // markers by design), so this heal misreads it as a dead build and
+    // rebuilds it every pass - tbody is cleared BEFORE the refetch await,
+    // the table collapses, the page scroll clamps to top (the ~1s
+    // scroll-to-top boss saw). The heal and the reorder above serve the
+    // REGULAR face only; an admin session never has marker rows.
+    var sessAcc = getSession();
+    if (sessAcc && sessAcc.is_admin) {
+      // admin face: skip the regular-face heal entirely
+    } else {
     // boss 09-29 gate leg 1 (dead-build self-heal, the PC half of the
     // entry-flake symmetry): activity data exists but the PC table has no
     // data rows (a mid-chain fetch death left the build unfinished) - one
@@ -1299,6 +1310,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         setTimeout(function () { applyActivity._reloading = false; loadAccounts(); }, 400);
       }
     }
+    } // end regular-face gate
 
 
     var sum = $("#acc-act-sum");
@@ -2915,7 +2927,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const poolEl = $("#pref-thread-pool");
     if (poolEl && poolEl.value !== "") {
       const pool = parseInt(poolEl.value, 10);
-      if (!isFinite(pool) || pool < 1 || pool > 50) {
+      if (!isFinite(pool) || pool < 1) { // boss 1002: no upper bound
         status.textContent = t("prefs.poolBad");
         return;
       }
@@ -3146,7 +3158,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const poolEl2 = $("#pref-thread-pool");
       if (poolEl2) {
         var pv = parseInt(localStorage.getItem("compose_thread_pool_max") || "0", 10);
-        poolEl2.value = (pv >= 1 && pv <= 50) ? pv : 10;
+        poolEl2.value = (pv >= 1) ? pv : 50; // boss 1002: default 50, unbounded
       }
       syncPrefLangUI();
       syncPrefThemeUI();
