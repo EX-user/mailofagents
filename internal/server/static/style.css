@@ -3197,7 +3197,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
      side padding reads as wasted gutter on the phone; IM view hugs 8px */
   /* 1055 (boss): the avatars use more of the side space - the IM
      gutter narrows to 2px so both avatars sit near the edges. */
-  html:has(#tab-compose.im) main { padding-left: 5px; padding-right: 5px; }
+  /* 1060 (boss): the narrowed gutter is the CONVERSATION page only -
+   scope it to the visible compose tab; other pages keep main gutters. */
+html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 5px; }
   /* 1049b (boss bug): leaving IM compose keeps .im on the panel, so
      this rule's 8px leaked onto the accounts page and un-full-bled
      the list. The accounts reset re-wins the tie (later source). */
@@ -3323,6 +3325,12 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
     border-radius: 999px; color: var(--text);
   }
   #tab-compose.im #im-bar #im-sheet:not(.hidden) button:hover { background: rgba(127, 127, 127, 0.18); color: var(--accent); }
+  /* 1060 (boss): the full-form button reads as the blue link - same face
+     as the back-to-conversation link, not a grey pill. */
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) #im-full {
+    background: none; color: var(--accent); font-weight: 700; font-size: 13px;
+  }
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) #im-full:hover { background: none; color: var(--accent); }
   /* 1045 round 3 (boss): the trio spans the row edge to edge, and the
      pill label centers for real - UA button centering let the line
      sag 1.5px inside the 44px touch target. */
