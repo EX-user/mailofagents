@@ -1445,7 +1445,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       out.push((item.getAttribute("data-mid") || "") + ":" +
         (item.classList.contains("thread-out") ? "out" : "in") + ":" +
         ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" +
-        (item.getAttribute("data-ts") || "0"));
+        (item.getAttribute("data-ts") || "0") + ":" +
+        (item.getAttribute("data-files") || "0"));
     });
     return out.join("|");
   }
@@ -1460,7 +1461,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     if (!threadEl.querySelector(".thread-item")) return; // nothing rendered yet - the load path owns the first paint
     if (threadEl.querySelector('.thread-item[data-mid="' + letter.id + '"]')) return; // dedupe
     var m = { dir: "in", id: letter.id, subject: letter.subject || "", preview: letter.preview || "",
-      ts: letter.ts || 0, peer: from2, from: from2, unread: true };
+      ts: letter.ts || 0, peer: from2, from: from2, unread: true, files: letter.files || 0 };
     var im2 = imMode();
     threadEl.insertAdjacentHTML(im2 ? "beforeend" : "afterbegin",
       threadItemHtml(m, im2, threadSelfAddr()));
@@ -1645,10 +1646,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // synchronous (no interleave); everything after this await is not.
       if (mySeq !== threadLoadSeq) return;
       const all = (threadRes.messages || []).map(function (m) {
+        // 1054 (boss): the slim projection used to drop `files` - the server
+        // summary has carried the attachment count all along (summarize()
+        // since v0.1), so data-files stamped 0 and the always-keep-toggle
+        // gate never fired on attachment letters. Carry it through.
         return m.dir === "out"
-          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to }
+          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to, files: m.files || 0 }
           : { dir: "in", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at,
-              peer: firstPeer || to, from: m.from, unread: m.unread };
+              peer: firstPeer || to, from: m.from, unread: m.unread, files: m.files || 0 };
       }).sort(function (a, b) { return b.ts - a.ts; });
       threadNewest = all.length ? all[0] : null; // auto anchor + quote source
       var imOrder = imMode();
@@ -1683,7 +1688,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // so the view ACCUMULATES its tail instead of shedding it each time
       // fresh arrivals slide the window forward.
       var fpFetch = all.map(function (m) {
-        return m.id + ":" + m.dir + ":" + (m.unread ? 1 : 0) + ":" + m.ts;
+        // 1054: files rides the fingerprint - a pooled/mirrored slot painted
+        // before the projection fix carries a wrong data-files="0" and must
+        // lose the no-churn skip once, so the truth repaints it.
+        return m.id + ":" + m.dir + ":" + (m.unread ? 1 : 0) + ":" + m.ts + ":" + (m.files || 0);
       }).join("|");
       var fetchIds = {};
       var fetchMinTs = 0;
@@ -1700,7 +1708,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
             tailNodes.push(item);
           } else {
             rangeFp.push(mid + ":" + (item.classList.contains("thread-out") ? "out" : "in") + ":" +
-              ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" + ts);
+              ((item.querySelector(".unread-dot") || item.querySelector(".thread-subj-unread")) ? 1 : 0) + ":" + ts + ":" +
+              (item.getAttribute("data-files") || "0"));
           }
         });
       }
