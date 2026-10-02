@@ -96,6 +96,10 @@ var board = &Board{
 	cprCh:      make(chan int, 4),
 }
 
+// MouseOn resolves the tri-state `mouse` config: absent = ON (boss
+// 2026-10-03 — the three board buttons ship enabled), explicit false = off.
+func MouseOn(m *bool) bool { return m == nil || *m }
+
 // SetMouse enables the TUI mouse control plane (config `mouse`, file-level).
 func SetMouse(on bool) {
 	board.mu.Lock()

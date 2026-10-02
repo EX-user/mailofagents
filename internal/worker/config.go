@@ -35,7 +35,7 @@ type Config struct {
 	Model               string            `json:"model"`                   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
 	Env                 map[string]string `json:"env"`                     // non-credential auxiliary env for the CLI process
 	FullPerm            *bool             `json:"full_perm"`               // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
-	Mouse               bool              `json:"mouse"`                   // TUI mouse controls (file-level; the board is process-global): SGR click tracking off by default — enabling costs Shift-drag text selection in most terminals (boss sign-off 2026-09-22)
+	Mouse               *bool             `json:"mouse,omitempty"`         // TUI mouse controls (file-level; the board is process-global): absent = ON (boss 2026-10-03, reversing the 09-22 off — the three board buttons ship enabled); explicit false turns SGR tracking off (it costs Shift-drag text selection in most terminals)
 	StateFile           string            `json:"state_file"`              // session binding store; default = config sibling (<config>.state.json). Kept OUT of the workdir: the workdir is the agent's turf
 	Emergency           Emergency         `json:"emergency"`
 }
@@ -324,7 +324,7 @@ type fileConfig struct {
 	Model               string            `json:"model"`
 	Env                 map[string]string `json:"env"`
 	FullPerm            *bool             `json:"full_perm"`
-	Mouse               bool              `json:"mouse"` // TUI mouse controls (file-level; board is process-global): SGR click tracking off by default — enabling costs Shift-drag text selection in most terminals (boss sign-off 2026-09-22)
+	Mouse               *bool             `json:"mouse,omitempty"` // TUI mouse controls (file-level; board is process-global): absent = ON (boss 2026-10-03); explicit false turns it off
 	StateFile           string            `json:"state_file"`
 	Emergency           Emergency         `json:"emergency"`
 
@@ -355,7 +355,7 @@ type agentConfig struct {
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
 	ContextWindow       int64             `json:"context_window"`
 	FullPerm            *bool             `json:"full_perm"`
-	Mouse               bool              `json:"mouse"`
+	Mouse               *bool             `json:"mouse,omitempty"`
 	Emergency           Emergency         `json:"emergency"`
 }
 

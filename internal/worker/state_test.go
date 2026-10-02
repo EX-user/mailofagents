@@ -70,3 +70,19 @@ func TestWakeInFlightResumeFlag(t *testing.T) {
 		t.Fatal("guard 1 violated: flag survived the clear")
 	}
 }
+
+func TestMouseTriStateDefault(t *testing.T) {
+	// boss 2026-10-03 #2: absent `mouse` = ON (the three board buttons ship
+	// enabled); explicit false must still turn it off.
+	if !MouseOn(nil) {
+		t.Fatal("absent mouse must default ON")
+	}
+	f := false
+	if MouseOn(&f) {
+		t.Fatal("explicit false must stay off")
+	}
+	tr := true
+	if !MouseOn(&tr) {
+		t.Fatal("explicit true must stay on")
+	}
+}
