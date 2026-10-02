@@ -3173,7 +3173,9 @@ button.row-action.pill-btn.av-entry { border-color: var(--accent); color: var(--
   }
   /* boss 0.3.4.2: bigger avatar, closer to the screen edge - main's 20px
      side padding reads as wasted gutter on the phone; IM view hugs 8px */
-  html:has(#tab-compose.im) main { padding-left: 8px; padding-right: 8px; }
+  /* 1055 (boss): the avatars use more of the side space - the IM
+     gutter narrows to 2px so both avatars sit near the edges. */
+  html:has(#tab-compose.im) main { padding-left: 2px; padding-right: 2px; }
   /* 1049b (boss bug): leaving IM compose keeps .im on the panel, so
      this rule's 8px leaked onto the accounts page and un-full-bled
      the list. The accounts reset re-wins the tie (later source). */
