@@ -3330,6 +3330,8 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
   #tab-compose.im #im-bar #im-sheet:not(.hidden) #im-full {
     color: var(--accent); font-weight: 700;
   }
+  /* 1060 (boss): an arrow rides the label, same trick as the back link. */
+  #tab-compose.im #im-bar #im-sheet:not(.hidden) #im-full::before { content: "→\00a0"; font-size: 14px; line-height: 1; }
   /* 1045 round 3 (boss): the trio spans the row edge to edge, and the
      pill label centers for real - UA button centering let the line
      sag 1.5px inside the 44px touch target. */
