@@ -521,12 +521,14 @@ func (s *Store) SetByteRateLimit(n int64) error {
 }
 
 // GetRegisterIPRateLimit returns the per-IP registration attempt limit per
-// hour. Default 5 — the portal offers friction-free registration, so
-// scripted mass account creation needs a stopper. 0 disables the limit.
+// hour. Default 0 (disabled) — boss directive 10-02: the account page's
+// "register a mailbox for your AI agent" flow must not be count-limited
+// out of the box. The admin can still set a per-IP attempts/hour cap via
+// SetRegisterIPRateLimit; negative values fall back to 0.
 func (s *Store) GetRegisterIPRateLimit() int {
-	v := s.getMetaInt(mRegisterIPRateLimit, 5)
+	v := s.getMetaInt(mRegisterIPRateLimit, 0)
 	if v < 0 {
-		return 5
+		return 0
 	}
 	return v
 }
