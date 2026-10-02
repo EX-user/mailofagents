@@ -1184,8 +1184,26 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // usual server-truth verify pass refreshes whatever came back stale.
   // Quota overflow just skips the mirror - the memory pool carries on.
   var POOL_LS_PREFIX = "compose_thread_pool_slot:";
+  // boss 1002 速修 (avatars all broken on a reopened compose page): avatar
+  // <img> tags point at blob: object URLs that die with the page session,
+  // and a mirrored slot re-paints them with the done flag still on - the
+  // refill path then skips them and every capsule shows a broken image.
+  // The localStorage copy is sanitized at write time (boxes reset to
+  // pristine pending state), and a restore prunes any blob tag that is
+  // not alive in THIS session (heals mirrors written by older builds).
+  function poolSanAvatars(html) {
+    var c = document.createElement("div");
+    c.innerHTML = html;
+    $$("img[src^='blob:']", c).forEach(function (im) {
+      var box = im.closest("[data-avremote]") || im.parentElement;
+      if (box) { while (box.firstChild) box.removeChild(box.firstChild); box.removeAttribute("data-avdone"); }
+    });
+    return c.innerHTML;
+  }
   function poolMirrorPut(k, e) {
-    try { localStorage.setItem(POOL_LS_PREFIX + k, JSON.stringify(e)); } catch (err) {}
+    try { localStorage.setItem(POOL_LS_PREFIX + k, JSON.stringify({
+      html: poolSanAvatars(e.html), scrollTop: e.scrollTop, im: e.im, savedAt: e.savedAt,
+    })); } catch (err) {}
   }
   function poolMirrorDrop(k) {
     try { localStorage.removeItem(POOL_LS_PREFIX + k); } catch (err) {}
@@ -1576,6 +1594,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
           h5.scrollTop = poolHit.scrollTop || 0;
         }
       }
+      // boss 1002 速修: a slot restored across page sessions can still carry
+      // blob: urls written by an older build (or kept in memory from this
+      // one) - prune the foreign ones so the refill below re-fetches them;
+      // same-session urls are alive and stay untouched (no refill flash).
+      if (window.__avPruneForeignBlobs) window.__avPruneForeignBlobs(threadEl);
       if (window.__avRestore) {
         window.__avRestore(threadEl, null);
         if (window.__avHydrate) window.__avHydrate(threadEl);

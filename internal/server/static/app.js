@@ -1572,6 +1572,19 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // pub=true serves directory-visible addresses via the public endpoint
   // (D1 gate); both endpoints are immutable+1y cached, hence ?v=hash.
   var avBlobRegistry = {}, avBlobInflight = {};
+  // boss 1002 速修: pool slots (memory or localStorage mirror) may
+  // carry blob: urls from a previous page session - dead by definition.
+  // Prune those boxes (empty + drop the done flag) so avRemoteHydrate
+  // refills them; same-session urls are alive and stay untouched.
+  window.__avPruneForeignBlobs = function (root) {
+    var live = [];
+    for (var k in avBlobRegistry) live.push(avBlobRegistry[k]);
+    $$("img[src^='blob:']", root).forEach(function (im) {
+      if (live.indexOf(im.getAttribute("src")) >= 0) return;
+      var box = im.closest("[data-avremote]") || im.parentElement;
+      if (box) { while (box.firstChild) box.removeChild(box.firstChild); box.removeAttribute("data-avdone"); }
+    });
+  };
   function avatarObjectURL(addr, hash, pub) {
     const key = String(addr).toLowerCase() + "|" + hash;
     if (avBlobRegistry[key]) return Promise.resolve(avBlobRegistry[key]);
