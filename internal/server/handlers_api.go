@@ -1003,8 +1003,12 @@ func (s *Server) handleRegisterTeam(w http.ResponseWriter, r *http.Request) {
 	if size == 0 {
 		size = 3
 	}
-	if size < 1 || size > store.MaxSubordinates {
-		badRequest(w, fmt.Sprintf("team_size must be 1-%d", store.MaxSubordinates))
+	if size < 1 || (store.MaxSubordinates > 0 && size > store.MaxSubordinates) {
+		if store.MaxSubordinates > 0 {
+			badRequest(w, fmt.Sprintf("team_size must be 1-%d", store.MaxSubordinates))
+		} else {
+			badRequest(w, "team_size must be >= 1")
+		}
 		return
 	}
 	// v2: when a member name list is supplied it must match team_size and

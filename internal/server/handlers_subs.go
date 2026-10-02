@@ -374,9 +374,11 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 	owner := accountFrom(r.Context())
 
 	// Guard 1: cap the number of subordinates one account may provision.
-	if got := len(s.store.SubordinatesOf(owner)); got >= store.MaxSubordinates {
-		http.Error(w, fmt.Sprintf("subordinate limit reached (%d)", store.MaxSubordinates), http.StatusTooManyRequests)
-		return
+	if store.MaxSubordinates > 0 {
+		if got := len(s.store.SubordinatesOf(owner)); got >= store.MaxSubordinates {
+			http.Error(w, fmt.Sprintf("subordinate limit reached (%d)", store.MaxSubordinates), http.StatusTooManyRequests)
+			return
+		}
 	}
 	// Guard 2: reuse the per-IP registration throttle.
 	if !s.regLimit.allow(clientIP(r), s.store.GetRegisterIPRateLimit(), time.Now()) {
