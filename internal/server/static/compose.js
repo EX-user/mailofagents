@@ -1924,11 +1924,19 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // with data-loaded="1" and nothing ever re-fetches - the exact "自己发
   // 的信的附件无法预览" report. Rebuild such panes in place after a pool
   // paint: one detail GET per affected capsule, nothing else touches.
+  // 1063 (boss): the empty-holder verdict missed cards that have NO
+  // preview holder at all (plain files, PDFs, md on phones) - their
+  // download/read buttons came back from the slot with no listeners and
+  // nothing ever rebuilt them ("下载和预览按钮有时无法使用"). A restored
+  // capsule is a display copy, period: expanded ones rebuild now,
+  // collapsed ones drop the loaded stamp so the first expand rebuilds.
   function healRestoredPreviews(root) {
     $$('.thread-item[data-loaded="1"]', root).forEach(function (item) {
       const full = $(".thread-full", item);
-      if (!full || full.classList.contains("hidden")) return;
-      if (!$$(".attach-preview", full).some((h) => !h.firstChild)) return;
+      if (!full || full.classList.contains("hidden")) {
+        delete item.dataset.loaded;
+        return;
+      }
       buildThreadFull(item, full, item.dataset.mid);
     });
   }
