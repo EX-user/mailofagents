@@ -1133,6 +1133,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
     avSyncAvatarsFromActivity((actData && actData.subs) || []); // A-case: avatar spot-hydration on the same poll
 
+    avPullTick(); // 1062b robustness net: conditional revalidation of every on-page avatar, independent of the poll payload
+
 
     var unreadBy = (actData && actData.unreadBySender) || {};
 
@@ -2260,9 +2262,50 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // shows within one poll cycle with no restart or refresh. A changed hash
   // costs one registry update plus exactly one targeted box re-hydration;
   // unchanged rows cost zero requests and zero DOM writes.
+  // 1062b (boss): push alone leaves holes - a watcher's compose page whose
+  // peer's hash never rides the poll payload, or a client whose upload-page
+  // sync missed. Robustness over immediacy (boss: 宁可不及时，也要可靠):
+  // every poll tick, revalidate each distinct on-page address with ONE
+  // conditional GET. Server answers 304 (zero bytes) while unchanged - and
+  // a no-avatar address 304s too, since the expected ETag is the empty
+  // quoted string. A 200 means the server holds a different avatar: learn
+  // the new ETag as the hash and let the poll sync reset every matching
+  // box page-wide. Worst-case staleness: one poll cycle, self-healing.
+  var avPullInflight = {};
+  window.__avPullLast = null; // 1062b diagnostics: last tick summary
+  function avPullTick() {
+    var seen = {};
+    var nodes = document.querySelectorAll("[data-av], [data-avremote]");
+    for (var i = 0; i < nodes.length; i++) {
+      var a = String(nodes[i].getAttribute("data-av") || "").toLowerCase();
+      if (a.indexOf("@") > 0) seen[a] = 1;
+    }
+    var sess = getSession();
+    if (sess && sess.address) seen[String(sess.address).toLowerCase()] = 1;
+    var reg = window.__avatarHashes = window.__avatarHashes || {};
+    Object.keys(seen).forEach(function (addr) {
+      if (avPullInflight[addr]) return;
+      avPullInflight[addr] = true;
+      fetch("/api/avatar/" + encodeURIComponent(addr), { headers: { Authorization: basicAuth(), "If-None-Match": '"' + String(reg[addr] === undefined ? "" : reg[addr]) + '"' } })
+        .then(function (res) {
+          if (res.status !== 200) return;
+          if (res.body && res.body.cancel) { res.body.cancel().catch(function () {}); } // hash is in the header; skip the bytes
+          var et = res.headers.get("ETag") || "";
+          var nh = et.replace(/^"+|"+$/g, "");
+          if ((reg[addr] || "") !== nh) avSyncAvatarsFromActivity([{ address: addr, avatar_hash: nh }]);
+        })
+        .catch(function () {})
+        .then(function () { delete avPullInflight[addr]; });
+    });
+    window.__avPullLast = { t: Date.now(), addrs: Object.keys(seen), reg: reg };
+  }
+  // 1062b (boss): the accounts-tab activity refresh does NOT cycle while the
+  // user sits on the compose page - a pull hooked there never fires exactly
+  // where it is needed (the watcher's write page). Own timer instead: every
+  // page surface heals within one cycle no matter which tab is open.
+  setInterval(function () { try { avPullTick(); } catch (e) {} }, HB_POLL_SEC * 1000);
   function avSyncAvatarsFromActivity(subs) {
     var reg = window.__avatarHashes = window.__avatarHashes || {};
-    try { Object.defineProperty(window.__avatarHashes, "sup28@agentmail.local", { set: function (v) { if (!v) console.log("[1062TRAP] empty-hash WRITE stack=", new Error().stack.split("\n").slice(2, 5).join(" | ")); window.__trapVal = v; }, get: function () { return window.__trapVal; }, configurable: true }); } catch (e) {}
     (subs || []).forEach(function (s) {
       var addr = String(s.address || "").toLowerCase();
       if (!addr) return;
