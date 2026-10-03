@@ -647,6 +647,124 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // （1046 语义沿袭，滑条零扰）。图不跟活帧（boss 定）：图侧留 overview.js。
 
 
+  // ---- 0.3.7 whitelist (boss spec): per-account sender whitelist with
+  // hierarchy bypass handled server-side; the panel manages the toggle and
+  // the address list. Spec contract:
+  //   GET/PUT /api/account/whitelist [+ ?address= for a subordinate, same
+  //   convention as limits] - PUT body { whitelist_enabled, whitelist: [] }
+  //   POST/DELETE /api/account/whitelist/<address> [+ ?address= owner]
+  // Persistence is immediate per action; the toggle commits via PUT.
+  var wlCache = {};
+  function wlQuery(addr) {
+    const sess = getSession();
+    return addr && sess && String(addr).toLowerCase() === String(sess.address).toLowerCase() ? "" : "?address=" + encodeURIComponent(addr);
+  }
+  async function openWhitelistModal(addr) {
+    const modal = $("#wl-modal");
+    if (!modal) return;
+    $("#wl-modal-title").textContent = t("wl.title") + " \u2014 " + addr;
+    $("#wl-status").textContent = "";
+    $("#wl-input").value = "";
+    modal.dataset.wladdr = addr;
+    modal.classList.remove("hidden");
+    renderWlChips(addr, null, t("common.loading"));
+    try {
+      const d = await api("/api/account/whitelist" + wlQuery(addr), { keepSession: true });
+      wlCache[addr] = { whitelist_enabled: !!(d && (d.whitelist_enabled || d.enabled)), whitelist: (d && (d.whitelist || d.addresses)) || [] };
+    } catch (e) {
+      wlCache[addr] = { whitelist_enabled: false, whitelist: [], err: String((e && e.message) || e) };
+    }
+    if (($("#wl-modal").dataset || {}).wladdr !== addr) return; // closed meanwhile
+    const cur = wlCache[addr];
+    $("#wl-enabled").checked = !!cur.whitelist_enabled;
+    renderWlChips(addr, cur.whitelist, cur.err || "");
+  }
+  function renderWlChips(addr, list, note) {
+    const holder = $("#wl-chips");
+    if (!holder) return;
+    holder.textContent = "";
+    const cur = list || (wlCache[addr] || {}).whitelist || [];
+    if (note) { const n = document.createElement("div"); n.className = "muted"; n.style.fontSize = "12px"; n.textContent = note; holder.appendChild(n); }
+    if (!cur.length) {
+      if (!note) { const e = document.createElement("div"); e.className = "muted"; e.style.fontSize = "12px"; e.setAttribute("data-i18n", "wl.empty"); e.textContent = t("wl.empty"); holder.appendChild(e); }
+      return;
+    }
+    cur.forEach(function (a) {
+      const chip = document.createElement("span");
+      chip.className = "wl-chip";
+      chip.textContent = a;
+      const x = document.createElement("button");
+      x.type = "button"; x.className = "wl-chip-x"; x.textContent = "\u00d7"; x.title = "remove";
+      x.addEventListener("click", async function () {
+        x.disabled = true;
+        try {
+          await api("/api/account/whitelist/" + encodeURIComponent(a) + wlQuery(addr), { method: "DELETE", keepSession: true });
+          const c = wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
+          c.whitelist = c.whitelist.filter(function (v) { return String(v).toLowerCase() !== String(a).toLowerCase(); });
+          renderWlChips(addr, c.whitelist, "");
+          wlFlash(t("wl.saved"));
+        } catch (e) { wlFlash(String((e && e.message) || e), true); x.disabled = false; }
+      });
+      chip.appendChild(x);
+      holder.appendChild(chip);
+    });
+  }
+  function wlFlash(msg, isErr) {
+    const st = $("#wl-status");
+    if (!st) return;
+    st.textContent = msg || "";
+    st.style.color = isErr ? "#dc2626" : "";
+  }
+  async function wlToggleSave(addr, enabled) {
+    const cur = wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
+    const prev = cur.whitelist_enabled;
+    cur.whitelist_enabled = enabled;
+    try {
+      await api("/api/account/whitelist" + wlQuery(addr), { method: "PUT", body: JSON.stringify({ whitelist_enabled: enabled, whitelist: cur.whitelist }), keepSession: true });
+      wlFlash(t("wl.saved"));
+    } catch (e) {
+      cur.whitelist_enabled = prev; // rollback the switch on failure
+      $("#wl-enabled").checked = prev;
+      wlFlash(String((e && e.message) || e), true);
+    }
+  }
+  document.addEventListener("click", function (ev) {
+    const t2 = ev.target;
+    if (!t2 || !t2.closest) return;
+    const wlOpener = t2.closest("[data-wl]");
+    if (wlOpener) { openWhitelistModal(wlOpener.dataset.wl); return; }
+    if (t2.id === "btn-wl-close") { const m = $("#wl-modal"); if (m) m.classList.add("hidden"); return; }
+    if (t2.id === "wl-modal") { const m = $("#wl-modal"); if (m) m.classList.add("hidden"); return; }
+    if (t2.id === "btn-wl-add") {
+      const addr = ($("#wl-modal").dataset || {}).wladdr;
+      if (!addr) return;
+      const inp = $("#wl-input");
+      const v = (inp.value || "").trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { wlFlash(t("wl.err.addr"), true); return; }
+      const cur = wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
+      if (cur.whitelist.some(function (x) { return String(x).toLowerCase() === v; })) { wlFlash(t("wl.err.dup"), true); return; }
+      wlFlash("");
+      api("/api/account/whitelist/" + encodeURIComponent(v) + wlQuery(addr), { method: "POST", keepSession: true })
+        .then(function () {
+          cur.whitelist.push(v);
+          inp.value = "";
+          renderWlChips(addr, cur.whitelist, "");
+          wlFlash(t("wl.saved"));
+        })
+        .catch(function (e) { wlFlash(String((e && e.message) || e), true); });
+      return;
+    }
+    if (t2.id === "wl-enabled") {
+      const addr = ($("#wl-modal").dataset || {}).wladdr;
+      if (addr) wlToggleSave(addr, t2.checked);
+    }
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter") return;
+    const m = $("#wl-modal");
+    if (!m || m.classList.contains("hidden")) return;
+    if (ev.target && ev.target.id === "wl-input") { ev.preventDefault(); const b = $("#btn-wl-add"); if (b) b.click(); }
+  });
   var HB_TTL_SEC = 60; // 3×20s 上报周期为过期线（boss 0923 定口径：前端刷 10s/心跳 20s/TTL 60s）
 
 
@@ -1549,7 +1667,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       '<div class="ct-addr"><strong>' + esc(sess.address) + "</strong></div>" +
       '<span class="badge-listed">you</span></div>' +
       (ownSig ? '<div class="ct-sig">' + esc(ownSig) + "</div>" : "") +
-      '<div class="ct-foot"><button type="button" class="row-action pill-btn av-entry" id="btn-avatar-open2">' + t("prof.avatarChange") + '</button><button class="row-action pill-btn" id="btn-change-pw-p">' + t("act.changePw") + '</button><button class="row-action pill-btn" data-limits="' + esc(sess.address) + '">' + t("limits.open") + "</button></div>" +
+      '<div class="ct-foot"><button type="button" class="row-action pill-btn av-entry" id="btn-avatar-open2">' + t("prof.avatarChange") + '</button><button class="row-action pill-btn" id="btn-change-pw-p">' + t("act.changePw") + '</button><button class="row-action pill-btn" data-limits="' + esc(sess.address) + '">' + t("limits.open") + '</button><button class="row-action pill-btn" data-wl="' + esc(sess.address) + '">' + t("wl.title") + "</button></div>" +
       "</div>";
     const pw = $("#btn-change-pw-p");
     if (pw) pw.addEventListener("click", openChangePassword);
@@ -1883,6 +2001,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var acts = "";
     if (isSub) acts += '<button class="warn" data-remove-sub="' + esc(addr) + '">\u2715 ' + t("subs.removeBtn") + "</button>";
     acts += '<button data-limits="' + esc(addr) + '">' + t("limits.open") + "</button>";
+    acts += '<button data-wl="' + esc(addr) + '">' + t("wl.title") + "</button>";
     return '<div class="im3-overlay" data-ovl="' + esc(addr) + '">' +
       acts +
       '<button class="cl-close" data-ovl-back="' + esc(addr) + '">\u2715 ' + t("acc.back") + "</button></div>";
@@ -2355,6 +2474,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var acts = "";
     if (isSub) acts += '<button class="warn" data-remove-sub="' + esc(addr) + '">\u2715 ' + t("subs.removeBtn") + "</button>";
     acts += '<button data-limits="' + esc(addr) + '">' + t("limits.open") + "</button>";
+    acts += '<button data-wl="' + esc(addr) + '">' + t("wl.title") + "</button>";
     return '<div class="im3-overlay" data-ovl="' + esc(addr) + '">' +
       acts +
       '<button class="cl-close" data-ovl-back="' + esc(addr) + '">\u2715 ' + t("acc.back") + "</button></div>";
@@ -2589,7 +2709,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           '<span class="act-pill-slot" data-act-slot="pill"></span><span class="pc-badges">' + badge + "</span></span></td>" +
           '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span></td>" +
           '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action act-compose" data-compose="' + esc(e.address) + '">' + t("act.compose") + '</button><button class="row-gear" data-gear="' + esc(e.address) + '" aria-label="' + esc(t("acc.settings")) + '">\u2699</button>' +
-          '<div class="gear-pop" hidden><button class="row-action warn" data-remove-sub="' + esc(e.address) + '">' + t("subs.removeBtn") + '</button><button class="row-action" data-limits="' + esc(e.address) + '">' + t("limits.open") + "</button></div></td>" +
+          '<div class="gear-pop" hidden><button class="row-action warn" data-remove-sub="' + esc(e.address) + '">' + t("subs.removeBtn") + '</button><button class="row-action" data-limits="' + esc(e.address) + '">' + t("limits.open") + '</button><button class="row-action" data-wl="' + esc(e.address) + '">' + t("wl.title") + "</button></div></td>" +
           "</tr>");
         // boss PC round: the latest message runs the FULL row width (one
         // colspan-3 line under the entry), still patched in place by
