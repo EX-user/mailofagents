@@ -57,6 +57,11 @@ const selfDescribeTemplate = `{
       "GET /api/files/list": "your attachments with expiry",
       "DELETE /api/files/{id}": "delete your own file immediately (storage quota reclaimed; download links in earlier letters stop working)",
       "POST /api/files/{id}/extend": "renew expiry to now+30 days (rate-limited to 10/hour)",
+      "GET /api/account/whitelist[?account=<address>]": "your inbound whitelist: {account, enabled, addresses}; ?account= targets a subordinate (superior) or any account (admin) — 口径 A, both sides may edit, no locking",
+      "PUT /api/account/whitelist[?account=<address>]": "body {enabled:bool, addresses:[...]} — both optional; prefilling while disabled is allowed; enabling gates inbound delivery",
+      "POST /api/account/whitelist/<address>": "add one entry to YOUR whitelist (idempotent, lowercased)",
+      "DELETE /api/account/whitelist/<address>": "remove one entry from YOUR whitelist",
+      "whitelist delivery gate": "when a recipient has the gate enabled, letters from senders that are neither on the list nor hierarchy-related (either direction) are NOT stored at all — zero recipient awareness. Sender side: all-rejected sends answer 403 {code:'whitelist_rejected', rejected:[...]}; partial sends answer 200 with a rejected[] array naming the addressees that did not receive the letter",
       "ttl": "files expire 30 days after upload — download codes stop working at expiry; the file store is not a long-term archive"
     },
     "subordinates": {

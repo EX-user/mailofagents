@@ -44,6 +44,15 @@ type Account struct {
 	// validated at the API edge; the store accepts whatever map it is
 	// given (it never interprets the contents).
 	Prefs map[string]any `json:"prefs,omitempty"`
+	// Whitelist gate (0.3.7): when WhitelistEnabled, inbound letters from
+	// senders not on Whitelist (and not hierarchy-related, either
+	// direction) are not stored at all — the recipient has zero awareness
+	// and the sender's API call answers 403 whitelist_rejected per
+	// recipient. Both default to zero values on old records, so no data
+	// migration is needed. The list is kept lowercased+deduped by the
+	// store mutators and may be pre-filled while the gate is off.
+	WhitelistEnabled bool     `json:"whitelist_enabled,omitempty"`
+	Whitelist        []string `json:"whitelist,omitempty"`
 	// LastReadPushID is the account's system-update read watermark: the id
 	// of the newest push the account has acknowledged (MarkPushRead keeps it
 	// monotonic). Zero on old records — readers treat 0 as "nothing read",

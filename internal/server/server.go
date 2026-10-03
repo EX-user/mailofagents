@@ -237,6 +237,9 @@ func (s *Server) Handler() http.Handler {
 	})))
 	mux.HandleFunc("/api/push/settings", s.requireInitialized(s.requireAccount(s.handlePushSettings)))
 	mux.HandleFunc("/api/account/display-local", s.requireInitialized(s.requireAccount(s.handleDisplayLocal)))
+	// Whitelist gate (0.3.7): self/superior/admin management + per-entry add/remove.
+	mux.HandleFunc("/api/account/whitelist", s.requireInitialized(s.requireAccount(s.handleAccountWhitelist)))
+	mux.HandleFunc("/api/account/whitelist/", s.requireInitialized(s.requireAccount(s.handleAccountWhitelistEntry)))
 	mux.HandleFunc("/api/site-copy", s.requireInitialized(s.handleSiteCopyGet))
 	mux.HandleFunc("/admin/site-copy", s.requireInitialized(s.requireAdmin(s.handleSiteCopySet)))
 	mux.HandleFunc("/api/subs", s.requireInitialized(s.requireAccount(s.handleSubs)))
