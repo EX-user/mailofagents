@@ -205,6 +205,7 @@ func (s *Store) SendWithAttachments(from, fromName string, to []string, cc []str
 	msgID := newULID()
 	now := s.now().Unix()
 	delivered := 0
+	var rejected []string
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		// Same in-transaction parent check as Send (one Get, miss -> fail).
 		if inReplyTo != "" && tx.Bucket(bMessages).Get([]byte(inReplyTo)) == nil {
@@ -317,6 +318,11 @@ func (s *Store) SendWithAttachments(from, fromName string, to []string, cc []str
 			if err != nil {
 				continue
 			}
+			// Whitelist gate (0.3.7) — same contract as Send.
+			if acc.WhitelistEnabled && !whitelistRelatedInTx(tx, from, strings.ToLower(addr)) && !whitelistHasInTx(acc, from) {
+				rejected = append(rejected, strings.ToLower(addr))
+				continue
+			}
 			key := indexKey(acc.UUID, msgID)
 			if err := ib.Put(key, nil); err != nil {
 				return err
@@ -341,7 +347,7 @@ func (s *Store) SendWithAttachments(from, fromName string, to []string, cc []str
 	if delivered == 0 {
 		return nil, fmt.Errorf("no valid recipients among %v", to)
 	}
-	return &SendResult{MessageID: msgID}, nil
+	return &SendResult{MessageID: msgID, Rejected: rejected}, nil
 }
 
 func sortStrings(list []string) {

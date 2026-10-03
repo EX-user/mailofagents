@@ -285,46 +285,13 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Whitelist gate (0.3.7): recipients with the gate enabled store
-	// nothing from a non-listed, non-hierarchy sender — the recipient has
-	// zero awareness (nothing is written, no bounces). The sender-facing
-	// shape: all-rejected -> 403 code=whitelist_rejected; partial ->
-	// 200 with a "rejected" array so the compose UI can flag exactly
-	// which addressees did not receive the letter (spec point 3).
-	var rejected []map[string]string
-	admitted := map[string]bool{}
-	for _, rcpt := range validRecipients {
-		if s.store.WhitelistAdmits(rcpt, from) {
-			admitted[rcpt] = true
-		} else {
-			rejected = append(rejected, map[string]string{"address": rcpt, "code": "whitelist_rejected"})
-		}
-	}
-	// Delivery honors the gate: only admitted addresses reach the store
-	// (the earlier byte-rate filter only shaped notifications — the
-	// store call below takes the To/CC lists verbatim).
-	admittedTo := make([]string, 0, len(body.To))
-	for _, rcpt := range body.To {
-		if admitted[strings.ToLower(rcpt)] {
-			admittedTo = append(admittedTo, rcpt)
-		}
-	}
-	admittedCC := make([]string, 0, len(body.CC))
-	for _, rcpt := range body.CC {
-		if admitted[strings.ToLower(rcpt)] {
-			admittedCC = append(admittedCC, rcpt)
-		}
-	}
-	validRecipients = admittedTo
-	validRecipients = append(validRecipients, admittedCC...)
-	if len(validRecipients) == 0 {
-		writeJSON(w, http.StatusForbidden, map[string]any{
-			"code":     "whitelist_rejected",
-			"rejected": rejected,
-			"error":    "recipient only accepts whitelist mail; not delivered",
-		})
-		return
-	}
+	// Whitelist gate (0.3.7): enforced inside the store delivery tx
+	// (covers /api/send AND the admin send path — no bypass). The
+	// handler only shapes the sender-facing response: all-rejected ->
+	// 403 code=whitelist_rejected; partial -> 200 + rejected[] so the
+	// compose UI can flag exactly which addressees did not receive the
+	// letter (spec point 3). Rejected recipients store nothing and get
+	// no push — zero recipient awareness.
 
 	fromName := localPart(from)
 	var res *store.SendResult
@@ -332,9 +299,9 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	if len(body.Attachments) > 0 {
 		// Attachments must reference the sender's own uploaded files; the
 		// store validates ownership and grants recipients download access.
-		res, err = s.store.SendWithAttachments(from, fromName, admittedTo, admittedCC, body.Subject, body.Body, body.Attachments, body.InReplyTo)
+		res, err = s.store.SendWithAttachments(from, fromName, body.To, body.CC, body.Subject, body.Body, body.Attachments, body.InReplyTo)
 	} else {
-		res, err = s.store.Send(from, fromName, admittedTo, admittedCC, body.Subject, body.Body, body.InReplyTo)
+		res, err = s.store.Send(from, fromName, body.To, body.CC, body.Subject, body.Body, body.InReplyTo)
 	}
 	if err != nil {
 		// Sentinel first (user-facing), then generic+log (weber ③).
@@ -343,6 +310,18 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.badRequestErr(w, r, err)
+		return
+	}
+	if len(res.Rejected) > 0 && len(res.Rejected) == len(body.To)+len(body.CC) {
+		rj := make([]map[string]string, 0, len(res.Rejected))
+		for _, a := range res.Rejected {
+			rj = append(rj, map[string]string{"address": a, "code": "whitelist_rejected"})
+		}
+		writeJSON(w, http.StatusForbidden, map[string]any{
+			"code":     "whitelist_rejected",
+			"rejected": rj,
+			"error":    "recipient only accepts whitelist mail; not delivered",
+		})
 		return
 	}
 	// Local delivery succeeded: fan out notification pushes (v0.6.30).
@@ -362,8 +341,12 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		"message_id": res.MessageID,
 		"status":     "sent",
 	}
-	if len(rejected) > 0 {
-		resp["rejected"] = rejected
+	if len(res.Rejected) > 0 {
+		rj := make([]map[string]string, 0, len(res.Rejected))
+		for _, a := range res.Rejected {
+			rj = append(rj, map[string]string{"address": a, "code": "whitelist_rejected"})
+		}
+		resp["rejected"] = rj
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

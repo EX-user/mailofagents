@@ -76,6 +76,12 @@ type MessageSummary struct {
 // SendResult is returned by Send.
 type SendResult struct {
 	MessageID string `json:"message_id"`
+	// Rejected lists recipients whose inbound whitelist gate declined
+	// this letter (0.3.7): nothing was stored for them and no push fired
+	// — zero recipient awareness. The sender's own Sent copy still
+	// records the letter (the anchor for the compose-side "not delivered"
+	// receipt).
+	Rejected []string `json:"rejected,omitempty"`
 }
 
 // Send composes and delivers a message from "from" to every address in "to"
@@ -106,6 +112,7 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 	}
 
 	delivered := 0
+	var rejected []string
 	err = s.db.Update(func(tx *bolt.Tx) error {
 		// Parent existence is checked in the SAME transaction as the write
 		// (contract: one Get, miss -> 400, prevents fat-fingered chains).
@@ -139,6 +146,16 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 			if err != nil {
 				continue // unknown recipient: skip
 			}
+			// Whitelist gate (0.3.7): hierarchy exemption first (either
+			// direction, spec point 6), then the list when enabled. A
+			// declined recipient gets NO inbox/unread reference and NO
+			// push — zero awareness. System-notification writes elsewhere
+			// (declare/revoke notices) do not pass through Send and are
+			// exempt by construction.
+			if acc.WhitelistEnabled && !whitelistRelatedInTx(tx, from, l) && !whitelistHasInTx(acc, from) {
+				rejected = append(rejected, l)
+				continue
+			}
 			key := indexKey(acc.UUID, msgID)
 			if err := ib.Put(key, nil); err != nil {
 				return err
@@ -164,9 +181,16 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 		return nil, fmt.Errorf("send: %w", err)
 	}
 	if delivered == 0 {
+		// All recipients declined by their whitelist gate (0.3.7): the
+		// send itself succeeded mechanically (body stored, sender Sent
+		// copy anchored); the whitelist rejection is surfaced via
+		// Rejected[], not as a store error — the handler maps it to 403.
+		if len(rejected) > 0 {
+			return &SendResult{MessageID: msgID, Rejected: rejected}, nil
+		}
 		return nil, fmt.Errorf("no valid recipients among %v (cc: %v)", to, cc)
 	}
-	return &SendResult{MessageID: msgID}, nil
+	return &SendResult{MessageID: msgID, Rejected: rejected}, nil
 }
 
 // ReadAllAccountsMessages returns the newest messages across EVERY

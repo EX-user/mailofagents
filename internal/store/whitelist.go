@@ -157,3 +157,29 @@ func mutateAccountBytes(tx *bolt.Tx, address string, fn func(acc *Account) error
 	}
 	return b.Put([]byte(address), newVal)
 }
+
+// whitelistRelatedInTx is the in-transaction form of WhitelistRelated for
+// the delivery gate: a declare edge in either direction admits.
+func whitelistRelatedInTx(tx *bolt.Tx, a, b string) bool {
+	a, b = strings.ToLower(a), strings.ToLower(b)
+	c := tx.Bucket(bSubs).Cursor()
+	for k, _ := c.First(); k != nil; k, _ = c.Next() {
+		sup, sub := splitSubKey(k)
+		if (sup == a && sub == b) || (sup == b && sub == a) {
+			return true
+		}
+	}
+	return false
+}
+
+// whitelistHasInTx answers "is sender on this account's list?" against an
+// already-loaded record (case-normalized by the store mutators).
+func whitelistHasInTx(acc *Account, sender string) bool {
+	sender = strings.ToLower(sender)
+	for _, a := range acc.Whitelist {
+		if a == sender {
+			return true
+		}
+	}
+	return false
+}
