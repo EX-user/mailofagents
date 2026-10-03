@@ -1136,6 +1136,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       composeInReplyTo = null;
       renderInReplyTo();
       status.textContent = t("compose.sent", { id: res.message_id });
+      // 0.3.7 whitelist (spec ③, partial reject): a 200 can still carry
+      // rejected[] - the letter reached the others, these addressees did
+      // NOT (their gate silently dropped it). Name them at the sender's
+      // point of gaze; the letter itself stays sent.
+      if (Array.isArray(res.rejected) && res.rejected.length) {
+        const names = res.rejected.map(function (r) { return (r && r.address) || "?"; }).join(", ");
+        const note = t("wl.partial", { n: names });
+        status.textContent = note;
+        toast(note, "error");
+      }
       toast(t("toast.sent"), "success");
       // Accounts page listens: refreshes activity so the recipient tops the list.
       document.dispatchEvent(new CustomEvent("compose:sent", { detail: { to: $("#compose-to").value, subject: ($("#compose-subject").value || "").trim() } }));

@@ -650,14 +650,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // ---- 0.3.7 whitelist (boss spec): per-account sender whitelist with
   // hierarchy bypass handled server-side; the panel manages the toggle and
   // the address list. Spec contract:
-  //   GET/PUT /api/account/whitelist [+ ?address= for a subordinate, same
-  //   convention as limits] - PUT body { whitelist_enabled, whitelist: [] }
-  //   POST/DELETE /api/account/whitelist/<address> [+ ?address= owner]
+  //   GET/PUT /api/account/whitelist [+ ?account= for a subordinate] -
+  //   PUT body { enabled, addresses } (Devi's contract 4e11886); chips edit
+  //   through full-list PUT so the same panel serves self and superior.
+  //   POST/DELETE /api/account/whitelist/<address> stay the self channel.
   // Persistence is immediate per action; the toggle commits via PUT.
   var wlCache = {};
   function wlQuery(addr) {
     const sess = getSession();
-    return addr && sess && String(addr).toLowerCase() === String(sess.address).toLowerCase() ? "" : "?address=" + encodeURIComponent(addr);
+    return addr && sess && String(addr).toLowerCase() === String(sess.address).toLowerCase() ? "" : "?account=" + encodeURIComponent(addr);
   }
   async function openWhitelistModal(addr) {
     const modal = $("#wl-modal");
@@ -720,7 +721,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const prev = cur.whitelist_enabled;
     cur.whitelist_enabled = enabled;
     try {
-      await api("/api/account/whitelist" + wlQuery(addr), { method: "PUT", body: JSON.stringify({ whitelist_enabled: enabled, whitelist: cur.whitelist }), keepSession: true });
+      await api("/api/account/whitelist" + wlQuery(addr), { method: "PUT", body: JSON.stringify({ enabled: enabled, addresses: cur.whitelist }), keepSession: true });
       wlFlash(t("wl.saved"));
     } catch (e) {
       cur.whitelist_enabled = prev; // rollback the switch on failure
