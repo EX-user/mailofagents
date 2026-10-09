@@ -72,10 +72,10 @@ func TestWakeInFlightResumeFlag(t *testing.T) {
 }
 
 func TestMouseTriStateDefault(t *testing.T) {
-	// boss 2026-10-09: absent `mouse` = OFF (final ruling, reversing the
-	// 10-03 flip before it ever shipped); explicit true turns it on.
-	if MouseOn(nil) {
-		t.Fatal("absent mouse must default OFF")
+	// boss 2026-10-09 17:19 final: absent `mouse` = ON (the morning
+	// "false" was a misspeak, reversed same day before anything shipped).
+	if !MouseOn(nil) {
+		t.Fatal("absent mouse must default ON")
 	}
 	f := false
 	if MouseOn(&f) {
@@ -87,12 +87,8 @@ func TestMouseTriStateDefault(t *testing.T) {
 	}
 }
 
-func TestMouseAbsentMeansOff(t *testing.T) {
-	// boss 2026-10-09 final: absent = OFF (the 10-03 flip reversed before
-	// it shipped); true opts in.
-	if MouseOn(nil) {
-		t.Fatal("absent mouse must default OFF")
-	}
+func TestMouseExplicitControls(t *testing.T) {
+	// explicit values always win, whatever the default ruling is.
 	tr := true
 	if !MouseOn(&tr) {
 		t.Fatal("explicit true must enable")

@@ -76,7 +76,7 @@ type Board struct {
 	resized      bool                // SIGWINCH seen: next drawFrame does a full screen clear + repaint
 	fullGen      int                 // bumped after every full repaint — only then is the cursor parked exactly one line below the board top (differential ticks leave it wherever the last changed line was)
 	winch        chan os.Signal      // resize notifications (nil where unavailable)
-	mouse        bool                // mouse controls on (config `mouse`, file-level; boss sign-off 2026-09-22; default false per boss 2026-10-09)
+	mouse        bool                // mouse controls on (config `mouse`, file-level; boss sign-off 2026-09-22; default true per boss 2026-10-09 final)
 	topRow       int                 // absolute screen row of the board's first line (0 = unknown)
 	hitRows      map[string]rowHit   // per-account button hit boxes (mouse frames)
 	hoverTag     atomic.Value        // account row currently under the pointer (string, "" = none)
@@ -96,10 +96,10 @@ var board = &Board{
 	cprCh:      make(chan int, 4),
 }
 
-// MouseOn resolves the tri-state `mouse` config: absent = OFF (boss
-// 2026-10-09, reversing the 10-03 flip — SGR tracking costs Shift-drag
-// text selection in most terminals; opt in with "mouse": true).
-func MouseOn(m *bool) bool { return m != nil && *m }
+// MouseOn resolves the tri-state `mouse` config: absent = ON (boss
+// 2026-10-09 17:19 final — the buttons ship enabled; "mouse": false
+// opts out, SGR tracking costs Shift-drag text selection).
+func MouseOn(m *bool) bool { return m == nil || *m }
 
 // SetMouse enables the TUI mouse control plane (config `mouse`, file-level).
 func SetMouse(on bool) {
