@@ -151,6 +151,12 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 			fmt.Fprintf(&b, "\n[未销信提醒] 以上未读中已有连续 %d 轮未被销掉的信：你很可能已看过但未销未读（未读信件会被反复推送）。销未读的方法：用 GET 拉取信体即自动销掉该封未读——GET %s/api/message?id=<信件id>（凭据同本提示词）。若忘了系统用法，查看所连接系统的自述端点：GET %s/api/info。\n",
 				maxRounds, strings.TrimRight(cfg.Server, "/"), strings.TrimRight(cfg.Server, "/"))
 		}
+		// wake_prompt (boss 2026-10-09): the user's standing instruction
+		// rides MAIL-triggered wakes only — after the unread listing (and
+		// after the long-unread reminder), so it reads in context.
+		if cfg.WakePrompt != "" {
+			fmt.Fprintf(&b, "\n[随信指令] %s\n", strings.TrimSpace(cfg.WakePrompt))
+		}
 	}
 	return b.String()
 }

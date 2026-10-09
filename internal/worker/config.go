@@ -33,6 +33,7 @@ type Config struct {
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`   // context-size notice threshold: one persist-memory round, then in-place compaction (adapter entry) or the CLI's built-in auto-compact; the session is never rotated. 0/absent = built-in compaction only
 	ContextWindow       int64             `json:"context_window"`          // model context window in tokens (optional) — powers the status board's ctx% readout; falls back to compact_notice_tokens as the reference, absolute count only when neither is set
 	Model               string            `json:"model"`                   // explicit model pin (e.g. "zhipuai-coding-plan/glm-5-turbo") — pins the wake to a model with valid quota instead of the CLI's default
+	WakePrompt          string            `json:"wake_prompt"`             // extra user text appended to MAIL-triggered wake digests (boss 2026-10-09): your standing instruction riding every mail wake
 	Env                 map[string]string `json:"env"`                     // non-credential auxiliary env for the CLI process
 	FullPerm            *bool             `json:"full_perm"`               // grant full tool permissions (default true: bypass flags for claude/codex; opencode needs its opencode.json permission block)
 	Mouse               *bool             `json:"mouse,omitempty"`         // TUI mouse controls (file-level; the board is process-global): absent = ON (boss 2026-10-03, reversing the 09-22 off — the three board buttons ship enabled); explicit false turns SGR tracking off (it costs Shift-drag text selection in most terminals)
@@ -162,6 +163,9 @@ func LoadConfigs(path, select_ string) ([]*Config, error) {
 			}
 			if ag.Model != "" {
 				c.Model = ag.Model
+			}
+			if ag.WakePrompt != "" {
+				c.WakePrompt = ag.WakePrompt
 			}
 			c.Env = mergeEnv(f.Env, ag.Env)
 			if ag.StateFile != "" {
@@ -322,6 +326,7 @@ type fileConfig struct {
 	CompactNoticeTokens int64             `json:"compact_notice_tokens"`
 	ContextWindow       int64             `json:"context_window"`
 	Model               string            `json:"model"`
+	WakePrompt          string            `json:"wake_prompt"`
 	Env                 map[string]string `json:"env"`
 	FullPerm            *bool             `json:"full_perm"`
 	Mouse               *bool             `json:"mouse,omitempty"` // TUI mouse controls (file-level; board is process-global): absent = ON (boss 2026-10-03); explicit false turns it off
@@ -344,6 +349,7 @@ type agentConfig struct {
 	CLI                 string            `json:"cli"`
 	Workdir             string            `json:"workdir"`
 	Model               string            `json:"model"`
+	WakePrompt          string            `json:"wake_prompt"`
 	Env                 map[string]string `json:"env"`
 	StateFile           string            `json:"state_file"`
 	Server              string            `json:"server"`
@@ -371,6 +377,7 @@ func (f *fileConfig) globalRuntime(path string) *Config {
 		CompactNoticeTokens: f.CompactNoticeTokens,
 		ContextWindow:       f.ContextWindow,
 		Model:               f.Model,
+		WakePrompt:          f.WakePrompt,
 		Env:                 mergeEnv(f.Env, nil),
 		FullPerm:            f.FullPerm,
 		Mouse:               f.Mouse,
