@@ -3455,3 +3455,14 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 #tab-compose.im #im-bar #im-cc-line > span:first-child { flex: 0 0 auto; font-weight: 600; }
 #tab-compose.im #im-bar #im-cc-line .cc-chip { font-size: 11px; }
 
+
+
+/* ---- 0.3.7 whitelist panel ---- */
+.wl-toggle-row{display:flex;align-items:center;gap:8px;font-size:13px;}
+.wl-toggle-row input{width:16px;height:16px;accent-color:var(--accent);}
+.wl-add-row{display:flex;gap:6px;margin-top:4px;}
+.wl-add-row input{flex:1;min-width:0;}
+.wl-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.wl-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 6px 3px 10px;border:1px solid var(--line,#d7dce3);border-radius:999px;font-size:12px;background:var(--panel,#fff);}
+.wl-chip-x{border:none;background:transparent;color:#888;cursor:pointer;font-size:14px;line-height:1;padding:0 4px;}
+.wl-chip-x:hover{color:#dc2626;}

@@ -1136,6 +1136,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       composeInReplyTo = null;
       renderInReplyTo();
       status.textContent = t("compose.sent", { id: res.message_id });
+      // 0.3.7 whitelist (spec ③, partial reject): a 200 can still carry
+      // rejected[] - the letter reached the others, these addressees did
+      // NOT (their gate silently dropped it). Name them at the sender's
+      // point of gaze; the letter itself stays sent.
+      if (Array.isArray(res.rejected) && res.rejected.length) {
+        const names = res.rejected.map(function (r) { return (r && r.address) || "?"; }).join(", ");
+        const note = t("wl.partial", { n: names });
+        status.textContent = note;
+        toast(note, "error");
+      }
       toast(t("toast.sent"), "success");
       // Accounts page listens: refreshes activity so the recipient tops the list.
       document.dispatchEvent(new CustomEvent("compose:sent", { detail: { to: $("#compose-to").value, subject: ($("#compose-subject").value || "").trim() } }));
@@ -1170,12 +1180,21 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         });
       })();
     } catch (e) {
+      const msg = String((e && e.message) || "");
+      // 0.3.7 whitelist (boss spec ③): a 403 code=whitelist_rejected gets a
+      // dedicated, unambiguous notice - the sender must understand the
+      // letter was NOT delivered (UI receipt only; the server sends no
+      // system mail about it).
+      if (/whitelist_rejected/i.test(msg)) {
+        status.textContent = t("wl.rejected");
+        toast(t("wl.rejected"), "error");
+        return;
+      }
       status.textContent = t("common.error", { msg: e.message });
       // v0.2.8.1 (1021): the server's plain-text reason (e.g. "too many
       // recipients: N given, limit is M") belongs in the toast — the
       // user's point of gaze — instead of a generic send-failed line.
-      const msg = String((e && e.message) || "");
-      if (/too many (recipients|cc)/i.test(msg) || (/limit/i.test(msg) && /\d/.test(msg))) {
+      if (/too many (recipients|cc)/i.test(msg) || (/limit/i.test(msg) && /\d/.test(msg))) {
         toast(msg, "error");
       } else {
         toast(t("toast.sendFailed"), "error");

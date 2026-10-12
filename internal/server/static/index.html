@@ -954,6 +954,25 @@
       </div>
     </div>
   </div>
+  <div id="wl-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wl-modal-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="wl-modal-title"></h2>
+        <button id="btn-wl-close" class="modal-x" title="Close" aria-label="Close" data-i18n-aria="modal.close">Ã</button>
+      </div>
+      <p class="muted" data-i18n="wl.hint"></p>
+      <div class="compose-form">
+        <label class="wl-toggle-row"><input type="checkbox" id="wl-enabled" />
+          <span data-i18n="wl.toggle"></span></label>
+        <label><span data-i18n="wl.addr"></span>
+          <div class="wl-add-row"><input type="text" id="wl-input" autocomplete="off" data-i18n-ph="wl.addr" />
+          <button type="button" class="row-action" id="btn-wl-add" data-i18n="wl.add"></button></div>
+        </label>
+        <div id="wl-chips" class="wl-chips"></div>
+        <div class="muted" id="wl-status" style="font-size:12px;"></div>
+      </div>
+    </div>
+  </div>
   <!-- 系统更新弹窗（0.3.2：触发=进系统总览页；文案经推送数据面下发，前端一字不改） -->
   <div id="updates-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="updates-modal-title">
     <div class="modal-card">
