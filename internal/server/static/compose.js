@@ -1111,6 +1111,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // (server dedups too; this keeps the wire clean).
     const cc = composeCcChips.filter(function (a) { return to.indexOf(a) === -1; });
 
+    // 0930 (boss): a fresh send starts with a clean slate — the previous
+    // whitelist alarm must not linger once a new attempt is under way.
+    status.classList.remove("wl-banner");
     status.textContent = t("compose.sending");
     try {
       const sender = getSession();
@@ -1143,10 +1146,20 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       if (Array.isArray(res.rejected) && res.rejected.length) {
         const names = res.rejected.map(function (r) { return (r && r.address) || "?"; }).join(", ");
         const note = t("wl.partial", { n: names });
+        // 0930 (boss): this receipt must SURVIVE. The single toast element
+        // means a success toast fired right after would overwrite it (the
+        // mobile pane shows toasts, the muted status line scrolled out of
+        // view - senders literally saw "sent" and nothing else), so no
+        // success toast rides a partial reject; the note itself already
+        // carries the "delivered, except" framing. The inline status line
+        // turns into an alarmed banner and scrolls into view.
+        status.classList.add("wl-banner");
         status.textContent = note;
         toast(note, "error");
+        if (status.scrollIntoView) status.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } else {
+        toast(t("toast.sent"), "success");
       }
-      toast(t("toast.sent"), "success");
       // Accounts page listens: refreshes activity so the recipient tops the list.
       document.dispatchEvent(new CustomEvent("compose:sent", { detail: { to: $("#compose-to").value, subject: ($("#compose-subject").value || "").trim() } }));
 
@@ -1186,8 +1199,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // letter was NOT delivered (UI receipt only; the server sends no
       // system mail about it).
       if (/whitelist_rejected/i.test(msg)) {
+        // 0930 (boss): same unmissable treatment as the partial path —
+        // alarmed banner in the compose pane (PC and mobile alike), the
+        // toast alone is too easy to miss on a narrow screen.
+        status.classList.add("wl-banner");
         status.textContent = t("wl.rejected");
         toast(t("wl.rejected"), "error");
+        if (status.scrollIntoView) status.scrollIntoView({ block: "nearest", behavior: "smooth" });
         return;
       }
       status.textContent = t("common.error", { msg: e.message });

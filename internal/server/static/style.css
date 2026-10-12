@@ -3469,3 +3469,39 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 .subreg-batch-row{margin:6px 0;font-size:13px;}
 .wl-chip-x{border:none;background:transparent;color:#888;cursor:pointer;font-size:14px;line-height:1;padding:0 4px;}
 .wl-chip-x:hover{color:#dc2626;}
+
+/* 0.3.7 (boss 0930): whitelist rejection receipts must be unmissable on PC
+   and mobile alike - the muted status line becomes a full-width alarmed
+   banner for whitelist outcomes. */
+#compose-status.wl-banner {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--error);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ...mobile IM mode: the form (and its action .row) folds away into the
+   one-line bar - the fold hides the PARENT row, so the banner revives
+   the row itself as an overlay strip above the bar, buttons hidden;
+   im-full keeps the inline placement. */
+#tab-compose.im:not(.im-full) .compose-form > .row:has(#compose-status.wl-banner) {
+  display: block;
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 76px;
+  z-index: 6;
+  margin-bottom: 0;
+}
+#tab-compose.im:not(.im-full) .compose-form > .row:has(#compose-status.wl-banner) button,
+#tab-compose.im:not(.im-full) .compose-form > .row:has(#compose-status.wl-banner) label {
+  display: none;
+}
