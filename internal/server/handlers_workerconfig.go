@@ -20,37 +20,38 @@ import (
 // workerConfigFor builds a ready-to-run worker.json map for one minted
 // subordinate. serverURL is derived from the request Host when present
 // (fallback https://<domain>).
-func (s *Server) workerConfigFor(r *http.Request, address, password, owner string) map[string]any {
+func (s *Server) workerConfigFor(r *http.Request, address, password, cli string) map[string]any {
 	serverURL := "https://" + s.domain()
 	if host := r.Host; host != "" {
-		scheme := "https"
-		if r.TLS == nil && !strings.HasPrefix(host, "localhost") && !strings.HasPrefix(host, "127.") {
-			// behind a plain-HTTP test rig: keep https default; the field is
-			// user-editable either way
-			_ = scheme
-		}
-		if host != "" {
-			serverURL = scheme + "://" + host
-		}
+		serverURL = "https://" + host
 	}
+	local := address
+	if i := strings.Index(local, "@"); i > 0 {
+		local = local[:i]
+	}
+	if cli != "pi" {
+		cli = "opencode"
+	}
+	// Efira schema ruling: MINIMAL file — required + per-sub fields only.
+	// prompt/mouse/wake_prompt/state_file/emergency deliberately omitted
+	// (omitted keys ride worker defaults and never rust across upgrades).
 	return map[string]any{
-		"server":    serverURL,
-		"address":   address,
-		"password":  password,
-		"cli":       "pi",
-		"prompt":    "", // empty = worker applies the v4 default template (placeholders substituted at wake)
-		"emergency": map[string]any{"addresses": []string{owner}},
-		"full_perm": true,
-		"_note":     "save as worker.json next to the worker binary; credentials are one-time — store this file now",
+		"server":            serverURL,
+		"address":           address,
+		"password":          password,
+		"cli":               cli,
+		"workdir":           "~/workers/" + local,
+		"poll_interval_sec": 30,
+		"timeout_sec":       480,
 	}
 }
 
 // appendWorkerConfig attaches the ready-to-run worker config to one
 // registration result entry (in-place on the response map).
-func (s *Server) appendWorkerConfig(r *http.Request, entry map[string]any, owner string) {
+func (s *Server) appendWorkerConfig(r *http.Request, entry map[string]any, cli string) {
 	if addr, ok := entry["address"].(string); ok && addr != "" {
 		pw, _ := entry["password"].(string)
-		entry["worker_config"] = s.workerConfigFor(r, addr, pw, owner)
+		entry["worker_config"] = s.workerConfigFor(r, addr, pw, cli)
 	}
 }
 
