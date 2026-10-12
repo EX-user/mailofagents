@@ -198,3 +198,58 @@ func TestWhitelistPartialReject(t *testing.T) {
 		t.Fatalf("open inbox must hold the letter, got %d", n)
 	}
 }
+
+// TestRegisterSubordinateBatch pins the 0.3.7 boss upgrade: separator
+// names provision several named subordinates in ONE action, each
+// auto-declared under the caller; a taken name fails the whole action
+// with 409 and nothing is created; the single-name shape is unchanged.
+func TestRegisterSubordinateBatch(t *testing.T) {
+	ts, st := newWhitelistTestServer(t)
+	if _, err := st.CreateAccountWithPassword("owner", "test.example", false, "ownerpassword1"); err != nil {
+		t.Fatal(err)
+	}
+	// batch: three names via mixed separators
+	resp, body := wlReq(t, "POST", ts.URL+"/api/register-subordinate", "owner@test.example", "ownerpassword1",
+		`{"username":"alpha, beta;gamma、delta"}`)
+	if resp.StatusCode != 201 || !strings.Contains(body, `"created"`) {
+		t.Fatalf("batch = %d %s", resp.StatusCode, body)
+	}
+	var out struct {
+		Created []map[string]any `json:"created"`
+	}
+	_ = json.Unmarshal([]byte(body), &out)
+	if len(out.Created) != 4 {
+		t.Fatalf("want 4 created, got %d: %s", len(out.Created), body)
+	}
+	for _, c := range out.Created {
+		addr, _ := c["address"].(string)
+		if addr == "" || c["declared"] != true {
+			t.Fatalf("bad entry: %v", c)
+		}
+		edges := st.SubordinatesOf("owner@test.example")
+		found := false
+		for _, e := range edges {
+			if strings.EqualFold(e.Address, addr) {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s not declared under owner", addr)
+		}
+	}
+	// taken name pre-check: whole action 409, nothing created
+	resp, body = wlReq(t, "POST", ts.URL+"/api/register-subordinate", "owner@test.example", "ownerpassword1",
+		`{"username":"fresh, alpha"}`)
+	if resp.StatusCode != 409 || !strings.Contains(body, "alpha") {
+		t.Fatalf("conflict batch = %d %s, want 409 naming alpha", resp.StatusCode, body)
+	}
+	if got := st.SubordinatesOf("owner@test.example"); len(got) != 4 {
+		t.Fatalf("conflict must create nothing, subs=%d", len(got))
+	}
+	// single-name shape unchanged (v0.6.4)
+	resp, body = wlReq(t, "POST", ts.URL+"/api/register-subordinate", "owner@test.example", "ownerpassword1",
+		`{"username":"solo"}`)
+	if resp.StatusCode != 201 || !strings.Contains(body, `"declared":true`) || strings.Contains(body, "created") {
+		t.Fatalf("single = %d %s", resp.StatusCode, body)
+	}
+}
