@@ -3540,42 +3540,18 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
   background: rgba(234, 179, 8, 0.10);
   box-shadow: inset 3px 0 0 rgba(234, 179, 8, 0.55);
 }
-/* 0930 (boss): partial yellow rides the SAME recipe as the blue capsule
-   - 14% tint composited over var(--panel) - so the solidness matches. */
-.thread-item.sent-partial .thread-card,
-#compose-thread .thread-item.sent-partial .thread-card,
+
+
+/* 0930 (boss, recalibrated): the partial letter tints the card each
+   surface ALREADY renders - no anatomy transplant. PC/mobile-full paint
+   the flat card itself (the visible bubble is the .thread-item), IM
+   paints the capsule child; same 14%-yellow-over-panel recipe as the
+   blue out tint. End of file so it wins the cascade. */
+.thread-item.sent-partial {
+  background: linear-gradient(color-mix(in srgb, #eab308 14%, transparent),
+              color-mix(in srgb, #eab308 14%, transparent)), var(--panel);
+}
 #tab-compose.im .thread-item.sent-partial .thread-card {
   background: linear-gradient(color-mix(in srgb, #eab308 14%, transparent),
               color-mix(in srgb, #eab308 14%, transparent)), var(--panel);
 }
-
-/* 0930 (boss): the conversation reads as bubbles on ALL three surfaces -
-   PC 往来邮件 and the mobile full compose page share the IM capsule
-   anatomy (avatar column + rounded card + quarter-round tail); the
-   mobile .im block keeps its tuned phone values. */
-#compose-thread .thread-item {
-  display: flex; gap: 8px; align-items: flex-start;
-  background: none; border: none; border-left: none; padding: 0; border-radius: 0;
-}
-#compose-thread .thread-item.thread-out { flex-direction: row-reverse; }
-#compose-thread .thread-item .thread-card {
-  flex: 1 1 auto; min-width: 0; padding: 8px 12px; border-radius: 10px;
-  background: var(--panel); position: relative;
-}
-#compose-thread .thread-item.thread-out .thread-card {
-  background: linear-gradient(color-mix(in srgb, var(--accent) 14%, transparent),
-              color-mix(in srgb, var(--accent) 14%, transparent)), var(--panel);
-}
-#compose-thread .thread-item .thread-card::after {
-  content: ""; position: absolute;
-  top: min(46px, calc(100% - 19px));
-  width: 13px; height: 13px; background: inherit;
-}
-#compose-thread .thread-item.thread-in .thread-card::after { left: -8px; border-radius: 0 0 0 100%; }
-#compose-thread .thread-item.thread-out .thread-card::after { right: -8px; border-radius: 0 0 100% 0; }
-#compose-thread .thread-av {
-  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 13px;
-  overflow: hidden; background: var(--bg);
-  font-size: 16px; line-height: 40px; text-align: center; color: var(--muted);
-}
-#compose-thread .thread-av img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 11px; }
