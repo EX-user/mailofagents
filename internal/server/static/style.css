@@ -3474,7 +3474,7 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
    and mobile alike - the muted status line becomes a full-width alarmed
    banner for whitelist outcomes. */
 /* 0930 (boss): the red send-failure notice dismisses itself -
-   armed by compose.js statusAutoClear after a generous 10s. */
+   armed by compose.js statusAutoClear after 5s (boss 1013). */
 #compose-status {
   transition: opacity 0.5s ease;
 }

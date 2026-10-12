@@ -1174,9 +1174,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         status.textContent = note;
         toast(note, "error");
         if (status.scrollIntoView) status.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        // 0930 (boss): even this receipt dismisses itself after a generous
-        // 10s — the durable record lives in the sent list's 送达异常 mark.
-        statusAutoClear(status, 10000);
+        // 0930 (boss): even this receipt dismisses itself after 5s
+        // (boss 1013) — the durable record lives in the sent list's 送达异常 mark.
+        statusAutoClear(status, 5000);
       } else {
         toast(t("toast.sent"), "success");
       }
@@ -1226,7 +1226,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         status.textContent = t("wl.rejected");
         toast(t("wl.rejected"), "error");
         if (status.scrollIntoView) status.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        statusAutoClear(status, 10000);
+        statusAutoClear(status, 5000);
         // rc29 field report (boss): a fully-rejected send still lands a sent
         // record server-side (sent index + thread carry it, sent_status
         // partial) - but this branch returned before the thread reload, so
@@ -1237,7 +1237,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       }
       status.textContent = t("common.error", { msg: e.message });
       // 0930 (boss): the failure line dismisses itself too.
-      statusAutoClear(status, 10000);
+      statusAutoClear(status, 5000);
       // v0.2.8.1 (1021): the server's plain-text reason (e.g. "too many
       // recipients: N given, limit is M") belongs in the toast — the
       // user's point of gaze — instead of a generic send-failed line.
