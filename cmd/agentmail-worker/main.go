@@ -44,6 +44,13 @@ func main() {
 	tuiShot := flag.Bool("tui-screenshot", false, "print synthetic TUI frames (four states + truncation samples, 100 cols) to stdout and exit — bench acceptance artifacts, no config needed")
 	tuiWidth := flag.Int("tui-width", 100, "column width for -tui-screenshot frames")
 	flag.Parse()
+	// boss 2026-10-03 #1: `worker myconf.json` — a single bare argument
+	// with no flag anywhere on the line IS the config path. Strict shape
+	// (exactly one argument, not flag-like) keeps the classic flag
+	// grammar authoritative for every other invocation.
+	if len(os.Args) == 2 && os.Args[1] != "" && !strings.HasPrefix(os.Args[1], "-") {
+		*cfgPath = os.Args[1]
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("[worker] ")
@@ -131,7 +138,7 @@ func main() {
 	// first config. Without this line the config field never reached the
 	// board and the buttons stayed dark no matter what (boss 0924 report).
 	if len(cfgs) > 0 {
-		worker.SetMouse(cfgs[0].Mouse)
+		worker.SetMouse(worker.MouseOn(cfgs[0].Mouse))
 	}
 	go worker.RenderLoop(ctx)
 	var wg sync.WaitGroup
