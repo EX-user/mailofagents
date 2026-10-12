@@ -1468,7 +1468,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
             const code = document.createElement("code");
             code.textContent = c.address + "  " + c.password + "  ";
             row.appendChild(code);
-            if (c.worker_config) row.appendChild(dlWorkerConfigBtn(c));
+            if (c.worker_config) row.appendChild(wcfgOpenBtn(c));
             holder.appendChild(row);
           });
           // boss 12:39: the batch onboarding path is the per-account config
@@ -1554,18 +1554,54 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       const m = $("#subreg-modal");
       if (m && !m.classList.contains("hidden")) $("#btn-subreg-close").click();
     });
-    function dlWorkerConfigBtn(c) {
-      const dl = document.createElement("button");
-      dl.type = "button";
-      dl.className = "row-action";
-      dl.textContent = t("subs.dlConfig");
-      dl.addEventListener("click", function () { dlWorkerConfig(c); });
-      return dl;
+    // worker-config wizard (0.3.7 boss: 生成引导页).
+    const wcfgModal = $("#wcfg-modal");
+    if (wcfgModal) {
+      $("#btn-wcfg-close").addEventListener("click", wcfgClose);
+      $("#btn-wcfg-cancel").addEventListener("click", wcfgClose);
+      wcfgModal.addEventListener("click", function (e) { if (e.target === this) wcfgClose(); });
+      $("#btn-wcfg-gen").addEventListener("click", wcfgGenerate);
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        if (wcfgTarget && !wcfgModal.classList.contains("hidden")) wcfgClose();
+      });
     }
-    function dlWorkerConfig(c) {
+    // 0.3.7 (boss): "下载"升级为"生成"引导页 — confirm CLI + workdir before
+    // the file lands; server/address ride the mint and stay read-only.
+    var wcfgTarget = null;
+    function wcfgOpenBtn(c) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "row-action";
+      b.textContent = t("subs.dlConfig");
+      b.addEventListener("click", function () { wcfgOpen(c); });
+      return b;
+    }
+    function wcfgOpen(c) {
       if (!c || !c.worker_config) return;
-      var local = (c.address || "worker").split("@")[0];
-      var blob = new Blob([JSON.stringify(c.worker_config, null, 2)], { type: "application/json" });
+      wcfgTarget = c;
+      var base = c.worker_config;
+      $("#wcfg-server").textContent = base.server || "";
+      $("#wcfg-address").textContent = c.address || "";
+      $("#wcfg-workdir").value = base.workdir || "~/workers/" + (c.address || "").split("@")[0];
+      var wantPi = base.cli === "pi";
+      $$("#wcfg-modal input[name='wcfg-cli']").forEach(function (r) { r.checked = (r.value === "pi") === wantPi; });
+      $("#wcfg-status").textContent = "";
+      $("#wcfg-modal").classList.remove("hidden");
+    }
+    function wcfgClose() {
+      $("#wcfg-modal").classList.add("hidden");
+      wcfgTarget = null;
+    }
+    function wcfgGenerate() {
+      if (!wcfgTarget) { wcfgClose(); return; }
+      var base = wcfgTarget.worker_config;
+      var cli = "opencode";
+      $$("#wcfg-modal input[name='wcfg-cli']").forEach(function (r) { if (r.checked) cli = r.value; });
+      var workdir = ($("#wcfg-workdir").value || "").trim() || base.workdir;
+      var cfg = Object.assign({}, base, { cli: cli, workdir: workdir });
+      var local = (wcfgTarget.address || "worker").split("@")[0];
+      var blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
       var url = URL.createObjectURL(blob);
       var link = document.createElement("a");
       link.href = url;
@@ -1574,9 +1610,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       link.click();
       link.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+      $("#wcfg-status").textContent = t("wcfg.done", { file: local + ".worker.json" });
     }
     $("#btn-subreg-dl").addEventListener("click", function () {
-      dlWorkerConfig(lastCreated[0]);
+      wcfgOpen(lastCreated[0]);
     });
     $("#btn-subreg-copy").addEventListener("click", function () {
       var text;
