@@ -977,18 +977,17 @@
     <div class="modal-card">
       <div class="modal-head">
         <h2 id="wcfg-title" data-i18n="wcfg.title">Generate worker config</h2>
-        <button id="btn-wcfg-close" class="modal-x" title="Close" aria-label="Close" data-i18n-aria="modal.close">Ã</button>
+        <button id="btn-wcfg-close" class="modal-x" title="Close" aria-label="Close" data-i18n-aria="modal.close">×</button>
       </div>
       <p class="muted" data-i18n="wcfg.note"></p>
       <div class="compose-form">
         <p style="font-size:12px;margin:4px 0;"><b>server:</b> <code id="wcfg-server"></code></p>
         <p style="font-size:12px;margin:4px 0;"><b>address:</b> <code id="wcfg-address"></code></p>
-        <label><span data-i18n="wcfg.cli"></span>
-          <div>
-            <label style="margin-right:14px;"><input type="radio" name="wcfg-cli" value="opencode" checked /> opencode</label>
-            <label><input type="radio" name="wcfg-cli" value="pi" /> pi</label>
-          </div>
-        </label>
+        <div class="wcfg-cli-row">
+          <span data-i18n="wcfg.cli"></span>
+          <label style="margin-right:14px;"><input type="radio" name="wcfg-cli" value="opencode" checked /> opencode</label>
+          <label><input type="radio" name="wcfg-cli" value="pi" /> pi</label>
+        </div>
         <label><span data-i18n="wcfg.workdir"></span>
           <input type="text" id="wcfg-workdir" autocomplete="off" />
         </label>
@@ -1021,8 +1020,10 @@
       </div>
       <p class="muted" data-i18n="subs.regOnce">Save these credentials now — the password is shown only once. The account is already declared as your subordinate.</p>
       <div class="compose-form">
-        <p><b data-i18n="reg.address">Address:</b> <code id="subreg-address"></code></p>
-        <p><b data-i18n="reg.password">Password:</b> <code id="subreg-password"></code></p>
+        <div id="subreg-single-lines">
+          <p><b data-i18n="reg.address">Address:</b> <code id="subreg-address"></code></p>
+          <p><b data-i18n="reg.password">Password:</b> <code id="subreg-password"></code></p>
+        </div>
         <div id="subreg-batch" hidden></div>
       </div>
       <div class="row">

@@ -1456,15 +1456,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         var first = created[0];
         if (created.length > 1) {
           // Batch: list every minted account, hide the single-account lines.
-          $("#subreg-address").textContent = "";
-          $("#subreg-password").textContent = "";
+          $("#subreg-single-lines").hidden = true;
+          $("#btn-subreg-dl").hidden = true;
           var holder = $("#subreg-batch");
           holder.hidden = false;
           holder.textContent = "";
           created.forEach(function (c) {
             const row = document.createElement("div");
-            row.className = "wl-chip";
-            row.style.marginBottom = "4px";
+            row.className = "subreg-batch-row";
             const code = document.createElement("code");
             code.textContent = c.address + "  " + c.password + "  ";
             row.appendChild(code);
@@ -1476,11 +1475,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           $("#btn-subreg-copy-prompt").hidden = true;
         } else {
           $("#subreg-batch").hidden = true;
+          $("#subreg-single-lines").hidden = false;
           $("#subreg-address").textContent = first.address || "";
           $("#subreg-password").textContent = first.password || "";
           $("#btn-subreg-copy-prompt").hidden = false;
         }
-        $("#btn-subreg-dl").hidden = !first.worker_config;
+        $("#btn-subreg-dl").hidden = created.length > 1 || !first.worker_config;
         $("#subreg-copy-status").textContent = "";
         // Prompt copy lives in app.js (buildAgentPrompt) — hand the fresh
         // credentials over before the modal is shown (superior 09-02).
