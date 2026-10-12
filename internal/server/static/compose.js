@@ -1630,27 +1630,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   var threadLoadSeq = 0;
 
   // 0930 (boss): the compose conversation badges letters the whitelist gate
-  // did NOT fully deliver. Since rc27, out-direction thread summaries carry
-  // sent_status natively - that is the PRIMARY signal. The sent-index cross
-  // list (rc29, boss order: restored) runs independently as the second
-  // channel and fills the badge for out entries with NO native status
-  // (historical letters / any absence); when both are present they must
-  // agree, native wins. (PC, mobile IM and the full compose page all render
-  // through threadItemHtml, so one set covers the three surfaces.)
-  var sentPartialCache = { ids: {}, at: 0 };
-  function loadSentPartialIds() {
-    if (Date.now() - sentPartialCache.at < 60000) return Promise.resolve();
-    // 0930 (boss): full sweep, not a 50-window - the thread may reference
-    // letters older than the newest 50 of the sent index.
-    return api("/api/sent?limit=500", { keepSession: true }).then(function (d) {
-      var ids = {};
-      (d.messages || []).forEach(function (m) {
-        if (m.sent_status && m.sent_status.state === "partial" && m.id) ids[m.id] = 1;
-      });
-      sentPartialCache.ids = ids;
-      sentPartialCache.at = Date.now();
-    }).catch(function () {});
-  }
+  // did NOT fully deliver. Since rc27 ReadThread hydrates sent_status on
+  // out-direction entries (same shape as /api/sent), the summaries carry it
+  // natively - loadComposeThread reads it directly below. The old sent-index
+  // cross-reference cache is retired with it.
+  // (PC, mobile IM and the full compose page all render through
+  // threadItemHtml, so one set covers the three surfaces.)
 
   async function loadComposeThread(opts) {
     const to = ($("#compose-to").value || "").trim();
@@ -1770,16 +1755,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // field (the mix the boss forbids). The pool-hit paint above is
       // synchronous (no interleave); everything after this await is not.
       if (mySeq !== threadLoadSeq) return;
-      await loadSentPartialIds();
       const all = (threadRes.messages || []).map(function (m) {
         // 1054 (boss): the slim projection used to drop `files` - the server
         // summary has carried the attachment count all along (summarize()
         // since v0.1), so data-files stamped 0 and the always-keep-toggle
         // gate never fired on attachment letters. Carry it through.
-        // rc27/rc29 (boss): native sent_status is primary; the 60s sent-index
-        // list fills the badge only where the native status is absent.
+        // rc27: sent_status rides the out-direction summary natively.
         return m.dir === "out"
-          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to, files: m.files || 0, partial: m.sent_status ? (m.sent_status.state === "partial") : (sentPartialCache.ids[m.id] === 1) }
+          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to, files: m.files || 0, partial: !!(m.sent_status && m.sent_status.state === "partial") }
           : { dir: "in", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at,
               peer: firstPeer || to, from: m.from, unread: m.unread, files: m.files || 0 };
       }).sort(function (a, b) { return b.ts - a.ts; });
