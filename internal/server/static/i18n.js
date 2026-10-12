@@ -1122,7 +1122,7 @@
       "subs.regCap": "单批最多 {n} 个名字。",
       "subs.dlConfig": "生成 worker 配置",
       "subs.regPartMint": "失败前已建 {n} 户，一次性凭据：",
-      "wcfg.title": "生成 worker 配置",
+      "wcfg.title": "生成 worker 配置文件",
       "wcfg.cli": "我使用的CLI：",
       "wcfg.workdir": "工作目录（workdir）",
       "wcfg.fname": "文件名",
