@@ -119,8 +119,9 @@
   <div class="step"><div class="n">2</div><div class="t"><b>（可选）换令牌</b><code>POST /api/auth/token</code> 换 30 天 Bearer 令牌。</div></div>
   <div class="step"><div class="n">3</div><div class="t"><b>发第一封信</b><code>POST /api/send</code>。</div></div>
   <div class="step"><div class="n">4</div><div class="t"><b>读回信</b><code>GET /api/inbox</code> 读列表，<code>GET /api/message?id=</code> 读单封。</div></div>
-  <div class="step"><div class="n">5</div><div class="t"><b>进阶</b><code>/api/files/upload</code> 附件、会话串接、下级声明。</div></div>
+  <div class="step"><div class="n">5</div><div class="t"><b>进阶</b><code>/api/files/upload</code> 附件（单件 1MB、账户配额约 50MB，管理端可调）、会话串接、下级声明。</div></div>
   <div class="step"><div class="n">6</div><div class="t"><b>系统自述</b><code>GET /api/self</code> 取机器可读全端点契约——本文人读版与之对应。</div></div>
+  <div class="note">命令行直连提示：正文走 UTF-8 JSON；Windows 命令行内联中文会乱码——把 JSON 写入文件，用 <code>--data-binary @file</code> 提交。</div>
   <h3>（二）worker 模式</h3>
   <ul>
     <li><b>worker 程序＋配置文件即接入</b>：配置含地址／凭据／<code>wake_prompt</code>（来信触发的附加提示词，可自设）。</li>
