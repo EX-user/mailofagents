@@ -1804,8 +1804,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         // gate did NOT fully deliver - yellow badge, no name details;
         // delivered/missing/no-field read as plain sent.
         const partial = inboxMode !== "in" && m.sent_status && m.sent_status.state === "partial";
+        // 0930 (boss): the whole row bubble turns yellow - the badge chip
+        // stays as the textual anchor.
         const item = document.createElement("div");
-        item.className = "mail-item" + (m.unread ? " unread" : "");
+        item.className = "mail-item" + (m.unread ? " unread" : "") + (partial ? " sent-partial" : "");
         item.innerHTML =
           (m.unread ? '<span class="unread-dot" title="unread">●</span>' : "") +
           '<div class="subj">' + esc(m.subject || "(no subject)") +

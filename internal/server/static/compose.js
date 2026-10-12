@@ -1386,8 +1386,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // 0930 (boss): a whitelist-gated sent letter carries the yellow badge in
     // the conversation too - all three surfaces (PC thread, mobile IM,
     // mobile full compose) render this one builder.
+    // 0930 (boss): a whitelist-gated sent letter turns the WHOLE capsule
+    // yellow (sent-partial on the item), with the badge chip kept as the
+    // textual anchor - all three surfaces render this one builder.
     const partialMark = (m.dir === "out" && m.partial) ? ' <span class="sent-partial-badge">' + esc(t("inbox.partialBadge")) + "</span>" : "";
-    return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0" data-prevlen="' + esc(String(Array.from(m.preview || "").length)) + '" data-files="' + esc(String(nFiles)) + '">' +
+    return '<div class="thread-item ' + cls + (m.partial ? " sent-partial" : "") + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0" data-prevlen="' + esc(String(Array.from(m.preview || "").length)) + '" data-files="' + esc(String(nFiles)) + '">' +
       avBox +
       '<div class="thread-card">' +
       // 1039 (boss, 1001): in IM conversation mode the direction arrow
