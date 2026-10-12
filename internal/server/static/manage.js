@@ -1429,21 +1429,22 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           created.push({ address: res.address || "", password: res.password || "", worker_config: res.worker_config });
         } else {
           // 0930 boss: a batch containing an un-registerable name FAILS the
-          // whole action. Pre-flight my own subordinates first (nothing mints
-          // on a hit), then mint strictly in order and stop at the first
-          // server reject — no partial-success path anymore.
-          var taken = [];
+          // whole action. One GLOBAL scan round before minting anything —
+          // Devi's /api/names/available (public like the register endpoint,
+          // same separator family, cap 20 ≥ our 10; keys may be normalized,
+          // so match case-insensitively) — then mint strictly in order and
+          // stop at the first server reject.
+          var blockedNames = [];
           try {
-            const subs = await api("/api/subs");
-            var have = {};
-            (subs.subordinates || []).forEach(function (s) {
-              var lp = String(s.address || s || "").split("@")[0].toLowerCase();
-              if (lp) have[lp] = 1;
-            });
-            taken = names.filter(function (n) { return have[n.toLowerCase()]; });
-          } catch (e) { /* advisory only — the mint loop still fail-fasts */ }
-          if (taken.length) {
-            failed.push({ name: taken.join(", "), msg: "taken" });
+            const chk = await fetch("/api/names/available?names=" + encodeURIComponent(names.join(",")));
+            const d = await chk.json();
+            var lowerAvail = {}, badLower = {};
+            Object.keys((d && d.available) || {}).forEach(function (k) { lowerAvail[k.toLowerCase()] = d.available[k]; });
+            ((d && d.invalid) || []).forEach(function (w) { badLower[String(w).toLowerCase()] = 1; });
+            blockedNames = names.filter(function (n) { var k = n.toLowerCase(); return badLower[k] === 1 || lowerAvail[k] === false; });
+          } catch (e) { /* scan is advisory — the mint loop still fail-fasts */ }
+          if (blockedNames.length) {
+            failed.push({ name: blockedNames.join(", "), msg: "taken" });
           } else {
             for (var i = 0; i < names.length; i++) {
               try {
