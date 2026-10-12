@@ -1227,6 +1227,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         toast(t("wl.rejected"), "error");
         if (status.scrollIntoView) status.scrollIntoView({ block: "nearest", behavior: "smooth" });
         statusAutoClear(status, 10000);
+        // rc29 field report (boss): a fully-rejected send still lands a sent
+        // record server-side (sent index + thread carry it, sent_status
+        // partial) - but this branch returned before the thread reload, so
+        // the yellow badge only showed on the NEXT conversation visit. The
+        // partial (200+rejected) path reloads; this one must too.
+        loadComposeThread();
         return;
       }
       status.textContent = t("common.error", { msg: e.message });
