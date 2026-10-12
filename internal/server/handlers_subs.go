@@ -390,6 +390,13 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 	// explicitly. Taken names answer 409 (the one-time password display
 	// must match what the caller typed — no silent renames). Absent/empty
 	// body keeps the random bot-<8> behavior.
+	//
+	// 0.3.7 batch upgrade (boss 10-12 12:35): the username may carry
+	// SEPARATORS — one action provisions several named subordinates, each
+	// auto-declared under the caller (default cap: 10 per action).
+	// Separators: comma, semicolon, plus, whitespace, and the CJK
+	// equivalents（、，；）. Single-name requests keep the v0.6.4 shape
+	// exactly; batch answers {"created":[...],"failed":[...]}.
 	domain := s.domain()
 	named := ""
 	if raw, _ := io.ReadAll(io.LimitReader(r.Body, 4096)); len(bytes.TrimSpace(raw)) > 0 {
@@ -401,12 +408,68 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		named = strings.TrimSpace(body.Username)
-		if named != "" {
+		// Batch names carry separators and are validated per-field in the
+		// batch branch below; only single names get the whole-string check.
+		if named != "" && !strings.ContainsAny(named, ",;+ \t、，；") {
 			if len(named) > 32 || !isASCIILocalPart(named) {
 				badRequest(w, "username must be ASCII letters, digits, '-' or '_' (max 32 chars)")
 				return
 			}
 		}
+	}
+
+	// Batch path (0.3.7): separators present -> provision all in one
+	// action. Pre-check every name (existence + shape) BEFORE creating
+	// anything: one taken name fails the whole action with 409 and
+	// nothing is half-created.
+	if named != "" && strings.ContainsAny(named, ",;+ \t、，；") {
+		fields := strings.FieldsFunc(named, func(rn rune) bool {
+			return strings.ContainsRune(",;+ \t、，；", rn)
+		})
+		names, seen := []string{}, map[string]bool{}
+		for _, f := range fields {
+			f = strings.ToLower(strings.TrimSpace(f))
+			if f == "" || seen[f] {
+				continue
+			}
+			seen[f] = true
+			names = append(names, f)
+		}
+		if len(names) == 0 {
+			badRequest(w, "no usable names among separators")
+			return
+		}
+		const batchCap = 10
+		if len(names) > batchCap {
+			badRequest(w, fmt.Sprintf("batch register: max %d names per action, got %d", batchCap, len(names)))
+			return
+		}
+		for _, n := range names {
+			if len(n) > 32 || !isASCIILocalPart(n) {
+				badRequest(w, "username must be ASCII letters, digits, '-' or '_' (max 32 chars): "+n)
+				return
+			}
+			if _, err := s.store.GetAccount(n + "@" + domain); err == nil {
+				conflict(w, "address already taken: "+n)
+				return
+			}
+		}
+		created := make([]map[string]any, 0, len(names))
+		for _, n := range names {
+			r, err := s.store.CreateAccount(n, domain, false)
+			if err != nil {
+				created = append(created, map[string]any{"name": n, "failed": true, "reason": err.Error()})
+				continue
+			}
+			if err := s.store.DeclareSubordinate(owner, r.Address); err != nil {
+				created = append(created, map[string]any{"name": n, "failed": true, "reason": "declare: " + err.Error()})
+				continue
+			}
+			created = append(created, map[string]any{"address": r.Address, "password": r.Password, "declared": true})
+		}
+		_ = s.audit.Record(r.Context(), audit.ActionSubDeclare, owner, fmt.Sprintf("register-subordinate batch x%d", len(names)))
+		writeJSON(w, http.StatusCreated, map[string]any{"created": created})
+		return
 	}
 	var res *store.CreateAccountResult
 	if named != "" {
