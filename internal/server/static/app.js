@@ -673,12 +673,23 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const d = await api("/api/account/whitelist" + wlQuery(addr), { keepSession: true });
       wlCache[addr] = { whitelist_enabled: !!(d && (d.whitelist_enabled || d.enabled)), whitelist: (d && (d.whitelist || d.addresses)) || [] };
     } catch (e) {
-      wlCache[addr] = { whitelist_enabled: false, whitelist: [], err: String((e && e.message) || e) };
+      // 1064 (boss report): a failed GET used to render an EMPTY, EDITABLE
+      // panel - indistinguishable from "the list was cleared", and a toggle
+      // from that state would PUT an empty list (real wipe). Now: keep the
+      // previous cache if any, show the error, and FREEZE all edit paths
+      // until a successful load.
+      wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
+      wlCache[addr].err = String((e && e.message) || e);
+      wlCache[addr].frozen = true;
     }
     if (($("#wl-modal").dataset || {}).wladdr !== addr) return; // closed meanwhile
     const cur = wlCache[addr];
     $("#wl-enabled").checked = !!cur.whitelist_enabled;
-    renderWlChips(addr, cur.whitelist, cur.err || "");
+    var frozen = !!cur.frozen;
+    $("#wl-enabled").disabled = frozen;
+    $("#wl-input").disabled = frozen;
+    $("#btn-wl-add").disabled = frozen;
+    renderWlChips(addr, cur.whitelist, frozen ? (t("common.error", { msg: cur.err }) + " \u2014 " + t("wl.frozen")) : (cur.err || ""));
   }
   function renderWlChips(addr, list, note) {
     const holder = $("#wl-chips");
@@ -740,24 +751,36 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const addr = ($("#wl-modal").dataset || {}).wladdr;
       if (!addr) return;
       const inp = $("#wl-input");
-      const v = (inp.value || "").trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { wlFlash(t("wl.err.addr"), true); return; }
       const cur = wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
-      if (cur.whitelist.some(function (x) { return String(x).toLowerCase() === v; })) { wlFlash(t("wl.err.dup"), true); return; }
+      // 1065 (boss): the field accepts MULTIPLE addresses at once - same
+      // separator family as the batch registration box. Valid ones are
+      // added (POST each), invalid ones are named back; dupes fold.
+      const parts = (inp.value || "").split(/[,，、;；+\s]+/).map(function (w) { return w.trim().toLowerCase(); }).filter(function (w) { return w; });
+      if (!parts.length) { wlFlash(t("wl.err.addr"), true); return; }
+      const bad = parts.filter(function (w) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(w); });
+      if (bad.length) { wlFlash(t("wl.err.addr") + " (" + bad.join(", ") + ")", true); return; }
+      const fresh = parts.filter(function (w) { return !cur.whitelist.some(function (x) { return String(x).toLowerCase() === w; }); });
+      if (!fresh.length) { wlFlash(t("wl.err.dup"), true); return; }
       wlFlash("");
-      api("/api/account/whitelist/" + encodeURIComponent(v) + wlQuery(addr), { method: "POST", keepSession: true })
-        .then(function () {
-          cur.whitelist.push(v);
-          inp.value = "";
-          renderWlChips(addr, cur.whitelist, "");
-          wlFlash(t("wl.saved"));
-        })
-        .catch(function (e) { wlFlash(String((e && e.message) || e), true); });
+      var chain = Promise.resolve();
+      fresh.forEach(function (w) {
+        chain = chain.then(function () {
+          return api("/api/account/whitelist/" + encodeURIComponent(w) + wlQuery(addr), { method: "POST", keepSession: true })
+            .then(function () { cur.whitelist.push(w); });
+        });
+      });
+      chain.then(function () {
+        inp.value = "";
+        renderWlChips(addr, cur.whitelist, "");
+        wlFlash(t("wl.saved"));
+      }).catch(function (e) { renderWlChips(addr, cur.whitelist, ""); wlFlash(String((e && e.message) || e), true); });
       return;
     }
     if (t2.id === "wl-enabled") {
       const addr = ($("#wl-modal").dataset || {}).wladdr;
-      if (addr) wlToggleSave(addr, t2.checked);
+      const cur = addr ? wlCache[addr] : null;
+      if (addr && cur && !cur.frozen) wlToggleSave(addr, t2.checked);
+      else if (addr) { if (t2.preventDefault) t2.preventDefault(); t2.checked = !!(cur || {}).whitelist_enabled; }
     }
   });
   document.addEventListener("keydown", function (ev) {
