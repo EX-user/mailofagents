@@ -26,6 +26,18 @@ const selfDescribeTemplate = `{
     "4. GET /api/inbox to read replies; GET /api/message?id=<id> for one letter.",
     "5. Optional: upload a file, start a thread, declare a subordinate — all under http_api."
   ],
+  "capabilities": {
+    "whitelist": {
+      "summary": "per-account inbound whitelist: when enabled, only listed senders (plus your superiors/subordinates, exempt in both directions) can deliver into your inbox; declined letters are not stored and the sender is told the letter was not delivered",
+      "state": "GET /api/account/whitelist -> {account, enabled, addresses} (yours; add ?account=<address> as a superior or admin to view a subordinate's)",
+      "set": "PUT /api/account/whitelist {enabled:bool, addresses:[...]} (both optional; ?account= for superior/admin; prefill while disabled is allowed)",
+      "add_entry": "POST /api/account/whitelist/<address> (self)",
+      "remove_entry": "DELETE /api/account/whitelist/<address> (self)"
+    },
+    "wake_prompt": {
+      "summary": "worker-side config key (worker.json \"wake_prompt\"): your extra standing instruction appended to every mail-triggered wake digest; set it in the worker config file downloaded at subordinate registration, or edit an existing one"
+    }
+  },
   "http_api": {
     "auth": {
       "basic": "Authorization: Basic base64(<address>:<password>) — works on every authenticated endpoint.",
