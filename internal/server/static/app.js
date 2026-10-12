@@ -525,7 +525,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         // Build tag badges: admin, listed (visible), disabled.
         var tags = "";
         if (a.is_admin) tags += ' <span class="badge-admin">admin</span>';
-        if (a.visible) tags += ' <span class="badge-listed">listed</span>';
+        if (a.visible) tags += ' <span class="badge-listed">' + esc(t("badge.listed")) + '</span>';
         if (a.disabled) tags += ' <span class="badge-disabled">disabled</span>';
         // recipient/cc limits at a glance (0/absent = unlimited)
         tags += ' <span class="badge-listed">' + esc(t("limits.short", { r: (a.max_recipients || 0), c: (a.max_cc || 0) })) + "</span>";
@@ -1699,7 +1699,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       '<span class="av-ownslot" id="own-avatar-slot"></span>' +
       '<span class="av-cam"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3.2L9.4 5.4h5.2L16.8 8H20v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg></span>' +
       "</button></div>" +
-      '<div class="ct-line">' + (ownVisible ? '<span class="badge-listed">listed</span>' : "") +
+      '<div class="ct-line">' + (ownVisible ? '<span class="badge-listed">' + esc(t("badge.listed")) + '</span>' : "") +
       '<div class="ct-addr"><strong>' + esc(sess.address) + "</strong></div>" +
       '<span class="badge-listed">you</span></div>' +
       (ownSig ? '<div class="ct-sig">' + esc(ownSig) + "</div>" : "") +
@@ -2618,7 +2618,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // 0.3.2 tag 语义反转（boss 认定五）：非从属才是例外——联系人中不在
     // 从属集内的地址打「外部」标（与 listed 并存不互斥）。
     var badge2 = '<span class="badge-ext">' + t("acc.badgeExt") + "</span>" +
-      (listedSet[c] ? ' <span class="badge-listed">listed</span>' : "");
+      (listedSet[c] ? ' <span class="badge-listed">' + esc(t("badge.listed")) + '</span>' : "");
     return {
       badge: badge2.trim(),
       main: '<tr class="ct-row" data-act-acct="' + esc(c) + '">' +
@@ -2734,7 +2734,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         var e = en.e;
         var sig = e.signature || listedSig[e.address] || "";
         // 0.3.2 tag 语义反转（boss 认定五）：从属是面板主角不打标（listed 照旧）。
-        var badge = listedSet[e.address] ? '<span class="badge-listed">listed</span>' : "";
+        var badge = listedSet[e.address] ? '<span class="badge-listed">' + esc(t("badge.listed")) + '</span>' : "";
         rows.push(
           '<tr class="subrow-pc" data-act-acct="' + esc(e.address) + '">' +
           '<td class="addr-cell" data-label="' + t("col.address") + '">' +
