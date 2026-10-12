@@ -1383,6 +1383,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // 1054 (boss): letters WITH attachments always keep the expand
     // button - a preview can never show an attachment.
     const nFiles = (m.files && m.files.length) ? m.files.length : (m.files || 0);
+    // 0930 (boss): a whitelist-gated sent letter carries the yellow badge in
+    // the conversation too - all three surfaces (PC thread, mobile IM,
+    // mobile full compose) render this one builder.
+    const partialMark = (m.dir === "out" && m.partial) ? ' <span class="sent-partial-badge">' + esc(t("inbox.partialBadge")) + "</span>" : "";
     return '<div class="thread-item ' + cls + '" data-mid="' + esc(m.id) + '" data-ts="' + (m.ts || 0) + '" data-loaded="0" data-prevlen="' + esc(String(Array.from(m.preview || "").length)) + '" data-files="' + esc(String(nFiles)) + '">' +
       avBox +
       '<div class="thread-card">' +
@@ -1390,7 +1394,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // ("← 收信 · " / "→ 已发 · ") drops from the capsule meta - the
       // left/right placement already tells direction there; the clock
       // stays. Non-IM thread view keeps the arrow as before.
-      '<div class="thread-meta">' + (imOrder ? "" : "<b>" + arrow + "</b> · ") + "<small>" + fmtTime(m.ts) + "</small>" +
+      '<div class="thread-meta">' + (imOrder ? "" : "<b>" + arrow + "</b> · ") + "<small>" + fmtTime(m.ts) + "</small>" + partialMark +
       ' <span class="thread-toggle">' + esc(t("thread.expand")) + '</span> ' + actionBtn + '</div>' +
       (noSubjectInfo(m.subject)
         ? // boss 09-30: a no-information subject gets NO redundant (no
@@ -1593,6 +1597,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   // content, the exact mixing the boss forbids. Stale loads abandon.
   var threadLoadSeq = 0;
 
+  // 0930 (boss): the compose conversation badges letters the whitelist gate
+  // did NOT fully deliver — but /api/thread is NOT a sent-index read, so its
+  // summaries carry no sent_status. Cross-reference the sent index (ids with
+  // state=partial) on a short cache; PC, mobile IM and the full compose page
+  // all render through threadItemHtml, so one set covers the three surfaces.
+  var sentPartialCache = { ids: {}, at: 0 };
+  function loadSentPartialIds() {
+    if (Date.now() - sentPartialCache.at < 60000) return Promise.resolve();
+    return api("/api/sent?limit=50", { keepSession: true }).then(function (d) {
+      var ids = {};
+      (d.messages || []).forEach(function (m) {
+        if (m.sent_status && m.sent_status.state === "partial" && m.id) ids[m.id] = 1;
+      });
+      sentPartialCache.ids = ids;
+      sentPartialCache.at = Date.now();
+    }).catch(function () {});
+  }
+
   async function loadComposeThread(opts) {
     const to = ($("#compose-to").value || "").trim();
     const threadEl = $("#compose-thread");
@@ -1711,13 +1733,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       // field (the mix the boss forbids). The pool-hit paint above is
       // synchronous (no interleave); everything after this await is not.
       if (mySeq !== threadLoadSeq) return;
+      await loadSentPartialIds();
       const all = (threadRes.messages || []).map(function (m) {
         // 1054 (boss): the slim projection used to drop `files` - the server
         // summary has carried the attachment count all along (summarize()
         // since v0.1), so data-files stamped 0 and the always-keep-toggle
         // gate never fired on attachment letters. Carry it through.
         return m.dir === "out"
-          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to, files: m.files || 0 }
+          ? { dir: "out", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at, peer: firstPeer || to, files: m.files || 0, partial: sentPartialCache.ids[m.id] === 1 }
           : { dir: "in", id: m.id, subject: m.subject, preview: m.preview, ts: m.received_at,
               peer: firstPeer || to, from: m.from, unread: m.unread, files: m.files || 0 };
       }).sort(function (a, b) { return b.ts - a.ts; });
