@@ -289,3 +289,38 @@ func TestWorkerConfigDownload(t *testing.T) {
 		t.Fatalf("bad auth = %d, want 401", resp.StatusCode)
 	}
 }
+
+// TestNamesAvailable pins the pre-registration scan (boss 10-12): public,
+// batch booleans, invalid names reported separately, probe cap 20.
+func TestNamesAvailable(t *testing.T) {
+	ts, st := newWhitelistTestServer(t)
+	if _, err := st.CreateAccountWithPassword("taken", "test.example", false, "takenpassword1"); err != nil {
+		t.Fatal(err)
+	}
+	resp, body := wlReq(t, "GET", ts.URL+"/api/names/available?names=Taken,free,bad!!name", "", "", "")
+	if resp.StatusCode != 200 {
+		t.Fatalf("scan = %d %s", resp.StatusCode, body)
+	}
+	var out struct {
+		Available map[string]bool `json:"available"`
+		Invalid   []string        `json:"invalid"`
+	}
+	_ = json.Unmarshal([]byte(body), &out)
+	if out.Available["taken"] != false || out.Available["free"] != true {
+		t.Fatalf("availability wrong: %v", out.Available)
+	}
+	if len(out.Invalid) != 1 || out.Invalid[0] != "bad!!name" {
+		t.Fatalf("invalid list wrong: %v", out.Invalid)
+	}
+	// probe cap
+	big := strings.Repeat("n",0)
+	_ = big
+	names := make([]string, 21)
+	for i := range names {
+		names[i] = "user" + string(rune('a'+i))
+	}
+	resp, _ = wlReq(t, "GET", ts.URL+"/api/names/available?names="+strings.Join(names, ","), "", "", "")
+	if resp.StatusCode != 400 {
+		t.Fatalf("probe cap = %d, want 400", resp.StatusCode)
+	}
+}

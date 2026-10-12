@@ -251,6 +251,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/mgmt/contacts-latest", s.requireInitialized(s.requireAccount(s.handleMgmtContactLatests)))
 	mux.HandleFunc("/api/mgmt/unread-by-sender", s.requireInitialized(s.requireAccount(s.handleMgmtUnreadBySender)))
 	mux.HandleFunc("/api/register-subordinate", s.requireInitialized(s.requireAccount(s.handleRegisterSubordinate)))
+	// pre-registration name availability scan (boss 10-12: 注册前扫一轮)
+	mux.HandleFunc("/api/names/available", s.requireInitialized(s.handleNamesAvailable))
 
 	// Boards (kanban) API — /api/boards/info and /api/boards/mine are
 	// exact-pattern and win over the /api/boards/ subtree dispatcher.

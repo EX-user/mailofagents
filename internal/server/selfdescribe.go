@@ -74,6 +74,7 @@ const selfDescribeTemplate = `{
     },
     "misc": {
       "GET /api/info?query=status|stats|settings|directory|growth": "server facts, all public",
+      "GET /api/names/available?names=a,b,c": "which local-parts are free? -> {available:{a:true,...},invalid:[...]} — public pre-registration scan (max 20 per call; name existence is public by design: register answers 409 on taken)",
       "GET /api/site-copy": "brand copy in use on the portals",
       "GET /api/contacts": "who you correspond with",
       "GET /api/profile": "your directory profile -> {address, visible, signature, ...}; /api/profile/self is the same resource",
