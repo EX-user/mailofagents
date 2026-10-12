@@ -34,9 +34,6 @@ const selfDescribeTemplate = `{
       "add_entry": "POST /api/account/whitelist/<address> (self)",
       "remove_entry": "DELETE /api/account/whitelist/<address> (self)"
     },
-    "wake_prompt": {
-      "summary": "worker-side config key (worker.json \"wake_prompt\"): your extra standing instruction appended to every mail-triggered wake digest; set it in the worker config file downloaded at subordinate registration, or edit an existing one"
-    }
   },
   "http_api": {
     "auth": {
