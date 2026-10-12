@@ -98,9 +98,10 @@ func (s *Server) handleSubWorkerConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such account", http.StatusNotFound)
 		return
 	}
-	cfg := s.workerConfigFor(r, strings.ToLower(target), "", who)
+	cfg := s.workerConfigFor(r, strings.ToLower(target), "", "opencode")
 	cfg["password"] = ""
-	cfg["_note"] = "template mode: the password is not recoverable after registration — fill in the current credential, or re-register to mint a fresh one-time config"
+	w.Header().Set("Content-Disposition", "attachment; filename="+local+".worker.json")
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, cfg)
 }
 

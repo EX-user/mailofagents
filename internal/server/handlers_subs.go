@@ -399,15 +399,18 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 	// exactly; batch answers {"created":[...],"failed":[...]}.
 	domain := s.domain()
 	named := ""
+	bodyCLI := ""
 	if raw, _ := io.ReadAll(io.LimitReader(r.Body, 4096)); len(bytes.TrimSpace(raw)) > 0 {
 		var body struct {
 			Username string `json:"username"`
+			CLI      string `json:"cli"` // optional: "pi"|"opencode" (default opencode) — rides the minted worker config
 		}
 		if err := json.Unmarshal(raw, &body); err != nil {
 			badRequest(w, "invalid body: "+err.Error())
 			return
 		}
 		named = strings.TrimSpace(body.Username)
+		bodyCLI = body.CLI
 		// Batch names carry separators and are validated per-field in the
 		// batch branch below; only single names get the whole-string check.
 		if named != "" && !strings.ContainsAny(named, ",;+ \t、，；") {
@@ -466,7 +469,7 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			entry := map[string]any{"address": ca.Address, "password": ca.Password, "declared": true}
-			s.appendWorkerConfig(r, entry, owner)
+			s.appendWorkerConfig(r, entry, bodyCLI)
 			created = append(created, entry)
 		}
 		_ = s.audit.Record(r.Context(), audit.ActionSubDeclare, owner, fmt.Sprintf("register-subordinate batch x%d", len(names)))
@@ -518,6 +521,6 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 		"password": res.Password, // one-time, never stored in the clear again
 		"declared": true,
 	}
-	s.appendWorkerConfig(r, resp, owner)
+	s.appendWorkerConfig(r, resp, bodyCLI)
 	writeJSON(w, http.StatusCreated, resp)
 }

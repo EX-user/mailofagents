@@ -275,11 +275,8 @@ func TestWorkerConfigDownload(t *testing.T) {
 	if wc["address"] != "cfgbot@test.example" || wc["password"] == "" || wc["server"] == "" {
 		t.Fatalf("worker_config incomplete: %v", wc)
 	}
-	if em, _ := wc["emergency"].(map[string]any); true {
-		addrs, _ := em["addresses"].([]any)
-		if len(addrs) != 1 || addrs[0] != "owner@test.example" {
-			t.Fatalf("emergency must default to owner, got %v", em)
-		}
+	if _, has := wc["emergency"]; has {
+		t.Fatalf("emergency omitted by default (Efira minimal-file ruling), got %v", wc["emergency"])
 	}
 	// re-download: owner OK, template password empty
 	resp, body = wlReq(t, "GET", ts.URL+"/api/register-subordinate/config/cfgbot", "owner@test.example", "ownerpassword1", "")
