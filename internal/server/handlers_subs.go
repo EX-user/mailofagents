@@ -456,16 +456,18 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 		}
 		created := make([]map[string]any, 0, len(names))
 		for _, n := range names {
-			r, err := s.store.CreateAccount(n, domain, false)
+			ca, err := s.store.CreateAccount(n, domain, false)
 			if err != nil {
 				created = append(created, map[string]any{"name": n, "failed": true, "reason": err.Error()})
 				continue
 			}
-			if err := s.store.DeclareSubordinate(owner, r.Address); err != nil {
+			if err := s.store.DeclareSubordinate(owner, ca.Address); err != nil {
 				created = append(created, map[string]any{"name": n, "failed": true, "reason": "declare: " + err.Error()})
 				continue
 			}
-			created = append(created, map[string]any{"address": r.Address, "password": r.Password, "declared": true})
+			entry := map[string]any{"address": ca.Address, "password": ca.Password, "declared": true}
+			s.appendWorkerConfig(r, entry, owner)
+			created = append(created, entry)
 		}
 		_ = s.audit.Record(r.Context(), audit.ActionSubDeclare, owner, fmt.Sprintf("register-subordinate batch x%d", len(names)))
 		writeJSON(w, http.StatusCreated, map[string]any{"created": created})
@@ -511,9 +513,11 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	_ = s.audit.Record(r.Context(), audit.ActionSubDeclare, owner, "register-subordinate "+res.Address)
-	writeJSON(w, http.StatusCreated, map[string]any{
+	resp := map[string]any{
 		"address":  res.Address,
 		"password": res.Password, // one-time, never stored in the clear again
 		"declared": true,
-	})
+	}
+	s.appendWorkerConfig(r, resp, owner)
+	writeJSON(w, http.StatusCreated, resp)
 }

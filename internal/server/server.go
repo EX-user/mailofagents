@@ -245,6 +245,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/subs", s.requireInitialized(s.requireAccount(s.handleSubs)))
 	mux.HandleFunc("/api/subs/remove", s.requireInitialized(s.requireAccount(s.handleSubsRemove)))
 	mux.HandleFunc("/api/subs/", s.requireInitialized(s.requireAccount(s.handleSubsMessages)))
+	// worker-config download for an existing subordinate (0.3.7 boss 12:39)
+	mux.HandleFunc("/api/register-subordinate/config/", s.requireInitialized(s.requireAccount(s.handleSubWorkerConfigWrapper)))
 	mux.HandleFunc("/api/mgmt/subs-overview", s.requireInitialized(s.requireAccount(s.handleMgmtSubsOverview)))
 	mux.HandleFunc("/api/mgmt/contacts-latest", s.requireInitialized(s.requireAccount(s.handleMgmtContactLatests)))
 	mux.HandleFunc("/api/mgmt/unread-by-sender", s.requireInitialized(s.requireAccount(s.handleMgmtUnreadBySender)))
