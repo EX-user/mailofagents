@@ -1465,22 +1465,26 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
             const row = document.createElement("div");
             row.className = "subreg-batch-row";
             const code = document.createElement("code");
-            code.textContent = c.address + "  " + c.password + "  ";
+            code.textContent = c.address + "  " + c.password;
             row.appendChild(code);
-            if (c.worker_config) row.appendChild(wcfgOpenBtn(c));
             holder.appendChild(row);
           });
           // boss 12:39: the batch onboarding path is the per-account config
           // download — the merged Copy-prompt button has no business here.
           $("#btn-subreg-copy-prompt").hidden = true;
+          $("#btn-subreg-dl").textContent = t("subs.dlMerged", { n: created.length });
+          $("#wcfg-batch-note").hidden = false;
+          $("#wcfg-batch-note").textContent = t("wcfg.batchWill", { n: created.length });
         } else {
           $("#subreg-batch").hidden = true;
           $("#subreg-single-lines").hidden = false;
           $("#subreg-address").textContent = first.address || "";
           $("#subreg-password").textContent = first.password || "";
           $("#btn-subreg-copy-prompt").hidden = false;
+          $("#btn-subreg-dl").textContent = t("subs.dlConfig");
         }
-        $("#btn-subreg-dl").hidden = created.length > 1 || !first.worker_config;
+        $("#btn-subreg-dl").hidden = !first.worker_config;
+        $("#wcfg-batch-note").hidden = created.length > 1;
         $("#subreg-copy-status").textContent = "";
         // Prompt copy lives in app.js (buildAgentPrompt) — hand the fresh
         // credentials over before the modal is shown (superior 09-02).
@@ -1568,24 +1572,18 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     }
     // 0.3.7 (boss): "下载"升级为"生成"引导页 — confirm CLI + workdir before
     // the file lands; server/address ride the mint and stay read-only.
-    var wcfgTarget = null;
-    function wcfgOpenBtn(c) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "row-action";
-      b.textContent = t("subs.dlConfig");
-      b.addEventListener("click", function () { wcfgOpen(c); });
-      return b;
-    }
-    function wcfgOpen(c) {
-      if (!c || !c.worker_config) return;
-      wcfgTarget = c;
-      var base = c.worker_config;
+    var wcfgTarget = null; // { accounts: [minted entries], batch: bool }
+    function wcfgOpen(accounts) {
+      var list = Array.isArray(accounts) ? accounts : [accounts];
+      list = list.filter(function (c) { return c && c.worker_config; });
+      if (!list.length) return;
+      wcfgTarget = { accounts: list, batch: list.length > 1 };
+      var base = list[0].worker_config;
       $("#wcfg-server").textContent = base.server || "";
-      $("#wcfg-address").textContent = c.address || "";
-      $("#wcfg-workdir").value = base.workdir || "~/workers/" + (c.address || "").split("@")[0];
-      var wantPi = base.cli === "pi";
-      $$("#wcfg-modal input[name='wcfg-cli']").forEach(function (r) { r.checked = (r.value === "pi") === wantPi; });
+      $("#wcfg-address").textContent = list.length > 1 ? list.length + " accounts" : (list[0].address || "");
+      $("#wcfg-workdir").value = base.workdir || ("~/workers/" + (list[0].address || "worker").split("@")[0]);
+      $("#wcfg-batch-note").hidden = !wcfgTarget.batch;
+      if (wcfgTarget.batch) $("#wcfg-batch-note").textContent = t("wcfg.batchWill", { n: list.length });
       $("#wcfg-status").textContent = "";
       $("#wcfg-modal").classList.remove("hidden");
     }
@@ -1594,26 +1592,43 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       wcfgTarget = null;
     }
     function wcfgGenerate() {
-      if (!wcfgTarget) { wcfgClose(); return; }
-      var base = wcfgTarget.worker_config;
+      if (!wcfgTarget || !wcfgTarget.accounts.length) { wcfgClose(); return; }
       var cli = "opencode";
       $$("#wcfg-modal input[name='wcfg-cli']").forEach(function (r) { if (r.checked) cli = r.value; });
-      var workdir = ($("#wcfg-workdir").value || "").trim() || base.workdir;
-      var cfg = Object.assign({}, base, { cli: cli, workdir: workdir });
-      var local = (wcfgTarget.address || "worker").split("@")[0];
-      var blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+      var root = ($("#wcfg-workdir").value || "").trim().replace(/\/+$/, "") || "~/workers";
+      var base = wcfgTarget.accounts[0].worker_config || {};
+      var out;
+      if (wcfgTarget.batch) {
+        // Merged multi-account shape (docs/config.md): globals + agents[]
+        out = {
+          server: base.server || location.origin,
+          poll_interval_sec: base.poll_interval_sec || 30,
+          timeout_sec: base.timeout_sec || 480,
+          agents: wcfgTarget.accounts.map(function (c) {
+            var local = (c.address || "").split("@")[0];
+            return { address: c.address, password: c.password, cli: cli, workdir: root + "/" + local };
+          }),
+        };
+      } else {
+        var c0 = wcfgTarget.accounts[0];
+        var local = (c0.address || "worker").split("@")[0];
+        var wd = ($("#wcfg-workdir").value || "").trim() || "~/workers/" + local;
+        out = Object.assign({}, base, { cli: cli, workdir: wd });
+      }
+      var fname = wcfgTarget.batch ? "workers.json" : local + ".worker.json";
+      var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
       var url = URL.createObjectURL(blob);
       var link = document.createElement("a");
       link.href = url;
-      link.download = local + ".worker.json";
+      link.download = fname;
       document.body.appendChild(link);
       link.click();
       link.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-      $("#wcfg-status").textContent = t("wcfg.done", { file: local + ".worker.json" });
+      $("#wcfg-status").textContent = t("wcfg.done", { file: fname });
     }
     $("#btn-subreg-dl").addEventListener("click", function () {
-      wcfgOpen(lastCreated[0]);
+      wcfgOpen(lastCreated);
     });
     $("#btn-subreg-copy").addEventListener("click", function () {
       var text;
