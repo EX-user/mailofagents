@@ -324,3 +324,55 @@ func TestNamesAvailable(t *testing.T) {
 		t.Fatalf("probe cap = %d, want 400", resp.StatusCode)
 	}
 }
+
+// TestSentStatusField pins the 0.3.7 boss-approved failed-send field:
+// partial (whitelist decline) / missing (unknown recipients) / delivered
+// ride the sent-index value and surface as sent_status on /api/sent
+// summaries; system-notification refs stay stateless.
+func TestSentStatusField(t *testing.T) {
+	ts, st := newWhitelistTestServer(t)
+	if _, err := st.CreateAccountWithPassword("owner", "test.example", false, "ownerpassword1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateAccountWithPassword("buddy", "test.example", false, "buddypassword1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateAccountWithPassword("gated", "test.example", false, "gatedpassword1"); err != nil {
+		t.Fatal(err)
+	}
+	// the RECIPIENT's gate is what declines (sender's Sent still anchors)
+	_ = st.SetWhitelistEnabled("gated@test.example", true)
+
+	send := func(to string) int {
+		payload, _ := json.Marshal(map[string]any{"to": []string{to}, "subject": "s", "body": "b"})
+		resp, _ := wlReq(t, "POST", ts.URL+"/api/send", "owner@test.example", "ownerpassword1", string(payload))
+		return resp.StatusCode
+	}
+
+	// partial: real recipient declined (all-rejected -> 403, Sent still anchored)
+	if code := send("gated@test.example"); code != 403 {
+		t.Fatalf("declined send = %d, want 403", code)
+	}
+	// delivered: ungated recipient
+	if code := send("buddy@test.example"); code != 200 {
+		t.Fatalf("delivered send = %d", code)
+	}
+	// missing: nonexistent recipient
+	if code := send("ghost@test.example"); code != 200 {
+		t.Fatalf("missing send = %d (missing is silent-200)", code)
+	}
+
+	sent, err := st.ReadSent("owner@test.example", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]int{}
+	for _, m := range sent {
+		if m.SentStatus != nil {
+			states[m.SentStatus.State]++
+		}
+	}
+	if states["partial"] != 1 || states["delivered"] != 1 || states["missing"] != 1 {
+		t.Fatalf("states wrong: %v (sent=%d)", states, len(sent))
+	}
+}

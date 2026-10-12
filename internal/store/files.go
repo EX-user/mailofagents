@@ -205,6 +205,7 @@ func (s *Store) SendWithAttachments(from, fromName string, to []string, cc []str
 	msgID := newULID()
 	now := s.now().Unix()
 	delivered := 0
+	missing := 0
 	var rejected []string
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		// Same in-transaction parent check as Send (one Get, miss -> fail).
@@ -316,6 +317,7 @@ func (s *Store) SendWithAttachments(from, fromName string, to []string, cc []str
 		for _, addr := range validRecipients {
 			acc, err := getAccountInTx(tx, addr)
 			if err != nil {
+				missing++
 				continue
 			}
 			// Whitelist gate (0.3.7) — same contract as Send.
@@ -335,7 +337,7 @@ func (s *Store) SendWithAttachments(from, fromName string, to []string, cc []str
 		sb := tx.Bucket(bSent)
 		if sender, err := getAccountInTx(tx, from); err == nil {
 			key := indexKey(sender.UUID, msgID)
-			if err := sb.Put(key, nil); err != nil {
+			if err := sb.Put(key, sentStateValue(len(rejected), missing)); err != nil {
 				return err
 			}
 		}
