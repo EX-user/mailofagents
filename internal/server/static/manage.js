@@ -1633,8 +1633,6 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       // account's local part, a batch with <first-local>-and-others; editable.
       var firstLocal = (list[0].address || "worker").split("@")[0];
       $("#wcfg-fname").value = wcfgTarget.batch ? (firstLocal + "-and-others") : firstLocal;
-      // 0930 boss: wake_prompt config item - defaults to empty, optional.
-      $("#wcfg-wake").value = "";
       $("#wcfg-batch-note").hidden = !wcfgTarget.batch;
       if (wcfgTarget.batch) $("#wcfg-batch-note").textContent = t("wcfg.batchWill", { n: list.length });
       $("#wcfg-status").textContent = "";
@@ -1653,17 +1651,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       var out;
       if (wcfgTarget.batch) {
         // Merged multi-account shape (docs/config.md): globals + agents[]
-        // 0930 boss: wake_prompt defaults empty — Efira ruling: ONE global
-        // top-level key in the merged file, agents[] entries do NOT carry
-        // it (per-agent override = add the key manually on that entry;
-        // the worker already honors it).
-        var wake = ($("#wcfg-wake").value || "").trim();
+        // 0930 boss: no wake_prompt control in the dialog — the merged file
+        // still carries ONE global top-level wake_prompt, always empty
+        // (agents[] entries do NOT carry it; per-agent override = add the
+        // key manually on that entry; the worker already honors it).
         out = {
           server: base.server || location.origin,
           poll_interval_sec: base.poll_interval_sec || 30,
           // 0930 boss: 480 is far too small for real worker runs — 1800.
           timeout_sec: 1800,
-          wake_prompt: wake,
+          wake_prompt: "",
           agents: wcfgTarget.accounts.map(function (c) {
             var local = (c.address || "").split("@")[0];
             return { address: c.address, password: c.password, cli: cli, workdir: root + "/" + local };
@@ -1673,7 +1670,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         var c0 = wcfgTarget.accounts[0];
         var local = (c0.address || "worker").split("@")[0];
         var wd = ($("#wcfg-workdir").value || "").trim() || "~/moa-workers/" + local;
-        out = Object.assign({}, base, { cli: cli, workdir: wd, timeout_sec: 1800, wake_prompt: ($("#wcfg-wake").value || "").trim() });
+        out = Object.assign({}, base, { cli: cli, workdir: wd, timeout_sec: 1800, wake_prompt: "" });
       }
       // 0930 boss: the prefilled, editable file name wins; .json appended
       // unless the user already typed it.
