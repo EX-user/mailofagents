@@ -673,12 +673,23 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const d = await api("/api/account/whitelist" + wlQuery(addr), { keepSession: true });
       wlCache[addr] = { whitelist_enabled: !!(d && (d.whitelist_enabled || d.enabled)), whitelist: (d && (d.whitelist || d.addresses)) || [] };
     } catch (e) {
-      wlCache[addr] = { whitelist_enabled: false, whitelist: [], err: String((e && e.message) || e) };
+      // 1064 (boss report): a failed GET used to render an EMPTY, EDITABLE
+      // panel - indistinguishable from "the list was cleared", and a toggle
+      // from that state would PUT an empty list (real wipe). Now: keep the
+      // previous cache if any, show the error, and FREEZE all edit paths
+      // until a successful load.
+      wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
+      wlCache[addr].err = String((e && e.message) || e);
+      wlCache[addr].frozen = true;
     }
     if (($("#wl-modal").dataset || {}).wladdr !== addr) return; // closed meanwhile
     const cur = wlCache[addr];
     $("#wl-enabled").checked = !!cur.whitelist_enabled;
-    renderWlChips(addr, cur.whitelist, cur.err || "");
+    var frozen = !!cur.frozen;
+    $("#wl-enabled").disabled = frozen;
+    $("#wl-input").disabled = frozen;
+    $("#btn-wl-add").disabled = frozen;
+    renderWlChips(addr, cur.whitelist, frozen ? (t("common.error", { msg: cur.err }) + " \u2014 " + t("wl.frozen")) : (cur.err || ""));
   }
   function renderWlChips(addr, list, note) {
     const holder = $("#wl-chips");
@@ -757,7 +768,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     }
     if (t2.id === "wl-enabled") {
       const addr = ($("#wl-modal").dataset || {}).wladdr;
-      if (addr) wlToggleSave(addr, t2.checked);
+      const cur = addr ? wlCache[addr] : null;
+      if (addr && cur && !cur.frozen) wlToggleSave(addr, t2.checked);
+      else if (addr) { if (t2.preventDefault) t2.preventDefault(); t2.checked = !!(cur || {}).whitelist_enabled; }
     }
   });
   document.addEventListener("keydown", function (ev) {
