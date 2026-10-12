@@ -1423,7 +1423,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       try {
         if (!names) {
           const res = await api("/api/register-subordinate", { method: "POST", body: "{}" });
-          created.push({ address: res.address || "", password: res.password || "" });
+          created.push({ address: res.address || "", password: res.password || "", worker_config: res.worker_config });
         } else {
           for (var i = 0; i < names.length; i++) {
             try {
@@ -1431,7 +1431,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
                 method: "POST",
                 body: JSON.stringify({ username: names[i] }),
               });
-              created.push({ address: res.address || "", password: res.password || "", name: names[i] });
+              created.push({ address: res.address || "", password: res.password || "", name: names[i], worker_config: res.worker_config });
             } catch (e) {
               failed.push({ name: names[i], msg: String(e.message || e) });
             }
@@ -1466,15 +1466,21 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
             row.className = "wl-chip";
             row.style.marginBottom = "4px";
             const code = document.createElement("code");
-            code.textContent = c.address + "  " + c.password;
+            code.textContent = c.address + "  " + c.password + "  ";
             row.appendChild(code);
+            if (c.worker_config) row.appendChild(dlWorkerConfigBtn(c));
             holder.appendChild(row);
           });
+          // boss 12:39: the batch onboarding path is the per-account config
+          // download — the merged Copy-prompt button has no business here.
+          $("#btn-subreg-copy-prompt").hidden = true;
         } else {
           $("#subreg-batch").hidden = true;
           $("#subreg-address").textContent = first.address || "";
           $("#subreg-password").textContent = first.password || "";
+          $("#btn-subreg-copy-prompt").hidden = false;
         }
+        $("#btn-subreg-dl").hidden = !first.worker_config;
         $("#subreg-copy-status").textContent = "";
         // Prompt copy lives in app.js (buildAgentPrompt) — hand the fresh
         // credentials over before the modal is shown (superior 09-02).
@@ -1547,6 +1553,30 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       if (a && !a.classList.contains("hidden")) { closeSubregAsk(); return; }
       const m = $("#subreg-modal");
       if (m && !m.classList.contains("hidden")) $("#btn-subreg-close").click();
+    });
+    function dlWorkerConfigBtn(c) {
+      const dl = document.createElement("button");
+      dl.type = "button";
+      dl.className = "row-action";
+      dl.textContent = t("subs.dlConfig");
+      dl.addEventListener("click", function () { dlWorkerConfig(c); });
+      return dl;
+    }
+    function dlWorkerConfig(c) {
+      if (!c || !c.worker_config) return;
+      var local = (c.address || "worker").split("@")[0];
+      var blob = new Blob([JSON.stringify(c.worker_config, null, 2)], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = local + ".worker.json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    }
+    $("#btn-subreg-dl").addEventListener("click", function () {
+      dlWorkerConfig(lastCreated[0]);
     });
     $("#btn-subreg-copy").addEventListener("click", function () {
       var text;
