@@ -3571,5 +3571,7 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 #thread-modal .thread-item.sent-partial {
   background: linear-gradient(color-mix(in srgb, #eab308 14%, transparent),
               color-mix(in srgb, #eab308 14%, transparent)), var(--panel);
-  box-shadow: inset 3px 0 0 rgba(234, 179, 8, 0.55);
+  /* boss 0930: ONE edge only - the blue direction bar yields to the
+    yellow one on a partial letter, never both. */
+  border-left-color: rgba(234, 179, 8, 0.55);
 }
