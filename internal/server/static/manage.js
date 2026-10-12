@@ -1653,17 +1653,20 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       var out;
       if (wcfgTarget.batch) {
         // Merged multi-account shape (docs/config.md): globals + agents[]
-        // 0930 boss: wake_prompt rides per agent (one shared value from the
-        // wizard; key name pending Efira's ruling, default empty).
+        // 0930 boss: wake_prompt defaults empty — Efira ruling: ONE global
+        // top-level key in the merged file, agents[] entries do NOT carry
+        // it (per-agent override = add the key manually on that entry;
+        // the worker already honors it).
         var wake = ($("#wcfg-wake").value || "").trim();
         out = {
           server: base.server || location.origin,
           poll_interval_sec: base.poll_interval_sec || 30,
           // 0930 boss: 480 is far too small for real worker runs — 1800.
           timeout_sec: 1800,
+          wake_prompt: wake,
           agents: wcfgTarget.accounts.map(function (c) {
             var local = (c.address || "").split("@")[0];
-            return { address: c.address, password: c.password, cli: cli, workdir: root + "/" + local, wake_prompt: wake };
+            return { address: c.address, password: c.password, cli: cli, workdir: root + "/" + local };
           }),
         };
       } else {
