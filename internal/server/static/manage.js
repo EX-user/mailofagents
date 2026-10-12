@@ -1800,16 +1800,22 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       }
       list.innerHTML = "";
       msgs.forEach(function (m) {
+        // 0930 (boss via Felix): the Sent box marks letters the whitelist
+        // gate did NOT fully deliver - yellow badge, no name details;
+        // delivered/missing/no-field read as plain sent.
+        const partial = inboxMode !== "in" && m.sent_status && m.sent_status.state === "partial";
         const item = document.createElement("div");
         item.className = "mail-item" + (m.unread ? " unread" : "");
         item.innerHTML =
           (m.unread ? '<span class="unread-dot" title="unread">●</span>' : "") +
-          '<div class="subj">' + esc(m.subject || "(no subject)") + "</div>" +
+          '<div class="subj">' + esc(m.subject || "(no subject)") +
+          (partial ? ' <span class="sent-partial-badge">' + esc(t("inbox.partialBadge")) + "</span>" : "") +
+          "</div>" +
           '<div class="meta"><b>' + t("mail.from") + "</b> '" + esc(m.from) +
           " · <small>" + fmtTime(m.received_at) + "</small></div>" +
           (inboxMode !== "in" && m.to && m.to.length ? '<div class="meta"><b>To:</b> ' + esc(m.to.join(", ")) + "</div>" : "") +
           '<div class="prev">' + esc(m.preview || "") + "</div>";
-        item.addEventListener("click", function () { showInboxDetail(m.id, item, false); });
+        item.addEventListener("click", function () { showInboxDetail(m.id, item, false, m.sent_status); });
         list.appendChild(item);
       });
       updateInboxPager(totalPages, inboxPage + 1);
@@ -1826,7 +1832,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         const first = list.querySelector(".mail-item");
         const newest = msgs[0];
         if (first && newest) {
-          showInboxDetail(newest.id, first, true).then(function () {
+          showInboxDetail(newest.id, first, true, newest.sent_status).then(function () {
             // The preload read the newest message server-side — pull the
             // badge right away instead of waiting for the 5s tick
             // (admin: opening the inbox should clear the dot immediately).
@@ -2064,7 +2070,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     return inboxNavRow() + '<div class="detail-scroll">' + inner + "</div>";
   }
 
-  async function showInboxDetail(id, item, auto) {
+  async function showInboxDetail(id, item, auto, sentStatus) {
     resetAudioPlayers();
     $$(".mail-item", $("#inbox-list")).forEach(function (el) { el.classList.remove("selected"); });
     if (item) item.classList.add("selected");
@@ -2089,8 +2095,13 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       // wait) - the read consumed this letter server-side.
       document.dispatchEvent(new CustomEvent("inbox:read", { detail: { from: m.from || "" } }));      // Final render includes the nav row (earlier only the loading frame
       // had it — data arrival wiped it; feedback root cause); the letter
-      // itself lives in the scroll region below the nav band.
+      // itself lives in the scroll region below the nav band. A partial
+      // sent letter (whitelist gate dropped some recipients) opens with a
+      // yellow notice on top - same copy as the list badge, no details.
       detail.innerHTML = inboxDetailFrame(
+        (sentStatus && sentStatus.state === "partial"
+          ? '<div class="sent-partial-note">⚠ ' + esc(t("inbox.partialBadge")) + "</div>"
+          : "") +
         '<div class="detail-row"><b>From:</b> ' + esc(m.from) + "</div>" +
         '<div class="detail-row"><b>To:</b> ' + esc((m.to || []).join(", ")) + "</div>" +
         (m.cc && m.cc.length ? '<div class="detail-row"><b>Cc:</b> ' + esc(m.cc.join(", ")) + "</div>" : "") +
