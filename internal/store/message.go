@@ -363,10 +363,16 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 			prefix := indexKey(acc.UUID, "")
 			prefixStr := string(prefix)
 			// Ascending ULID = oldest first; walk backwards for newest-first.
+			// Index VALUES ride along: sent entries carry the delivery
+			// state (0.3.7) — hydrated into out-direction summaries.
 			var ids []string
+			states := map[string][]byte{}
 			c := b.Cursor()
-			for k, _ := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), prefixStr); k, _ = c.Next() {
+			for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), prefixStr); k, v = c.Next() {
 				ids = append(ids, string(k[len(prefix):]))
+				if v != nil {
+					states[string(k[len(prefix):])] = append([]byte(nil), v...)
+				}
 			}
 			for i := len(ids) - 1; i >= 0; i-- {
 				id := ids[i]
@@ -395,6 +401,12 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 				ms := summarize(msg)
 				if ub != nil {
 					ms.Unread = ub.Get(indexKey(acc.UUID, id)) != nil
+				}
+				if raw, ok := states[id]; ok && len(raw) > 0 {
+					var stt SentStatus
+					if json.Unmarshal(raw, &stt) == nil && stt.State != "" {
+						ms.SentStatus = &stt
+					}
 				}
 				merged = append(merged, ThreadEntry{MessageSummary: ms, Dir: dir})
 				sideCount++

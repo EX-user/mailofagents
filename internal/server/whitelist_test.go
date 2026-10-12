@@ -376,3 +376,33 @@ func TestSentStatusField(t *testing.T) {
 		t.Fatalf("states wrong: %v (sent=%d)", states, len(sent))
 	}
 }
+
+// TestThreadSentStatus pins the ReadThread hydration: out-direction
+// entries carry sent_status from the sent-index value (partial visible
+// in the compose conversation view, boss yellow-badge case).
+func TestThreadSentStatus(t *testing.T) {
+	ts, st := newWhitelistTestServer(t)
+	if _, err := st.CreateAccountWithPassword("owner", "test.example", false, "ownerpassword1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateAccountWithPassword("gated", "test.example", false, "gatedpassword1"); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.SetWhitelistEnabled("gated@test.example", true)
+	payload, _ := json.Marshal(map[string]any{"to": []string{"gated@test.example"}, "subject": "s", "body": "b"})
+	wlReq(t, "POST", ts.URL+"/api/send", "owner@test.example", "ownerpassword1", string(payload))
+
+	thread, err := st.ReadThread("owner@test.example", "gated@test.example", 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range thread {
+		if e.Dir == "out" && e.SentStatus != nil && e.SentStatus.State == "partial" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("out entry must carry sent_status=partial, thread=%+v", thread)
+	}
+}
