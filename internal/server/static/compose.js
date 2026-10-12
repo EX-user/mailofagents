@@ -1375,8 +1375,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     // 0.3.4.2 capsule avatars: own letters show the self address,
     // incoming show the actual sender (falls back to the peer).
     const avAddr = m.dir === "in" ? (m.from || m.peer) : selfAddr;
-    const avBox = imOrder ? '<div class="thread-av" data-av="' + esc(avAddr) + '" data-avremote="1">' +
-      esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>' : "";
+    // 0930 (boss): ALL three surfaces read as bubbles — PC 往来邮件 and
+    // the mobile full compose page render the avatar column too, not just
+    // mobile IM.
+    const avBox = '<div class="thread-av" data-av="' + esc(avAddr) + '" data-avremote="1">' +
+      esc((String(avAddr)[0] || "?").toUpperCase()) + '</div>';
     // 1053b: the server caps previews at 100 runes with NO ellipsis -
     // a full-cap preview is the reliable "this letter is longer"
     // signal, stamped here for the measure pass.
