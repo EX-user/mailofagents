@@ -2622,7 +2622,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     return {
       badge: badge2.trim(),
       main: '<tr class="ct-row" data-act-acct="' + esc(c) + '">' +
-        '<td class="addr-cell mq" data-label="' + t("col.address") + '"><span class="pc-av-line">' + accAvatarHtml(c, false) + '<span class="sig-track"><span class="sig-txt">' + esc(c) + '</span><span class="sig-dup" aria-hidden="true">' + esc(c) + '<span class="pc-badges">' + badge2.trim() + "</span></span></td>" +
+        '<td class="addr-cell" data-label="' + t("col.address") + '"><span class="pc-av-line">' + accAvatarHtml(c, false) + '<span class="pc-addr">' + esc(c) + '</span><span class="pc-badges">' + badge2.trim() + "</span></span></td>" +
         '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(listedSig[c] || "") + '</span><span class="sig-dup" aria-hidden="true">' + esc(listedSig[c] || "") + "</span></span></td>" +
         '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action act-compose" data-compose="' + esc(c) + '">' + t("act.compose") + "</button></td>" +
         "</tr>",
