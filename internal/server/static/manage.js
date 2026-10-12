@@ -1337,8 +1337,20 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     const NAME_RE = /^[A-Za-z0-9_-]+$/;
     function subregAskState() {
       var named = $("#subreg-ask-modal input[value='named']").checked;
-      var name = ($("#subreg-name").value || "").trim();
-      return { named: named, name: name, ok: !named || (NAME_RE.test(name) && name.length <= 32) };
+      var raw = ($("#subreg-name").value || "").trim();
+      // 0.3.7 (boss): separators batch-mint subordinate accounts in ONE
+      // action. Separator set + cap are our reasonable defaults (alice:
+      // 细则你们定) — common CN/EN separators plus whitespace; 20 per batch.
+      var names = [], seen = {}, bad = "";
+      raw.split(/[,，、;；|\s·]+/).forEach(function (w) {
+        w = w.trim();
+        if (!w) return;
+        if (!NAME_RE.test(w) || w.length > 32) { if (!bad) bad = w; return; }
+        var k = w.toLowerCase();
+        if (seen[k]) return; // duplicates fold silently — the mint is idempotent-ish
+        seen[k] = 1; names.push(w);
+      });
+      return { named: named, names: names, name: names[0] || raw, bad: bad, cap: named && names.length > 20, ok: !named || (!bad && names.length >= 1 && names.length <= 20) };
     }
     function updateSubregAsk() {
       var st = subregAskState();
@@ -1355,9 +1367,16 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         errEl.hidden = true;
         return;
       }
-      prev.textContent = t("subs.regAddrWill", { addr: (st.name || "…") + "@" + domain });
-      if (!st.name) { errEl.hidden = true; return; }
-      if (!st.ok) { errEl.textContent = t("subs.regBad"); errEl.hidden = false; }
+      if (st.names.length > 1) {
+        var show = st.names.slice(0, 3).map(function (w) { return w + "@" + domain; }).join("、");
+        if (st.names.length > 3) show += " …";
+        prev.textContent = t("subs.regBatchWill", { n: st.names.length }) + " " + show;
+      } else {
+        prev.textContent = t("subs.regAddrWill", { addr: (st.name || "…") + "@" + domain });
+      }
+      if (!st.names.length) { errEl.hidden = !st.bad; if (st.bad) { errEl.textContent = t("subs.regBad"); } return; }
+      if (st.bad) { errEl.textContent = t("subs.regBadOne", { n: st.bad }); errEl.hidden = false; }
+      else if (st.cap) { errEl.textContent = t("subs.regCap", { n: 20 }); errEl.hidden = false; }
       else { errEl.hidden = true; }
     }
     // Typing in the name field implies "Specify a name" — auto-select
@@ -1390,24 +1409,80 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       updateSubregAsk();
       $("#btn-subreg-ask-ok").focus();
     }
+    var lastCreated = []; // 0.3.7 batch: every minted account of the last action
     async function subregPost(username, btn, status) {
+      // 0.3.7 (boss): `username` is either null (random) or an ARRAY of
+      // names (separator batch). One action mints N accounts by looping the
+      // single-register endpoint — continue-on-error so one taken name
+      // never loses the other mints; failures are reported per name.
+      var names = username ? (Array.isArray(username) ? username : [username]) : null;
       btn.disabled = true;
       status.textContent = t("common.loading");
       var errEl = $("#subreg-ask-err");
+      var created = [], failed = [];
       try {
-        const res = await api("/api/register-subordinate", {
-          method: "POST",
-          body: JSON.stringify(username ? { username: username } : {}),
-        });
-        $("#subreg-address").textContent = res.address || "";
-        $("#subreg-password").textContent = res.password || "";
+        if (!names) {
+          const res = await api("/api/register-subordinate", { method: "POST", body: "{}" });
+          created.push({ address: res.address || "", password: res.password || "" });
+        } else {
+          for (var i = 0; i < names.length; i++) {
+            try {
+              const res = await api("/api/register-subordinate", {
+                method: "POST",
+                body: JSON.stringify({ username: names[i] }),
+              });
+              created.push({ address: res.address || "", password: res.password || "", name: names[i] });
+            } catch (e) {
+              failed.push({ name: names[i], msg: String(e.message || e) });
+            }
+          }
+          if (!created.length) {
+            // Every name failed — stay in the ask modal with per-name errors.
+            var msgs = failed.map(function (f) { return f.name + ": " + f.msg; }).join("; ");
+            if (errEl && /409|taken|exists|occupied|conflict/i.test(msgs)) {
+              errEl.textContent = failed.map(function (f) { return f.name; }).join(", ") + " — " + t("subs.regTaken");
+              errEl.hidden = false;
+            } else if (errEl) {
+              errEl.textContent = msgs;
+              errEl.hidden = false;
+            } else {
+              status.textContent = t("common.error", { msg: msgs });
+            }
+            btn.disabled = false;
+            return;
+          }
+        }
+        lastCreated = created;
+        var first = created[0];
+        if (created.length > 1) {
+          // Batch: list every minted account, hide the single-account lines.
+          $("#subreg-address").textContent = "";
+          $("#subreg-password").textContent = "";
+          var holder = $("#subreg-batch");
+          holder.hidden = false;
+          holder.textContent = "";
+          created.forEach(function (c) {
+            const row = document.createElement("div");
+            row.className = "wl-chip";
+            row.style.marginBottom = "4px";
+            const code = document.createElement("code");
+            code.textContent = c.address + "  " + c.password;
+            row.appendChild(code);
+            holder.appendChild(row);
+          });
+        } else {
+          $("#subreg-batch").hidden = true;
+          $("#subreg-address").textContent = first.address || "";
+          $("#subreg-password").textContent = first.password || "";
+        }
         $("#subreg-copy-status").textContent = "";
         // Prompt copy lives in app.js (buildAgentPrompt) — hand the fresh
         // credentials over before the modal is shown (superior 09-02).
-        document.dispatchEvent(new CustomEvent("subreg:success", { detail: { address: res.address || "", password: res.password || "" } }));
+        document.dispatchEvent(new CustomEvent("subreg:success", { detail: { address: first.address || "", password: first.password || "", accounts: created } }));
         $("#subreg-modal").classList.remove("hidden");
         $("#btn-subreg-close").focus();
-        status.textContent = t("subs.regDone");
+        status.textContent = created.length > 1 ? t("subs.regBatchDone", { n: created.length }) : t("subs.regDone");
+        if (failed.length) status.textContent += " " + t("subs.regBatchFail", { n: failed.map(function (f) { return f.name; }).join(", ") });
         closeSubregAsk();
       } catch (e) {
         // A taken name stays in the ask modal with an inline error; other
@@ -1440,7 +1515,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       $("#btn-subreg-ask-ok").addEventListener("click", function () {
         var st = subregAskState();
         if (!st.ok) { updateSubregAsk(); return; }
-        subregPost(st.named ? st.name : null, this, $("#subs-status"));
+        subregPost(st.named ? st.names : null, this, $("#subs-status"));
       });
     }
     tbody.addEventListener("click", function (ev) {
@@ -1474,7 +1549,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       if (m && !m.classList.contains("hidden")) $("#btn-subreg-close").click();
     });
     $("#btn-subreg-copy").addEventListener("click", function () {
-      const text = $("#subreg-address").textContent + "\n" + $("#subreg-password").textContent;
+      var text;
+      if (lastCreated.length > 1) text = lastCreated.map(function (c) { return c.address + "\n" + c.password; }).join("\n\n");
+      else text = $("#subreg-address").textContent + "\n" + $("#subreg-password").textContent;
       copyText(text).then(function (ok) {
         const st = $("#subreg-copy-status");
         st.textContent = ok ? t("common.copied") : t("common.copyManual");

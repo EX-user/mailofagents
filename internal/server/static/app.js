@@ -5081,7 +5081,16 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   document.addEventListener("subreg:success", function (e) {
     var d = (e && e.detail) || {};
     var pre = $("#subreg-prompt");
-    if (pre) pre.textContent = buildAgentPrompt(d.address, d.password);
+    if (!pre) return;
+    // 0.3.7 batch: one merged prompt per minted account, clearly fenced,
+    // so Copy prompt hands over every batch member at once.
+    if (Array.isArray(d.accounts) && d.accounts.length > 1) {
+      pre.textContent = d.accounts.map(function (c) {
+        return buildAgentPrompt(c.address, c.password);
+      }).join("\n\n==========\n\n");
+    } else {
+      pre.textContent = buildAgentPrompt(d.address, d.password);
+    }
   });
   // Overview rows carry .mq signature marquees — measure them after each
   // render (the measurer lives here; the renderer is overview.js).
