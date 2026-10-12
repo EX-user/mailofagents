@@ -751,19 +751,29 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const addr = ($("#wl-modal").dataset || {}).wladdr;
       if (!addr) return;
       const inp = $("#wl-input");
-      const v = (inp.value || "").trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { wlFlash(t("wl.err.addr"), true); return; }
       const cur = wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
-      if (cur.whitelist.some(function (x) { return String(x).toLowerCase() === v; })) { wlFlash(t("wl.err.dup"), true); return; }
+      // 1065 (boss): the field accepts MULTIPLE addresses at once - same
+      // separator family as the batch registration box. Valid ones are
+      // added (POST each), invalid ones are named back; dupes fold.
+      const parts = (inp.value || "").split(/[,，、;；+\s]+/).map(function (w) { return w.trim().toLowerCase(); }).filter(function (w) { return w; });
+      if (!parts.length) { wlFlash(t("wl.err.addr"), true); return; }
+      const bad = parts.filter(function (w) { return !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(w); });
+      if (bad.length) { wlFlash(t("wl.err.addr") + " (" + bad.join(", ") + ")", true); return; }
+      const fresh = parts.filter(function (w) { return !cur.whitelist.some(function (x) { return String(x).toLowerCase() === w; }); });
+      if (!fresh.length) { wlFlash(t("wl.err.dup"), true); return; }
       wlFlash("");
-      api("/api/account/whitelist/" + encodeURIComponent(v) + wlQuery(addr), { method: "POST", keepSession: true })
-        .then(function () {
-          cur.whitelist.push(v);
-          inp.value = "";
-          renderWlChips(addr, cur.whitelist, "");
-          wlFlash(t("wl.saved"));
-        })
-        .catch(function (e) { wlFlash(String((e && e.message) || e), true); });
+      var chain = Promise.resolve();
+      fresh.forEach(function (w) {
+        chain = chain.then(function () {
+          return api("/api/account/whitelist/" + encodeURIComponent(w) + wlQuery(addr), { method: "POST", keepSession: true })
+            .then(function () { cur.whitelist.push(w); });
+        });
+      });
+      chain.then(function () {
+        inp.value = "";
+        renderWlChips(addr, cur.whitelist, "");
+        wlFlash(t("wl.saved"));
+      }).catch(function (e) { renderWlChips(addr, cur.whitelist, ""); wlFlash(String((e && e.message) || e), true); });
       return;
     }
     if (t2.id === "wl-enabled") {
