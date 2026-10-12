@@ -1341,16 +1341,18 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       // 0.3.7 (boss): separators batch-mint subordinate accounts in ONE
       // action. Separator set + cap are our reasonable defaults (alice:
       // 细则你们定) — common CN/EN separators plus whitespace; 20 per batch.
-      var names = [], seen = {}, bad = "";
+      var names = [], seen = {}, bad = "", dups = [];
       raw.split(/[,，、;；|\s·]+/).forEach(function (w) {
         w = w.trim();
         if (!w) return;
         if (!NAME_RE.test(w) || w.length > 32) { if (!bad) bad = w; return; }
         var k = w.toLowerCase();
-        if (seen[k]) return; // duplicates fold silently — the mint is idempotent-ish
+        // 1067 (boss): an un-registerable name FAILS the whole action —
+        // duplicates are named and block, never silently folded.
+        if (seen[k]) { if (dups.indexOf(w) < 0) dups.push(w); return; }
         seen[k] = 1; names.push(w);
       });
-      return { named: named, names: names, name: names[0] || raw, bad: bad, cap: named && names.length > 20, ok: !named || (!bad && names.length >= 1 && names.length <= 20) };
+      return { named: named, names: names, name: names[0] || raw, bad: bad, dups: dups, cap: named && names.length > 10, ok: !named || (!bad && !dups.length && names.length >= 1 && names.length <= 10) };
     }
     function updateSubregAsk() {
       var st = subregAskState();
@@ -1374,9 +1376,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       } else {
         prev.textContent = t("subs.regAddrWill", { addr: (st.name || "…") + "@" + domain });
       }
-      if (!st.names.length) { errEl.hidden = !st.bad; if (st.bad) { errEl.textContent = t("subs.regBad"); } return; }
+      if (!st.names.length && !st.bad) { errEl.hidden = true; return; }
       if (st.bad) { errEl.textContent = t("subs.regBadOne", { n: st.bad }); errEl.hidden = false; }
-      else if (st.cap) { errEl.textContent = t("subs.regCap", { n: 20 }); errEl.hidden = false; }
+      else if (st.dups.length) { errEl.textContent = t("subs.regDupOne", { n: st.dups.join(", ") }); errEl.hidden = false; }
+      else if (st.cap) { errEl.textContent = t("subs.regCap", { n: 10 }); errEl.hidden = false; }
       else { errEl.hidden = true; }
     }
     // Typing in the name field implies "Specify a name" — auto-select
@@ -1425,25 +1428,58 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           const res = await api("/api/register-subordinate", { method: "POST", body: "{}" });
           created.push({ address: res.address || "", password: res.password || "", worker_config: res.worker_config });
         } else {
-          for (var i = 0; i < names.length; i++) {
-            try {
-              const res = await api("/api/register-subordinate", {
-                method: "POST",
-                body: JSON.stringify({ username: names[i] }),
-              });
-              created.push({ address: res.address || "", password: res.password || "", name: names[i], worker_config: res.worker_config });
-            } catch (e) {
-              failed.push({ name: names[i], msg: String(e.message || e) });
+          // 0930 boss: a batch containing an un-registerable name FAILS the
+          // whole action. Pre-flight my own subordinates first (nothing mints
+          // on a hit), then mint strictly in order and stop at the first
+          // server reject — no partial-success path anymore.
+          var taken = [];
+          try {
+            const subs = await api("/api/subs");
+            var have = {};
+            (subs.subordinates || []).forEach(function (s) {
+              var lp = String(s.address || s || "").split("@")[0].toLowerCase();
+              if (lp) have[lp] = 1;
+            });
+            taken = names.filter(function (n) { return have[n.toLowerCase()]; });
+          } catch (e) { /* advisory only — the mint loop still fail-fasts */ }
+          if (taken.length) {
+            failed.push({ name: taken.join(", "), msg: "taken" });
+          } else {
+            for (var i = 0; i < names.length; i++) {
+              try {
+                const res = await api("/api/register-subordinate", {
+                  method: "POST",
+                  body: JSON.stringify({ username: names[i] }),
+                });
+                created.push({ address: res.address || "", password: res.password || "", name: names[i], worker_config: res.worker_config });
+              } catch (e) {
+                failed.push({ name: names[i], msg: String(e.message || e) });
+                break; // whole action fails — never mint past the first reject
+              }
             }
           }
-          if (!created.length) {
-            // Every name failed — stay in the ask modal with per-name errors.
+          if (failed.length) {
+            // Stay in the ask modal and name the failure; accounts minted
+            // before a server reject keep their one-time credentials visible
+            // right under the error so the failed action still loses nothing.
             var msgs = failed.map(function (f) { return f.name + ": " + f.msg; }).join("; ");
-            if (errEl && /409|taken|exists|occupied|conflict/i.test(msgs)) {
-              errEl.textContent = failed.map(function (f) { return f.name; }).join(", ") + " — " + t("subs.regTaken");
-              errEl.hidden = false;
-            } else if (errEl) {
-              errEl.textContent = msgs;
+            if (errEl) {
+              var takenish = /409|taken|exists|occupied|conflict/i.test(msgs);
+              errEl.textContent = "";
+              var head = document.createElement("div");
+              head.textContent = takenish ? failed.map(function (f) { return f.name; }).join(", ") + " — " + t("subs.regTaken") : msgs;
+              errEl.appendChild(head);
+              if (created.length) {
+                var note = document.createElement("div");
+                note.textContent = t("subs.regPartMint", { n: created.length });
+                errEl.appendChild(note);
+                created.forEach(function (c) {
+                  var line = document.createElement("code");
+                  line.style.display = "block";
+                  line.textContent = c.address + "  " + c.password;
+                  errEl.appendChild(line);
+                });
+              }
               errEl.hidden = false;
             } else {
               status.textContent = t("common.error", { msg: msgs });
@@ -1472,7 +1508,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
           // boss 12:39: the batch onboarding path is the per-account config
           // download — the merged Copy-prompt button has no business here.
           $("#btn-subreg-copy-prompt").hidden = true;
-          $("#btn-subreg-dl").textContent = t("subs.dlMerged", { n: created.length });
+          $("#btn-subreg-dl").textContent = t("subs.dlConfig");
           $("#wcfg-batch-note").hidden = false;
           $("#wcfg-batch-note").textContent = t("wcfg.batchWill", { n: created.length });
         } else {
@@ -1581,7 +1617,17 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       var base = list[0].worker_config;
       $("#wcfg-server").textContent = base.server || "";
       $("#wcfg-address").textContent = list.length > 1 ? list.length + " accounts" : (list[0].address || "");
-      $("#wcfg-workdir").value = base.workdir || ("~/workers/" + (list[0].address || "worker").split("@")[0]);
+      // 0930 boss: defaults are ours, never the mint template's workdir —
+      // a single account gets ~/moa-workers/<name>; a batch gets one team
+      // folder per minter (~/moa-workers/team-of-<owner>/) so every agent
+      // path in the merged file derives from it (root/<name>).
+      var sess = getSession();
+      var owner = ((sess && sess.address) || "me").split("@")[0];
+      if (wcfgTarget.batch) {
+        $("#wcfg-workdir").value = "~/moa-workers/team-of-" + owner;
+      } else {
+        $("#wcfg-workdir").value = "~/moa-workers/" + (list[0].address || "worker").split("@")[0];
+      }
       $("#wcfg-batch-note").hidden = !wcfgTarget.batch;
       if (wcfgTarget.batch) $("#wcfg-batch-note").textContent = t("wcfg.batchWill", { n: list.length });
       $("#wcfg-status").textContent = "";
@@ -1595,7 +1641,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       if (!wcfgTarget || !wcfgTarget.accounts.length) { wcfgClose(); return; }
       var cli = "opencode";
       $$("#wcfg-modal input[name='wcfg-cli']").forEach(function (r) { if (r.checked) cli = r.value; });
-      var root = ($("#wcfg-workdir").value || "").trim().replace(/\/+$/, "") || "~/workers";
+      var root = ($("#wcfg-workdir").value || "").trim().replace(/\/+$/, "") || "~/moa-workers";
       var base = wcfgTarget.accounts[0].worker_config || {};
       var out;
       if (wcfgTarget.batch) {
@@ -1603,7 +1649,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         out = {
           server: base.server || location.origin,
           poll_interval_sec: base.poll_interval_sec || 30,
-          timeout_sec: base.timeout_sec || 480,
+          // 0930 boss: 480 is far too small for real worker runs — 1800.
+          timeout_sec: 1800,
           agents: wcfgTarget.accounts.map(function (c) {
             var local = (c.address || "").split("@")[0];
             return { address: c.address, password: c.password, cli: cli, workdir: root + "/" + local };
@@ -1612,8 +1659,8 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       } else {
         var c0 = wcfgTarget.accounts[0];
         var local = (c0.address || "worker").split("@")[0];
-        var wd = ($("#wcfg-workdir").value || "").trim() || "~/workers/" + local;
-        out = Object.assign({}, base, { cli: cli, workdir: wd });
+        var wd = ($("#wcfg-workdir").value || "").trim() || "~/moa-workers/" + local;
+        out = Object.assign({}, base, { cli: cli, workdir: wd, timeout_sec: 1800 });
       }
       var fname = wcfgTarget.batch ? "workers.json" : local + ".worker.json";
       var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
