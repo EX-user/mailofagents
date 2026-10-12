@@ -1342,7 +1342,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       // action. Separator set + cap are our reasonable defaults (alice:
       // 细则你们定) — common CN/EN separators plus whitespace; 20 per batch.
       var names = [], seen = {}, bad = "";
-      raw.split(/[,，、;；+\s]+/).forEach(function (w) {
+      raw.split(/[,，、;；|\s·]+/).forEach(function (w) {
         w = w.trim();
         if (!w) return;
         if (!NAME_RE.test(w) || w.length > 32) { if (!bad) bad = w; return; }
@@ -1350,7 +1350,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         if (seen[k]) return; // duplicates fold silently — the mint is idempotent-ish
         seen[k] = 1; names.push(w);
       });
-      return { named: named, names: names, name: names[0] || raw, bad: bad, cap: named && names.length > 10, ok: !named || (!bad && names.length >= 1 && names.length <= 10) };
+      return { named: named, names: names, name: names[0] || raw, bad: bad, cap: named && names.length > 20, ok: !named || (!bad && names.length >= 1 && names.length <= 20) };
     }
     function updateSubregAsk() {
       var st = subregAskState();
@@ -1376,7 +1376,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       }
       if (!st.names.length) { errEl.hidden = !st.bad; if (st.bad) { errEl.textContent = t("subs.regBad"); } return; }
       if (st.bad) { errEl.textContent = t("subs.regBadOne", { n: st.bad }); errEl.hidden = false; }
-      else if (st.cap) { errEl.textContent = t("subs.regCap", { n: 10 }); errEl.hidden = false; }
+      else if (st.cap) { errEl.textContent = t("subs.regCap", { n: 20 }); errEl.hidden = false; }
       else { errEl.hidden = true; }
     }
     // Typing in the name field implies "Specify a name" — auto-select
@@ -1411,44 +1411,46 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
     }
     var lastCreated = []; // 0.3.7 batch: every minted account of the last action
     async function subregPost(username, btn, status) {
-      // 0.3.7 (boss): `username` is either null (random) or the RAW named
-      // string — separators included. The server splits, pre-checks every
-      // name (existence/shape) and mints ATOMICALLY: one taken name fails
-      // the whole action with 409 and nothing is half-created (rc3).
+      // 0.3.7 (boss): `username` is either null (random) or an ARRAY of
+      // names (separator batch). One action mints N accounts by looping the
+      // single-register endpoint — continue-on-error so one taken name
+      // never loses the other mints; failures are reported per name.
+      var names = username ? (Array.isArray(username) ? username : [username]) : null;
       btn.disabled = true;
       status.textContent = t("common.loading");
       var errEl = $("#subreg-ask-err");
+      var created = [], failed = [];
       try {
-        const res = await api("/api/register-subordinate", {
-          method: "POST",
-          body: JSON.stringify(username ? { username: username } : {}),
-        });
-        // Single-name (v0.6.4 shape): {address,password,declared}. Batch
-        // (201): {created:[{address,password,declared} | {name,failed,reason}]}.
-        var created = [], failed = [];
-        if (res && Array.isArray(res.created)) {
-          res.created.forEach(function (c) {
-            if (c && c.failed) failed.push({ name: c.name, msg: c.reason || "failed" });
-            else created.push({ address: c.address || "", password: c.password || "" });
-          });
+        if (!names) {
+          const res = await api("/api/register-subordinate", { method: "POST", body: "{}" });
+          created.push({ address: res.address || "", password: res.password || "" });
         } else {
-          created.push({ address: (res && res.address) || "", password: (res && res.password) || "" });
-        }
-        if (!created.length) {
-          var msgs = failed.map(function (f) { return f.name + ": " + f.msg; }).join("; ") || "no accounts created";
-          if (errEl && /409|taken|exists|occupied|conflict/i.test(msgs)) {
-            errEl.textContent = t("subs.regTaken") + " " + msgs;
-            errEl.hidden = false;
-            status.textContent = "";
-          } else if (errEl) {
-            errEl.textContent = msgs;
-            errEl.hidden = false;
-            status.textContent = "";
-          } else {
-            status.textContent = t("common.error", { msg: msgs });
+          for (var i = 0; i < names.length; i++) {
+            try {
+              const res = await api("/api/register-subordinate", {
+                method: "POST",
+                body: JSON.stringify({ username: names[i] }),
+              });
+              created.push({ address: res.address || "", password: res.password || "", name: names[i] });
+            } catch (e) {
+              failed.push({ name: names[i], msg: String(e.message || e) });
+            }
           }
-          btn.disabled = false;
-          return;
+          if (!created.length) {
+            // Every name failed — stay in the ask modal with per-name errors.
+            var msgs = failed.map(function (f) { return f.name + ": " + f.msg; }).join("; ");
+            if (errEl && /409|taken|exists|occupied|conflict/i.test(msgs)) {
+              errEl.textContent = failed.map(function (f) { return f.name; }).join(", ") + " — " + t("subs.regTaken");
+              errEl.hidden = false;
+            } else if (errEl) {
+              errEl.textContent = msgs;
+              errEl.hidden = false;
+            } else {
+              status.textContent = t("common.error", { msg: msgs });
+            }
+            btn.disabled = false;
+            return;
+          }
         }
         lastCreated = created;
         var first = created[0];
@@ -1487,7 +1489,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         // errors surface in the ask modal too (the ask replaces confirm()).
         var msg = String(e.message || "");
         if (errEl && /409|taken|exists|occupied|conflict/i.test(msg)) {
-          errEl.textContent = msg;
+          errEl.textContent = t("subs.regTaken");
           errEl.hidden = false;
           status.textContent = "";
         } else if (errEl) {
@@ -1500,7 +1502,6 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       }
       btn.disabled = false;
     }
-
     // Ask modal wiring.
     var askModal = $("#subreg-ask-modal");
     if (askModal) {
@@ -1514,7 +1515,7 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       $("#btn-subreg-ask-ok").addEventListener("click", function () {
         var st = subregAskState();
         if (!st.ok) { updateSubregAsk(); return; }
-        subregPost(st.named ? ($("#subreg-name").value || "").trim() : null, this, $("#subs-status"));
+        subregPost(st.named ? st.names : null, this, $("#subs-status"));
       });
     }
     tbody.addEventListener("click", function (ev) {
