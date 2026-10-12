@@ -186,3 +186,27 @@ func TestDigestLongUnreadReminder(t *testing.T) {
 		t.Fatalf("reminder must require an unread listing: %q", empty)
 	}
 }
+
+func TestDigestWakePrompt(t *testing.T) {
+	// boss 2026-10-09: a user-configured prompt rides MAIL-triggered wake
+	// digests (after the unread listing); no mail, no prompt line.
+	cfg := &Config{Prompt: "wake", Address: "a@x", Password: "p", Server: "https://s", Workdir: "/w", WakePrompt: "  每轮先查台架。  "}
+	mails := []MailSummary{{ID: "01M", From: "p@x", Subject: "s", Preview: "p", ReceivedAt: 1757000000}}
+	d := Digest(cfg, mails, true, "", "", MailStats{}, false, 0)
+	if !strings.Contains(d, "[随信指令] 每轮先查台架。") {
+		t.Fatalf("wake prompt missing from mail wake: %q", d)
+	}
+	if strings.Contains(d, "  每轮先查台架。") {
+		t.Fatal("wake prompt must be trimmed")
+	}
+	empty := Digest(cfg, nil, true, "", "", MailStats{}, false, 0)
+	if strings.Contains(empty, "[随信指令]") {
+		t.Fatalf("wake prompt must require an unread listing: %q", empty)
+	}
+	plain := *cfg
+	plain.WakePrompt = ""
+	pd := Digest(&plain, mails, true, "", "", MailStats{}, false, 0)
+	if strings.Contains(pd, "[随信指令]") {
+		t.Fatalf("empty config must inject nothing: %q", pd)
+	}
+}

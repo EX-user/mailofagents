@@ -70,3 +70,31 @@ func TestWakeInFlightResumeFlag(t *testing.T) {
 		t.Fatal("guard 1 violated: flag survived the clear")
 	}
 }
+
+func TestMouseTriStateDefault(t *testing.T) {
+	// boss 2026-10-09 17:19 final: absent `mouse` = ON (the morning
+	// "false" was a misspeak, reversed same day before anything shipped).
+	if !MouseOn(nil) {
+		t.Fatal("absent mouse must default ON")
+	}
+	f := false
+	if MouseOn(&f) {
+		t.Fatal("explicit false must stay off")
+	}
+	tr := true
+	if !MouseOn(&tr) {
+		t.Fatal("explicit true must stay on")
+	}
+}
+
+func TestMouseExplicitControls(t *testing.T) {
+	// explicit values always win, whatever the default ruling is.
+	tr := true
+	if !MouseOn(&tr) {
+		t.Fatal("explicit true must enable")
+	}
+	f := false
+	if MouseOn(&f) {
+		t.Fatal("explicit false must stay off")
+	}
+}
