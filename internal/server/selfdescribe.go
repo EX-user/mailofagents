@@ -33,7 +33,7 @@ const selfDescribeTemplate = `{
       "set": "PUT /api/account/whitelist {enabled:bool, addresses:[...]} (both optional; ?account= for superior/admin; prefill while disabled is allowed)",
       "add_entry": "POST /api/account/whitelist/<address> (self)",
       "remove_entry": "DELETE /api/account/whitelist/<address> (self)"
-    },
+    }
   },
   "http_api": {
     "auth": {
