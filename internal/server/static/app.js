@@ -709,13 +709,23 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       x.type = "button"; x.className = "wl-chip-x"; x.textContent = "\u00d7"; x.title = "remove";
       x.addEventListener("click", async function () {
         x.disabled = true;
+        const c = wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
+        const prev = c.whitelist.slice();
+        c.whitelist = c.whitelist.filter(function (v) { return String(v).toLowerCase() !== String(a).toLowerCase(); });
         try {
-          await api("/api/account/whitelist/" + encodeURIComponent(a) + wlQuery(addr), { method: "DELETE", keepSession: true });
-          const c = wlCache[addr] = wlCache[addr] || { whitelist_enabled: false, whitelist: [] };
-          c.whitelist = c.whitelist.filter(function (v) { return String(v).toLowerCase() !== String(a).toLowerCase(); });
+          // 1066 (boss re-test): entry POST/DELETE are SELF-only server-side -
+          // a superior editing a subordinate's chips silently wrote the
+          // SUPERIOR's own list (the "名单消失" report). Chips edit through
+          // the full-list PUT, which honors ?account= for both directions.
+          await api("/api/account/whitelist" + wlQuery(addr), { method: "PUT", body: JSON.stringify({ enabled: !!c.whitelist_enabled, addresses: c.whitelist }), keepSession: true });
           renderWlChips(addr, c.whitelist, "");
           wlFlash(t("wl.saved"));
-        } catch (e) { wlFlash(String((e && e.message) || e), true); x.disabled = false; }
+        } catch (e) {
+          c.whitelist = prev;
+          renderWlChips(addr, c.whitelist, "");
+          wlFlash(String((e && e.message) || e), true);
+          x.disabled = false;
+        }
       });
       chip.appendChild(x);
       holder.appendChild(chip);
@@ -762,18 +772,20 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const fresh = parts.filter(function (w) { return !cur.whitelist.some(function (x) { return String(x).toLowerCase() === w; }); });
       if (!fresh.length) { wlFlash(t("wl.err.dup"), true); return; }
       wlFlash("");
-      var chain = Promise.resolve();
-      fresh.forEach(function (w) {
-        chain = chain.then(function () {
-          return api("/api/account/whitelist/" + encodeURIComponent(w) + wlQuery(addr), { method: "POST", keepSession: true })
-            .then(function () { cur.whitelist.push(w); });
+      const prev = cur.whitelist.slice();
+      fresh.forEach(function (w) { cur.whitelist.push(w); });
+      // 1066: same full-list PUT as remove - self and superior both honored.
+      api("/api/account/whitelist" + wlQuery(addr), { method: "PUT", body: JSON.stringify({ enabled: !!cur.whitelist_enabled, addresses: cur.whitelist }), keepSession: true })
+        .then(function () {
+          inp.value = "";
+          renderWlChips(addr, cur.whitelist, "");
+          wlFlash(t("wl.saved"));
+        })
+        .catch(function (e) {
+          cur.whitelist = prev;
+          renderWlChips(addr, cur.whitelist, "");
+          wlFlash(String((e && e.message) || e), true);
         });
-      });
-      chain.then(function () {
-        inp.value = "";
-        renderWlChips(addr, cur.whitelist, "");
-        wlFlash(t("wl.saved"));
-      }).catch(function (e) { renderWlChips(addr, cur.whitelist, ""); wlFlash(String((e && e.message) || e), true); });
       return;
     }
     if (t2.id === "wl-enabled") {
