@@ -3516,6 +3516,7 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
    a yellow badge on partial rows and the same yellow note on top of
    the letter when opened. No name details anywhere. */
 .sent-partial-badge {
+  width: max-content;
   display: inline-block; margin-left: 6px; padding: 1px 7px;
   border-radius: 9px; background: rgba(234, 179, 8, 0.15);
   border: 1px solid rgba(234, 179, 8, 0.5); color: #a16207;
@@ -3529,4 +3530,48 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 #tab-compose.im:not(.im-full) .compose-form > .row:has(#compose-status.wl-banner) button,
 #tab-compose.im:not(.im-full) .compose-form > .row:has(#compose-status.wl-banner) label {
   display: none;
+}
+
+/* 0930 (boss): the DESIRED partial-delivery effect is the whole bubble
+   turning yellow - the row/capsule tints, the badge chip stays as the
+   textual anchor. IM capsules need the id-scoped twin to out-rank the
+   per-direction card colors. */
+.mail-item.sent-partial {
+  background: rgba(234, 179, 8, 0.10);
+  box-shadow: inset 3px 0 0 rgba(234, 179, 8, 0.55);
+}
+
+
+/* 0930 (boss, recalibrated): the partial letter tints the card each
+   surface ALREADY renders - no anatomy transplant. PC/mobile-full paint
+   the flat card itself (the visible bubble is the .thread-item), IM
+   paints the capsule child; same 14%-yellow-over-panel recipe as the
+   blue out tint. End of file so it wins the cascade. */
+.thread-item.sent-partial {
+  background: linear-gradient(color-mix(in srgb, #eab308 14%, transparent),
+              color-mix(in srgb, #eab308 14%, transparent)), var(--panel);
+}
+#tab-compose.im .thread-item.sent-partial .thread-card {
+  background: linear-gradient(color-mix(in srgb, #eab308 14%, transparent),
+              color-mix(in srgb, #eab308 14%, transparent)), var(--panel);
+}
+
+/* 0930 (boss picked bt6): the 往来邮件 drawer restores the classic
+   compact list - no capsule chrome, no avatars; direction bar + meta
+   line + badge chip; the partial yellow rides on the restored card. */
+#thread-modal .thread-item {
+  display: block; background: var(--panel); border-left: 3px solid var(--border);
+  padding: 8px 12px; border-radius: 6px; margin-bottom: 6px;
+}
+#thread-modal .thread-item .thread-av { display: none; }
+#thread-modal .thread-item .thread-card { background: none; padding: 0; border-radius: 0; position: static; }
+#thread-modal .thread-item .thread-card::after { display: none; }
+#thread-modal .thread-item.thread-out { border-left-color: var(--accent); }
+#thread-modal .thread-item.thread-in { border-left-color: var(--success); }
+#thread-modal .thread-item.sent-partial {
+  background: linear-gradient(color-mix(in srgb, #eab308 14%, transparent),
+              color-mix(in srgb, #eab308 14%, transparent)), var(--panel);
+  /* boss 0930: ONE edge only - the blue direction bar yields to the
+    yellow one on a partial letter, never both. */
+  border-left-color: rgba(234, 179, 8, 0.55);
 }
