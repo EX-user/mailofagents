@@ -3473,6 +3473,14 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 /* 0.3.7 (boss 0930): whitelist rejection receipts must be unmissable on PC
    and mobile alike - the muted status line becomes a full-width alarmed
    banner for whitelist outcomes. */
+/* 0930 (boss): the red send-failure notice dismisses itself -
+   armed by compose.js statusAutoClear after a generous 10s. */
+#compose-status {
+  transition: opacity 0.5s ease;
+}
+#compose-status.fade-out {
+  opacity: 0;
+}
 #compose-status.wl-banner {
   display: block;
   width: 100%;
