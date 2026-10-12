@@ -1082,6 +1082,21 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     panel.classList.remove("hidden");
   }
 
+  // 0930 (boss): the red send-failure notice must dismiss itself — a failed
+  // attempt is not a permanent state. Arm a fade-out then clear; re-arming
+  // (next send, next failure) always cancels the pending one first.
+  let statusFadeTimer = null, statusClearTimer = null;
+  function statusAutoClear(el, ms) {
+    if (statusFadeTimer) clearTimeout(statusFadeTimer);
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+    el.classList.remove("fade-out");
+    statusFadeTimer = setTimeout(function () { el.classList.add("fade-out"); }, ms);
+    statusClearTimer = setTimeout(function () {
+      el.classList.remove("fade-out", "wl-banner");
+      el.textContent = "";
+    }, ms + 500);
+  }
+
   $("#btn-send").addEventListener("click", async function () {
     // Boss doctrine (the contract): the envelope may not go out empty -
     // the conversation page stamps a no-information subject from the
@@ -1113,7 +1128,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
 
     // 0930 (boss): a fresh send starts with a clean slate — the previous
     // whitelist alarm must not linger once a new attempt is under way.
-    status.classList.remove("wl-banner");
+    if (statusFadeTimer) clearTimeout(statusFadeTimer);
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+    status.classList.remove("wl-banner", "fade-out");
     status.textContent = t("compose.sending");
     try {
       const sender = getSession();
@@ -1157,6 +1174,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         status.textContent = note;
         toast(note, "error");
         if (status.scrollIntoView) status.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        // 0930 (boss): even this receipt dismisses itself after a generous
+        // 10s — the durable record lives in the sent list's 送达异常 mark.
+        statusAutoClear(status, 10000);
       } else {
         toast(t("toast.sent"), "success");
       }
@@ -1206,9 +1226,12 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         status.textContent = t("wl.rejected");
         toast(t("wl.rejected"), "error");
         if (status.scrollIntoView) status.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        statusAutoClear(status, 10000);
         return;
       }
       status.textContent = t("common.error", { msg: e.message });
+      // 0930 (boss): the failure line dismisses itself too.
+      statusAutoClear(status, 10000);
       // v0.2.8.1 (1021): the server's plain-text reason (e.g. "too many
       // recipients: N given, limit is M") belongs in the toast — the
       // user's point of gaze — instead of a generic send-failed line.
