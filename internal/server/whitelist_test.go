@@ -253,3 +253,39 @@ func TestRegisterSubordinateBatch(t *testing.T) {
 		t.Fatalf("single = %d %s", resp.StatusCode, body)
 	}
 }
+
+// TestWorkerConfigDownload pins the 0.3.7 boss 12:39 upgrade: the create
+// response carries a ready-to-run worker_config (server/address/password/
+// emergency=[owner]); re-download for an existing subordinate is
+// owner/admin-gated and ships a template (empty password + note).
+func TestWorkerConfigDownload(t *testing.T) {
+	ts, st := newWhitelistTestServer(t)
+	if _, err := st.CreateAccountWithPassword("owner", "test.example", false, "ownerpassword1"); err != nil {
+		t.Fatal(err)
+	}
+	// single register -> worker_config present with credentials
+	resp, body := wlReq(t, "POST", ts.URL+"/api/register-subordinate", "owner@test.example", "ownerpassword1",
+		`{"username":"cfgbot"}`)
+	if resp.StatusCode != 201 || !strings.Contains(body, "worker_config") {
+		t.Fatalf("register = %d %s, want worker_config", resp.StatusCode, body)
+	}
+	var out map[string]any
+	_ = json.Unmarshal([]byte(body), &out)
+	wc, _ := out["worker_config"].(map[string]any)
+	if wc["address"] != "cfgbot@test.example" || wc["password"] == "" || wc["server"] == "" {
+		t.Fatalf("worker_config incomplete: %v", wc)
+	}
+	if _, has := wc["emergency"]; has {
+		t.Fatalf("emergency omitted by default (Efira minimal-file ruling), got %v", wc["emergency"])
+	}
+	// re-download: owner OK, template password empty
+	resp, body = wlReq(t, "GET", ts.URL+"/api/register-subordinate/config/cfgbot", "owner@test.example", "ownerpassword1", "")
+	if resp.StatusCode != 200 || !strings.Contains(body, `"password":""`) {
+		t.Fatalf("re-download = %d %s", resp.StatusCode, body)
+	}
+	// stranger gated
+	resp, _ = wlReq(t, "GET", ts.URL+"/api/register-subordinate/config/cfgbot", "owner@test.example", "wrong", "")
+	if resp.StatusCode != 401 {
+		t.Fatalf("bad auth = %d, want 401", resp.StatusCode)
+	}
+}
