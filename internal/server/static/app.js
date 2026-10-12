@@ -757,21 +757,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (wlOpener) { openWhitelistModal(wlOpener.dataset.wl); return; }
     if (t2.id === "btn-wl-close") { const m = $("#wl-modal"); if (m) m.classList.add("hidden"); return; }
     if (t2.id === "wl-modal") { const m = $("#wl-modal"); if (m) m.classList.add("hidden"); return; }
-    const cfgBtn = t2.closest("[data-subcfg]");
-    if (cfgBtn) {
-      const local = String(cfgBtn.dataset.subcfg || "").split("@")[0];
-      fetch("/api/register-subordinate/config/" + encodeURIComponent(local), { headers: { Authorization: basicAuth() } })
-        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
-        .then(function (blob) {
-          var url = URL.createObjectURL(blob);
-          var link = document.createElement("a");
-          link.href = url; link.download = local + ".worker.json";
-          document.body.appendChild(link); link.click(); link.remove();
-          setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-        })
-        .catch(function (e) { toast(t("common.error", { msg: String((e && e.message) || e) }), "error"); });
-      return;
-    }
     if (t2.id === "btn-wl-add") {
       const addr = ($("#wl-modal").dataset || {}).wladdr;
       if (!addr) return;
@@ -2053,7 +2038,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (isSub) acts += '<button class="warn" data-remove-sub="' + esc(addr) + '">\u2715 ' + t("subs.removeBtn") + "</button>";
     acts += '<button data-limits="' + esc(addr) + '">' + t("limits.open") + "</button>";
     acts += '<button data-wl="' + esc(addr) + '">' + t("wl.title") + "</button>";
-    acts += '<button data-subcfg="' + esc(addr) + '">' + t("subs.dlConfig") + "</button>";
     return '<div class="im3-overlay" data-ovl="' + esc(addr) + '">' +
       acts +
       '<button class="cl-close" data-ovl-back="' + esc(addr) + '">\u2715 ' + t("acc.back") + "</button></div>";
@@ -2527,7 +2511,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (isSub) acts += '<button class="warn" data-remove-sub="' + esc(addr) + '">\u2715 ' + t("subs.removeBtn") + "</button>";
     acts += '<button data-limits="' + esc(addr) + '">' + t("limits.open") + "</button>";
     acts += '<button data-wl="' + esc(addr) + '">' + t("wl.title") + "</button>";
-    acts += '<button data-subcfg="' + esc(addr) + '">' + t("subs.dlConfig") + "</button>";
     return '<div class="im3-overlay" data-ovl="' + esc(addr) + '">' +
       acts +
       '<button class="cl-close" data-ovl-back="' + esc(addr) + '">\u2715 ' + t("acc.back") + "</button></div>";
@@ -2762,7 +2745,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           '<span class="act-pill-slot" data-act-slot="pill"></span><span class="pc-badges">' + badge + "</span></span></td>" +
           '<td class="sig-cell" data-label="' + t("col.signature") + '"><span class="sig-track"><span class="sig-txt">' + esc(sig) + '</span><span class="sig-dup" aria-hidden="true">' + esc(sig) + "</span></span></td>" +
           '<td class="actions-cell" data-label="' + t("col.actions") + '"><button class="row-action act-compose" data-compose="' + esc(e.address) + '">' + t("act.compose") + '</button><button class="row-gear" data-gear="' + esc(e.address) + '" aria-label="' + esc(t("acc.settings")) + '">\u2699</button>' +
-          '<div class="gear-pop" hidden><button class="row-action warn" data-remove-sub="' + esc(e.address) + '">' + t("subs.removeBtn") + '</button><button class="row-action" data-limits="' + esc(e.address) + '">' + t("limits.open") + '</button><button class="row-action" data-wl="' + esc(e.address) + '">' + t("wl.title") + '</button><button class="row-action" data-subcfg="' + esc(e.address) + '">' + t("subs.dlConfig") + "</button></div></td>" +
+          '<div class="gear-pop" hidden><button class="row-action warn" data-remove-sub="' + esc(e.address) + '">' + t("subs.removeBtn") + '</button><button class="row-action" data-limits="' + esc(e.address) + '">' + t("limits.open") + '</button><button class="row-action" data-wl="' + esc(e.address) + '">' + t("wl.title") + "</button></div></td>" +
           "</tr>");
         // boss PC round: the latest message runs the FULL row width (one
         // colspan-3 line under the entry), still patched in place by
