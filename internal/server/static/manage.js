@@ -1629,6 +1629,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
       } else {
         $("#wcfg-workdir").value = "~/moa-workers/" + (list[0].address || "worker").split("@")[0];
       }
+      // 0930 boss: the file name is the user's call. Prefill single with the
+      // account's local part, a batch with <first-local>-and-others; editable.
+      var firstLocal = (list[0].address || "worker").split("@")[0];
+      $("#wcfg-fname").value = wcfgTarget.batch ? (firstLocal + "-and-others") : firstLocal;
       $("#wcfg-batch-note").hidden = !wcfgTarget.batch;
       if (wcfgTarget.batch) $("#wcfg-batch-note").textContent = t("wcfg.batchWill", { n: list.length });
       $("#wcfg-status").textContent = "";
@@ -1663,7 +1667,11 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         var wd = ($("#wcfg-workdir").value || "").trim() || "~/moa-workers/" + local;
         out = Object.assign({}, base, { cli: cli, workdir: wd, timeout_sec: 1800 });
       }
-      var fname = wcfgTarget.batch ? "workers.json" : local + ".worker.json";
+      // 0930 boss: the prefilled, editable file name wins; .json appended
+      // unless the user already typed it.
+      var fbase = ($("#wcfg-fname").value || "").trim().replace(/\.json$/i, "").replace(/[\/\\]/g, "") ||
+        (wcfgTarget.batch ? "workers" : (wcfgTarget.accounts[0].address || "worker").split("@")[0]);
+      var fname = fbase + ".json";
       var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
       var url = URL.createObjectURL(blob);
       var link = document.createElement("a");
