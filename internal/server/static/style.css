@@ -3515,12 +3515,11 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 /* 0930 (boss via Felix): the Sent box marks whitelist-gated letters -
    a yellow badge on partial rows and the same yellow note on top of
    the letter when opened. No name details anywhere. */
+/* 0930 (boss): plain direct text like the follow-up link - no pill
+   chrome, current color kept, baseline-aligned with the meta line. */
 .sent-partial-badge {
-  width: max-content;
-  display: inline-block; margin-left: 6px; padding: 1px 7px;
-  border-radius: 9px; background: rgba(234, 179, 8, 0.15);
-  border: 1px solid rgba(234, 179, 8, 0.5); color: #a16207;
-  font-size: 10px; font-weight: 700; vertical-align: middle; white-space: nowrap;
+  margin-left: 6px; color: #a16207;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
 }
 .sent-partial-note {
   margin: 0 0 10px; padding: 8px 12px; border-radius: 8px;
