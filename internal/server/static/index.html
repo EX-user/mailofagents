@@ -255,7 +255,6 @@
       <div class="header-right">
         <span id="whoami" class="muted"></span>
         <div class="header-actions">
-        <a id="btn-guide" href="/static/guide.html" target="_blank" rel="noopener" title="使用指南" style="font-size:12.5px;color:#2f6fed;text-decoration:none;padding:6px 10px;border:1px solid #cfdffb;border-radius:16px;background:#eef4ff;">指南</a>
         <button id="btn-lang" class="lang-toggle" title="Language" aria-label="Language"><span class="seg" data-seg="zh">中</span><span class="seg" data-seg="en">EN</span></button>
         <!-- v0.6.9 layout (superior-approved): Preferences moves out of the
            nav into the header as a pill (same family as lang/logout); the
@@ -296,6 +295,7 @@
     <button type="button" data-oview="main" class="on pc-ovw-data" data-i18n="ovw.tabData">Data</button>
     <button type="button" data-oview="mine" data-i18n="ovw.tabMine">Mine</button>
     <button type="button" data-oview="directory" data-i18n="nav.directory">Directory</button>
+    <button type="button" data-oview="guide" data-i18n="ovw.tabGuide">Guide</button>
   </div>
   <!-- Mobile 0.2.4 fine-tune (superior): the directory refresh rides
        beside the view capsule as a round icon button; setOvwView shows it
@@ -362,6 +362,9 @@
           <thead><tr><th data-i18n="hdr.address">Address</th><th data-i18n="hdr.signature">Signature</th><th data-i18n="hdr.actions">Actions</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+      <div id="ovw-guide" class="hidden">
+        <iframe class="guide-frame" title="guide" src="about:blank"></iframe>
       </div>
     </section>
 
