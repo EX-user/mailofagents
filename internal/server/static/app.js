@@ -141,10 +141,19 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // phone-only view, so on PC a stored "mine" re-lands on Data.
     var pc = window.innerWidth > 800;
     if (pc && v === "mine") v = "main";
-    if (v !== "directory" && v !== "mine") v = "main";
+    if (v !== "directory" && v !== "mine" && v !== "guide") v = "main";
     main.classList.toggle("hidden", v !== "main");
     mine.classList.toggle("hidden", pc ? v !== "main" : v !== "mine");
     dir.classList.toggle("hidden", v !== "directory");
+    var guide = $("#ovw-guide");
+    if (guide) {
+      guide.classList.toggle("hidden", v !== "guide");
+      if (v === "guide" && !guide.dataset.loaded) {
+        guide.dataset.loaded = "1";
+        var f = guide.querySelector("iframe");
+        if (f && (!f.src || f.src === "about:blank")) f.src = "/static/guide.html";
+      }
+    }
     $$("#ovw-seg button").forEach(function (b) {
       b.classList.toggle("on", b.dataset.oview === v);
     });
