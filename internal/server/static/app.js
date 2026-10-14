@@ -3869,8 +3869,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const regOpen = !!(setRes && setRes.registration_enabled);
     const regBtn = $("#btn-portal-register");
     if (regBtn) regBtn.style.display = regOpen ? "" : "none";
-    const teamBtn = $("#btn-portal-team");
-    if (teamBtn) teamBtn.style.display = regOpen ? "" : "none";
 
     loadShowcase(setRes);
     spawnPortalParticles();
@@ -5579,9 +5577,6 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // one-click button lives on that form).
   $("#btn-portal-login").addEventListener("click", showLogin);
   $("#btn-portal-register").addEventListener("click", function () { showLogin(); showRegisterForm(); });
-  // Team register (v0.5.14): third portal entry — same auth-card surface,
-  // dedicated form; visibility follows registration_enabled in loadPortal.
-  $("#btn-portal-team").addEventListener("click", function () { showLogin(); showTeamForm(); });
   (function wireTeamReg() {
     const submit = $("#btn-team-submit");
     if (!submit) return;
