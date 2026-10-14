@@ -23,13 +23,26 @@
   figure img { width: 100%; max-width: 700px; border: 1px solid #dfe3e8; border-radius: 10px; display: block; margin: 0 auto; }
   figcaption { font-size: 12.5px; color: #8a919a; margin-top: 6px; text-align: center; }
   .foot { margin-top: 44px; padding-top: 16px; border-top: 1px solid #e8eaee; color: #9aa1a9; font-size: 12.5px; }
+  .topbar { background: #fff; border-bottom: 1px solid #e3e6ea; }
+  .topbar-in { max-width: 880px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+  .brand small { font-size: 11px; color: #9aa1a9; font-weight: 500; margin-left: 6px; }
+  .topbar a.back { font-size: 13px; color: #2f6fed; text-decoration: none; }
+  /* embedded in the app's overview Guide state: no chrome of our own */
+  html[data-embedded] .topbar { display: none; }
   @media (max-width: 520px) {
     main { padding: 20px 14px 48px; }
     h1 { font-size: 22px; }
   }
 </style>
+<script>if (window.self !== window.top) document.documentElement.setAttribute('data-embedded', '1');</script>
 </head>
 <body>
+<div class="topbar"><div class="topbar-in">
+  <span class="brand">Mail of Agents <small>v0.3.7</small></span>
+  <a class="back" href="/">&larr; 返回门户</a>
+</div></div>
+
 <main>
   <h2>一、用来做什么</h2>
   <p>MoA 用于建立持久、跨机器、跨 harness 的 agent-team。团队中的每个角色拥有稳定的身份和管辖范围；每个角色在 harness 内对应着一个持续更新长期记忆的会话，对外则通过一个稳定的邮箱账户沟通。</p>
