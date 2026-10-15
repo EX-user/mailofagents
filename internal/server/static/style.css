@@ -3607,9 +3607,20 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 /* boss rc20: in pass state the mask KEEPS blocking the page around the
    dialog - the dialog itself floats above the tour (its own hit area),
    the spot rides its Register button above that, the card steps aside. */
-.tour-layer.tour-pass .tour-spot { z-index: 10002; }
+.tour-layer.tour-pass .tour-spot { z-index: 10002; transition: none; }
+/* boss 22:08: with the .25s position transition live, the spot (and its
+   200vmax mask shadow, z 10002 over the dialog's 10001) SLIDES across the
+   dialog from its old anchor - reading as a broken spotlight the moment
+   the dialog opens. In pass state it jump-cuts onto the Register button. */
 .tour-layer.tour-pass .tour-card { display: none; pointer-events: none; }
-.tour-pass-modal { z-index: 10001 !important; }
+/* boss 22:54: the mask must float ON TOP of the dialog - the previous
+   float (modal z 10001 over the layer 9999) put the whole tour layer,
+   spot hole and 200vmax dim UNDER the dialog (the spot z 10002 only
+   counts inside the layer stacking context), so the dialog showed no
+   mask at all. The dialog stays at its native z (below the layer); the
+   layer yields pointer-events in pass so the dialog stays clickable;
+   outside clicks land on the dialog backdrop as before. */
+.tour-layer.tour-pass { pointer-events: none; }
 /* boss rc20 (clarified): while the register dialog is up the ONLY clickable
    thing is its Register button - every other control inside goes inert
    (random-name path; an account wanting a custom name exits the tour).
@@ -3619,6 +3630,13 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
    ancestors (:not() does not un-inherit an ancestor's none) */
 .tour-lock-inside #btn-subreg-ask-ok { pointer-events: auto !important; }
 .tour-spot { position: fixed; z-index: 9999; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(15, 23, 42, 0.55); pointer-events: none; transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
+/* boss 22:33 acceptance: the spotlight mask must read as present - on the
+   dark theme a 55% black shadow on the dark page is imperceptible (boss
+   saw no mask at all), so under the dark theme the dim field goes to 80%
+   near-black navy; explicit pick and system-follow both covered. */
+html[data-theme="dark"] .tour-spot { box-shadow: 0 0 0 200vmax rgba(2, 6, 23, 0.8); }
+@media (prefers-color-scheme: dark) { html:not([data-theme]) .tour-spot { box-shadow: 0 0 0 200vmax rgba(2, 6, 23, 0.8); } }
+
 .tour-card { position: fixed; left: 16px; right: 16px; z-index: 10000; background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28); }
 .tour-card h3 { margin: 0 0 6px; font-size: 15px; color: #1f2328; }
 .tour-card p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.65; color: #4a5158; }
