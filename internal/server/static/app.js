@@ -5864,9 +5864,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     { tab: "accounts", sel: "#btn-logout", t: "tour.logoutt", b: "tour.logoutb" },
     { tab: "accounts", sel: "#app-header nav", t: "tour.navt", b: "tour.navb" },
     { tab: "accounts", sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
-    { // boss: after the register step, enter Compose the way real users do -
-      // tapping a sub row opens the IM-style session (prefilled To). When no
-      // row exists (nothing registered yet) fall back to the plain form.
+    { tab: "compose", // boss: after the register step, enter Compose the way
+      // real users do - tapping a sub row opens the IM-style session
+      // (prefilled To). When no row exists (nothing registered yet) the same
+      // beat falls back to the plain form, so Compose is always revealed.
       prep: function () {
         const row = document.querySelector("#acc-m-contacts .im3-row[data-claddr]");
         if (row) { row.click(); return { sel: "#im-input", t: "tour.s3t", b: "tour.s3imb" }; }
@@ -6014,12 +6015,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // the panel flip can settle asynchronously (page-lock pinning re-lays
     // the section) - retry the pick instead of killing the whole tour on
     // a layout race; a step with no visible target is skipped, not fatal.
+    // cold first open: the reveal and its layout settle asynchronously -
+    // retry the pick ~2.4s before judging the target truly absent
     let tries = 0;
     const attempt = function () {
       const first = pickEl(s.sel);
       if (!first) {
         tries += 1;
-        if (tries < 8) { setTimeout(attempt, 150); }
+        if (tries < 16) { setTimeout(attempt, 150); }
         else { aim(idx); }
         return;
       }
