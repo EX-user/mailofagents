@@ -215,13 +215,13 @@ func TestDigestIrtMarker(t *testing.T) {
 	cfg := &Config{Address: "a@x", Server: "http://s", Workdir: "/w"}
 	mails := []MailSummary{
 		{ID: "01 Parent", From: "boss@x", Subject: "root letter", Preview: "hello", ReceivedAt: 1791862163},
-		{ID: "02 Child", From: "dev@x", Subject: "follow up", Preview: "see parent", ReceivedAt: 1791862164, InReplyTo: "01 Parent"},
+		{ID: "02 Child", From: "dev@x", Subject: "follow up", Preview: "see parent", ReceivedAt: 1791862164, InReplyTo: "01M4PARENT01"},
 	}
 	d := Digest(cfg, mails, true, "", "", MailStats{}, false, 0)
 	if !strings.Contains(d, "主题: root letter") {
 		t.Fatalf("root letter must be unmarked:\n%s", d)
 	}
-	if !strings.Contains(d, "主题: ↩[irt] follow up") {
-		t.Fatalf("reply letter must carry the ↩[irt] marker:\n%s", d)
+	if !strings.Contains(d, "主题: [↩reply to 01M4PARENT01] follow up") {
+		t.Fatalf("reply letter must carry the [↩reply to <id>] marker:\n%s", d)
 	}
 }

@@ -40,8 +40,8 @@ type MailSummary struct {
 	Unread     bool   `json:"unread"`
 	// InReplyTo is the parent message ULID when this letter is a reply
 	// (server list entries carry it since threads v0.6.15). The digest
-	// surfaces only its PRESENCE (the ↩[irt] marker) — the id itself stays
-	// a detail-fetch concern (boss 2026-10-15: "只要能表明这是一封有irt的信").
+	// surfaces it as [↩reply to <id>] on the subject line (boss
+	// 2026-10-15 18:00) so the agent can thread without a detail fetch.
 	InReplyTo string `json:"in_reply_to,omitempty"`
 }
 

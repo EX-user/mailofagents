@@ -161,13 +161,13 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 	return b.String()
 }
 
-// irtMark prefixes a reply letter's subject with the ↩[irt] marker (boss
-// 2026-10-15): dual-channel — the arrow reads as "this is a reply" at a
-// glance, the bracketed token is machine-checkable. Presence only: no
-// parent id or subject rides the digest (detail-fetch concern).
+// irtMark prefixes a reply letter's subject with [↩reply to <parent-id>]
+// (boss 2026-10-15 18:00: "改成 [↩reply to ID] 其中ID换成irt参数") — the
+// marker names the parent message id directly, so the agent can thread
+// without a detail fetch. No parent subject rides the digest.
 func irtMark(m MailSummary) string {
 	if m.InReplyTo != "" {
-		return "↩[irt] "
+		return "[↩reply to " + m.InReplyTo + "] "
 	}
 	return ""
 }
