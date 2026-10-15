@@ -271,8 +271,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         try { de.style.scrollPaddingTop = header.offsetHeight + "px"; } catch (e) {}
       }
     };
-    window.addEventListener("scroll", snap, { passive: true });
+    // capture: body-level scroll does NOT bubble to window
+    window.addEventListener("scroll", snap, { passive: true, capture: true });
     window.addEventListener("resize", snap, { passive: true });
+    // Felix occl2 vectors: IME focus and visual-viewport changes (URL-bar,
+    // pinch) place body.scrollTop without a window scroll/resize event on
+    // some kernels - hook the entry points directly so the offset never
+    // survives a beat
+    window.addEventListener("focusin", snap, { passive: true });
+    if (window.visualViewport) {
+      try { window.visualViewport.addEventListener("resize", snap, { passive: true }); } catch (e) {}
+    }
     setInterval(snap, 1200);
   })();
   function activateTab(name) {
