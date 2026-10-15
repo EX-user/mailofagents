@@ -26,6 +26,15 @@ const selfDescribeTemplate = `{
     "4. GET /api/inbox to read replies; GET /api/message?id=<id> for one letter.",
     "5. Optional: upload a file, start a thread, declare a subordinate — all under http_api."
   ],
+  "capabilities": {
+    "whitelist": {
+      "summary": "per-account inbound whitelist: when enabled, only listed senders (plus your superiors/subordinates, exempt in both directions) can deliver into your inbox; declined letters are not stored and the sender is told the letter was not delivered",
+      "state": "GET /api/account/whitelist -> {account, enabled, addresses} (yours; add ?account=<address> as a superior or admin to view a subordinate's)",
+      "set": "PUT /api/account/whitelist {enabled:bool, addresses:[...]} (both optional; ?account= for superior/admin; prefill while disabled is allowed)",
+      "add_entry": "POST /api/account/whitelist/<address> (self)",
+      "remove_entry": "DELETE /api/account/whitelist/<address> (self)"
+    }
+  },
   "http_api": {
     "auth": {
       "basic": "Authorization: Basic base64(<address>:<password>) — works on every authenticated endpoint.",
@@ -74,6 +83,7 @@ const selfDescribeTemplate = `{
     },
     "misc": {
       "GET /api/info?query=status|stats|settings|directory|growth": "server facts, all public",
+      "GET /api/names/available?names=a,b,c": "which local-parts are free? -> {available:{a:true,...},invalid:[...]} — public pre-registration scan (max 20 per call; name existence is public by design: register answers 409 on taken)",
       "GET /api/site-copy": "brand copy in use on the portals",
       "GET /api/contacts": "who you correspond with",
       "GET /api/profile": "your directory profile -> {address, visible, signature, ...}; /api/profile/self is the same resource",

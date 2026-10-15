@@ -71,6 +71,19 @@ type MessageSummary struct {
 	ReceivedAt int64    `json:"received_at"`
 	Unread     bool     `json:"unread"`
 	Files      int      `json:"files"` // attachment count (detail fetch lists them)
+	// SentStatus is set ONLY on sent-index reads whose index entry carried
+	// a state (0.3.7 boss-approved failed-send field): delivered /
+	// missing / partial. Old records and inbox reads have nil = no state.
+	SentStatus *SentStatus `json:"sent_status,omitempty"`
+}
+
+// SentStatus is the delivery state stamped into a sent-index entry at
+// send time. partial = at least one real recipient was declined by their
+// inbound whitelist (all-rejected included, no detail list); missing =
+// at least one recipient address did not exist; delivered = everything
+// reached. System-notification sent refs stay nil (no state).
+type SentStatus struct {
+	State string `json:"state"`
 }
 
 // SendResult is returned by Send.
@@ -112,6 +125,7 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 	}
 
 	delivered := 0
+	missing := 0
 	var rejected []string
 	err = s.db.Update(func(tx *bolt.Tx) error {
 		// Parent existence is checked in the SAME transaction as the write
@@ -144,7 +158,8 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 			seen[l] = true
 			acc, err := getAccountInTx(tx, addr)
 			if err != nil {
-				continue // unknown recipient: skip
+				missing++ // unknown recipient: skip (counts toward the missing state)
+				continue
 			}
 			// Whitelist gate (0.3.7): hierarchy exemption first (either
 			// direction, spec point 6), then the list when enabled. A
@@ -167,11 +182,12 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 			delivered++
 		}
 
-		// Add a sent reference for the sender.
+		// Add a sent reference for the sender, stamped with the delivery
+		// state (0.3.7 failed-send field): partial > missing > delivered.
 		sb := tx.Bucket(bSent)
 		if sender, err := getAccountInTx(tx, from); err == nil {
 			key := indexKey(sender.UUID, msgID)
-			if err := sb.Put(key, nil); err != nil {
+			if err := sb.Put(key, sentStateValue(len(rejected), missing)); err != nil {
 				return err
 			}
 		}
@@ -187,6 +203,11 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 		// Rejected[], not as a store error — the handler maps it to 403.
 		if len(rejected) > 0 {
 			return &SendResult{MessageID: msgID, Rejected: rejected}, nil
+		}
+		// All recipients were UNKNOWN addresses (0.3.7 missing state):
+		// same anchoring — 200 with sent_status=missing.
+		if missing > 0 {
+			return &SendResult{MessageID: msgID}, nil
 		}
 		return nil, fmt.Errorf("no valid recipients among %v (cc: %v)", to, cc)
 	}
@@ -342,10 +363,16 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 			prefix := indexKey(acc.UUID, "")
 			prefixStr := string(prefix)
 			// Ascending ULID = oldest first; walk backwards for newest-first.
+			// Index VALUES ride along: sent entries carry the delivery
+			// state (0.3.7) — hydrated into out-direction summaries.
 			var ids []string
+			states := map[string][]byte{}
 			c := b.Cursor()
-			for k, _ := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), prefixStr); k, _ = c.Next() {
+			for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), prefixStr); k, v = c.Next() {
 				ids = append(ids, string(k[len(prefix):]))
+				if v != nil {
+					states[string(k[len(prefix):])] = append([]byte(nil), v...)
+				}
 			}
 			for i := len(ids) - 1; i >= 0; i-- {
 				id := ids[i]
@@ -374,6 +401,12 @@ func (s *Store) ReadThread(address, peer string, limit, offset int) ([]ThreadEnt
 				ms := summarize(msg)
 				if ub != nil {
 					ms.Unread = ub.Get(indexKey(acc.UUID, id)) != nil
+				}
+				if raw, ok := states[id]; ok && len(raw) > 0 {
+					var stt SentStatus
+					if json.Unmarshal(raw, &stt) == nil && stt.State != "" {
+						ms.SentStatus = &stt
+					}
 				}
 				merged = append(merged, ThreadEntry{MessageSummary: ms, Dir: dir})
 				sideCount++
@@ -610,14 +643,18 @@ func (s *Store) readIndex(bucket []byte, indexOwner, viewerUuid string, limit, o
 	prefix := indexKey(indexOwner, "")
 	prefixStr := string(prefix)
 	var ids []string
+	states := map[string][]byte{}
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucket)
 		if b == nil {
 			return nil // bucket missing — treat as empty index
 		}
 		c := b.Cursor()
-		for k, _ := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), prefixStr); k, _ = c.Next() {
+		for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), prefixStr); k, v = c.Next() {
 			ids = append(ids, string(k[len(prefix):]))
+			if v != nil {
+				states[string(k[len(prefix):])] = append([]byte(nil), v...)
+			}
 		}
 		return nil
 	})
@@ -665,11 +702,31 @@ func (s *Store) readIndex(bucket []byte, indexOwner, viewerUuid string, limit, o
 			if ub != nil {
 				ms.Unread = ub.Get(indexKey(viewerUuid, id)) != nil
 			}
+			if raw, ok := states[id]; ok && len(raw) > 0 {
+				var st SentStatus
+				if json.Unmarshal(raw, &st) == nil && st.State != "" {
+					ms.SentStatus = &st
+				}
+			}
 			out = append(out, ms)
 		}
 		return nil
 	})
 	return out, err
+}
+
+// sentStateValue encodes the sent-index entry value for the delivery
+// state: partial (whitelist declines) > missing (unknown recipients) >
+// delivered.
+func sentStateValue(rejected, missing int) []byte {
+	state := "delivered"
+	if rejected > 0 {
+		state = "partial"
+	} else if missing > 0 {
+		state = "missing"
+	}
+	v, _ := json.Marshal(SentStatus{State: state})
+	return v
 }
 
 // GetMessage returns the full body of a single message, provided it is
