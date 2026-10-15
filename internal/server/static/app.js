@@ -5863,25 +5863,35 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     { tab: "accounts", sel: "#btn-prefs", t: "tour.prefst", b: "tour.prefsb" },
     { tab: "accounts", sel: "#btn-logout", t: "tour.logoutt", b: "tour.logoutb" },
     { tab: "accounts", sel: "#app-header nav", t: "tour.navt", b: "tour.navb" },
-    { // boss: the register beat is hands-on - the spot forwards the click to
-      // the button and the beat advances only when the ask modal opens (or
-      // the user skips this step).
+    { // boss: the register beat is mandatory for accounts without a sub
+      // row - no skip-this-step here. The beat advances only when a sub
+      // row actually lands (the dialog closing without a registration
+      // keeps the beat parked; tapping the spot reopens the dialog).
+      // "Exit tour" ends the whole tour for this session (sessionStorage;
+      // back next login until permanently dismissed).
+      interact: true, exitBtn: true, passSel: "#subreg-ask-modal",
+      skipIf: function () { return !!subRowEl(); },
+      advance: function () { return !!subRowEl(); },
+      sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
+    { // boss: the sub-row tap is hands-on now - the user taps the
+      // highlighted row themselves (the production composeTo path opens
+      // the IM-style session with the recipient prefilled); the beat
+      // advances once the session input is actually on screen.
       interact: true,
       advance: function () {
-        const m = document.getElementById("subreg-ask-modal");
-        return m && !m.classList.contains("hidden");
+        const inp = document.getElementById("im-input");
+        if (inp && inp.getClientRects().length > 0) return true;
+        // boss 09-29: a peer with NO conversation lands in the full form
+        // (the session bar stays hidden) - that still counts as entered
+        const sec = document.getElementById("tab-compose");
+        return !!sec && sec.classList.contains("im-full");
       },
-      sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
-    { tab: "compose", // boss: after the register step, enter Compose the way
-      // real users do - tapping a sub row opens the IM-style session
-      // (prefilled To). When no row exists (nothing registered yet) the same
-      // beat falls back to the plain form, so Compose is always revealed.
-      prep: function () {
-        const row = document.querySelector("#acc-m-contacts .im3-row[data-claddr]");
-        if (row) { row.click(); return { sel: "#im-input", t: "tour.s3t", b: "tour.s3imb" }; }
-        return { sel: "#btn-send", t: "tour.s3t", b: "tour.s3b" };
-      },
-      t: "tour.s3t", b: "tour.s3b" },
+      sel: "#acc-m-contacts .im3-row[data-claddr]", t: "tour.s3rowt", b: "tour.s3rowb" },
+    { tab: "compose", sel: "#im-input", t: "tour.s3t", b: "tour.s3imb",
+      dropIf: function () { // empty conversation -> full form: the session
+        // bar is display:none, spotlighting it would stall - skip the beat
+        const sec = document.getElementById("tab-compose");
+        return !!sec && sec.classList.contains("im-full"); } },
     { // boss: guided tap - the user opens the Mail page from the bottom nav
       interact: true,
       advance: function () {
@@ -5900,6 +5910,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     { tab: "mail", sel: "#mgmt-seg", t: "tour.s5t", b: "tour.s5b" }
   ];
   let layer = null, spot = null, card = null, idx = 0, active = false, paintTimer = null, advanceTimer = null;
+  let steps = null;
+
+  function subRowEl() { return document.querySelector("#acc-m-contacts .im3-row[data-claddr]"); }
 
   function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
 
@@ -5970,7 +5983,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   }
 
   function aim(i) {
-    const s = STEPS[i];
+    const s = (steps || STEPS)[i];
     const first = pickEl(s.sel);
     if (!first) { nextStep(); return; }
     try { first.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
@@ -6005,12 +6018,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   }
 
   function nextStep() {
-    if (idx < STEPS.length - 1) { idx += 1; render(); }
+    if (idx < steps.length - 1) { idx += 1; render(); }
     else { end(true); }
   }
 
   function render() {
-    const s = STEPS[idx];
+    const s = steps[idx];
+    if (s.dropIf && s.dropIf()) { nextStep(); return; }
     if (s.tab) activateTab(s.tab);
     if (s.prep) {
       const eff = s.prep();
@@ -6026,7 +6040,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     row.className = "tour-row";
     const count = document.createElement("span");
     count.className = "tour-count";
-    count.textContent = (idx + 1) + "/" + STEPS.length;
+    count.textContent = (idx + 1) + "/" + steps.length;
     const bSkip = document.createElement("button");
     bSkip.className = "tour-btn quiet";
     bSkip.textContent = tr("tour.skip");
@@ -6037,20 +6051,32 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     bNever.addEventListener("click", function () { persistDismissed(); end(true); });
     row.appendChild(count);
     if (s.interact) {
-      // hands-on beat: no Next - the user performs the action (the spot
-      // forwards clicks to the target) or skips this step
-      const bSkipStep = document.createElement("button");
-      bSkipStep.className = "tour-btn";
-      bSkipStep.textContent = tr("tour.skipstep");
-      bSkipStep.addEventListener("click", function () {
-        if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; }
-        nextStep();
-      });
-      row.appendChild(bSkipStep); row.appendChild(bNever);
+      if (s.exitBtn) {
+        // boss: the register beat has no skip-this-step - the only way out
+        // of the tour here is "Exit tour", which parks the whole tour for
+        // this session (sessionStorage; back next login until dismissed)
+        const bExit = document.createElement("button");
+        bExit.className = "tour-btn";
+        bExit.textContent = tr("tour.exit");
+        bExit.addEventListener("click", function () { end(false); });
+        row.appendChild(bExit);
+      } else {
+        // hands-on beat: no Next - the user performs the action (the spot
+        // forwards clicks to the target) or skips this step
+        const bSkipStep = document.createElement("button");
+        bSkipStep.className = "tour-btn";
+        bSkipStep.textContent = tr("tour.skipstep");
+        bSkipStep.addEventListener("click", function () {
+          if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; }
+          nextStep();
+        });
+        row.appendChild(bSkipStep);
+      }
+      row.appendChild(bNever);
     } else {
       const bNext = document.createElement("button");
       bNext.className = "tour-btn primary";
-      bNext.textContent = idx < STEPS.length - 1 ? tr("tour.next") : tr("tour.done");
+      bNext.textContent = idx < steps.length - 1 ? tr("tour.next") : tr("tour.done");
       bNext.addEventListener("click", nextStep);
       row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bNext);
     }
@@ -6058,6 +6084,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (s.interact && s.advance) {
       advanceTimer = setInterval(function () {
         if (!active) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } return; }
+        // z-order fix (Felix): while the beat's modal is open the mask
+        // would eat real clicks into it - yield the layer and spot,
+        // keep the card's buttons live; the poll re-arms on close
+        if (layer && s.passSel) {
+          const m = document.querySelector(s.passSel);
+          layer.classList.toggle("tour-pass", !!m && !m.classList.contains("hidden"));
+        }
         if (s.advance()) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } nextStep(); }
       }, 300);
     }
@@ -6068,6 +6101,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // retry the pick up to ~5s before judging the target truly absent
     let tries = 0;
     const attempt = function () {
+      if (s.dropIf && s.dropIf()) { nextStep(); return; } // late-landing
+      // full-form flip (boss 0929 empty conversation): skip instead of
+      // spotlighting a target that just went display:none
       const first = pickEl(s.sel);
       if (!first) {
         tries += 1;
@@ -6088,6 +6124,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   function start() {
     if (active) return;
+    // flow split (boss): accounts that already have a sub row skip the
+    // register beat entirely and go straight to the row-tap beat; the
+    // snapshot is taken once at start - a row that lands later still
+    // advances the register beat via its advance poll.
+    steps = STEPS.filter(function (s) { return !s.skipIf || !s.skipIf(); });
     active = true;
     idx = 0;
     ensureDom();
