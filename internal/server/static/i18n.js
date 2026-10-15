@@ -551,6 +551,8 @@
       "prefs.audioAutoplay": "Audio autoplay",
       "prefs.imagePreview": "Image previews",
       "prefs.bodyMarkdown": "Render message body as markdown",
+      "prefs.onboarding": "Show the beginner tour at sign-in",
+      "prefs.onboardingHint": "Unchecked keeps the tour off for this account on every device; check it again and the tour returns on the next sign-in.",
       "prefs.save": "Save preferences",
       "prefs.saved": "Preferences saved.",
       "prefs.savedLocal": "Saved in this browser (server update unavailable).",
@@ -1242,6 +1244,9 @@
       "prefs.audioAutoplay": "音频自动播放",
       "prefs.imagePreview": "图片预览",
       "prefs.bodyMarkdown": "正文渲染 markdown",
+      "prefs.onboarding": "登录时展示新手引导",
+      "prefs.onboardingHint": "关闭后，本账户在所有设备上不再弹出新手引导；重新勾选后，下次登录恢复。",
+
       "prefs.save": "保存偏好",
       "prefs.saved": "偏好已保存。",
       "prefs.savedLocal": "已保存在本浏览器（服务器暂不支持同步）。",
