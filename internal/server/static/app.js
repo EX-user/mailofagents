@@ -3116,7 +3116,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // ---- user preferences (v0.6) ----
   // Read order: server account.prefs > localStorage fallback > defaults.
   // Cached in memory: message rendering consults it without a request.
-  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24 };
+  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24, onboarding_dismissed: false };
   let userPrefs = null;
   const PREFS_LS_KEY = "agentmail_prefs";
 
@@ -3139,6 +3139,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         : (typeof local.image_preview === "boolean" ? local.image_preview : PREFS_DEFAULTS.image_preview),
       body_markdown: typeof src.body_markdown === "boolean" ? src.body_markdown
         : (typeof local.body_markdown === "boolean" ? local.body_markdown : PREFS_DEFAULTS.body_markdown),
+      onboarding_dismissed: typeof src.onboarding_dismissed === "boolean" ? src.onboarding_dismissed
+        : (typeof local.onboarding_dismissed === "boolean" ? local.onboarding_dismissed : PREFS_DEFAULTS.onboarding_dismissed),
       livenessStrongHours: numHours(src["liveness.strongHours"],
         numHours(local["liveness.strongHours"], PREFS_DEFAULTS.livenessStrongHours)),
       livenessWeakHours: numHours(src["liveness.weakHours"],
@@ -3170,6 +3172,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       try { localStorage.setItem("compose_thread_pool_max", String(pool)); } catch (_) {}
     }
     const prefs = {
+      onboarding_dismissed: !!(userPrefs && userPrefs.onboarding_dismissed),
       audio_autoplay: !!$("#pref-audio-autoplay").checked,
       image_preview: !!$("#pref-image-preview").checked,
       body_markdown: !!$("#pref-body-markdown").checked,
@@ -5841,4 +5844,179 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     }, true);
   })();
 
+// ---- mobile onboarding tour (v0.3.7.4, boss order via alice) ----
+// Five steps: toolbar zones / sub-register / compose / mail / manage.
+// Skip != dismiss: skip ends this run only (sessionStorage), only
+// "don't show again" persists - per-account via account.prefs key
+// onboarding_dismissed (server field: Devi), localStorage mirror for
+// older servers. Portal state keeps its own localStorage face.
+(function wireOnboardingTour() {
+  const TOUR_SS_SKIP = "moa_tour_skip";
+  const MOBILE_MQ = "(max-width: 800px)";
+  const STEPS = [
+    { tab: "accounts", sel: "#app-header", t: "tour.s1t", b: "tour.s1b" },
+    { tab: "accounts", sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
+    { tab: "compose", sel: "#btn-send", t: "tour.s3t", b: "tour.s3b" },
+    { tab: "inbox", sel: "#tab-inbox", t: "tour.s4t", b: "tour.s4b" },
+    { tab: "mail", sel: "#tab-mail", t: "tour.s5t", b: "tour.s5b" }
+  ];
+  let layer = null, spot = null, card = null, idx = 0, active = false;
+
+  function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
+
+  function sessionSkipped() {
+    try { return sessionStorage.getItem(TOUR_SS_SKIP) === "1"; } catch (e) { return false; }
+  }
+
+  function persistDismissed() {
+    if (userPrefs) userPrefs.onboarding_dismissed = true;
+    try {
+      const ls = JSON.parse(localStorage.getItem(PREFS_LS_KEY) || "{}");
+      ls.onboarding_dismissed = true;
+      localStorage.setItem(PREFS_LS_KEY, JSON.stringify(ls));
+    } catch (e) {}
+    (async function () {
+      try {
+        const cur = await api("/api/profile/self", { keepSession: true }).catch(function () { return null; });
+        const prefs = Object.assign({}, (cur && cur.prefs) || {}, { onboarding_dismissed: true });
+        const body = { prefs: prefs };
+        if (cur) {
+          if (typeof cur.signature === "string") body.signature = cur.signature;
+          if (typeof cur.visible === "boolean") body.visible = cur.visible;
+        }
+        const res = await api("/api/profile/self", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        if (res && res.prefs) mergePrefs(res.prefs);
+      } catch (e) {}
+    })();
+  }
+
+  function ensureDom() {
+    if (layer) return;
+    layer = document.createElement("div");
+    layer.className = "tour-layer";
+    spot = document.createElement("div");
+    spot.className = "tour-spot";
+    card = document.createElement("div");
+    card.className = "tour-card";
+    layer.appendChild(spot);
+    layer.appendChild(card);
+    document.body.appendChild(layer);
+  }
+
+  function spotRect(el) {
+    const r = el.getBoundingClientRect();
+    const pad = 8;
+    const vh = window.innerHeight || 800;
+    const vw = window.innerWidth || 400;
+    let top = Math.max(0, r.top - pad);
+    let bottom = Math.min(vh, r.bottom + pad);
+    let height = bottom - top;
+    if (height > vh * 0.5) height = vh * 0.5;
+    let left = Math.max(0, r.left - pad);
+    let width = Math.min(vw - left, r.width + pad * 2);
+    if (width < 120) width = Math.min(240, vw - left * 2);
+    return { left: left, top: top, width: width, height: height };
+  }
+
+  function pickEl(sel) {
+    const list = Array.isArray(sel) ? sel : [sel];
+    for (let k = 0; k < list.length; k++) {
+      const el = document.querySelector(list[k]);
+      if (el && el.getBoundingClientRect().width > 0) return el;
+    }
+    return null;
+  }
+
+  function aim(i) {
+    const s = STEPS[i];
+    const el = pickEl(s.sel);
+    if (!el) { end(false); return; }
+    try { el.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
+    const paint = function () {
+      if (!active) return;
+      const r = spotRect(el);
+      spot.style.left = r.left + "px";
+      spot.style.top = r.top + "px";
+      spot.style.width = r.width + "px";
+      spot.style.height = r.height + "px";
+      const below = r.top + r.height + 200 < (window.innerHeight || 800);
+      if (below) { card.style.top = (r.top + r.height + 12) + "px"; card.style.bottom = ""; }
+      else { card.style.top = ""; card.style.bottom = "12px"; }
+    };
+    paint();
+    setTimeout(paint, 250); setTimeout(paint, 600); setTimeout(paint, 1000);
+  }
+
+  function render() {
+    const s = STEPS[idx];
+    activateTab(s.tab);
+    card.innerHTML = "";
+    const h = document.createElement("h3");
+    h.textContent = tr(s.t);
+    const p = document.createElement("p");
+    p.textContent = tr(s.b);
+    const row = document.createElement("div");
+    row.className = "tour-row";
+    const count = document.createElement("span");
+    count.className = "tour-count";
+    count.textContent = (idx + 1) + "/" + STEPS.length;
+    const bSkip = document.createElement("button");
+    bSkip.className = "tour-btn quiet";
+    bSkip.textContent = tr("tour.skip");
+    bSkip.addEventListener("click", function () { end(false); });
+    const bNever = document.createElement("button");
+    bNever.className = "tour-btn";
+    bNever.textContent = tr("tour.never");
+    bNever.addEventListener("click", function () { persistDismissed(); end(true); });
+    const bNext = document.createElement("button");
+    bNext.className = "tour-btn primary";
+    bNext.textContent = idx < STEPS.length - 1 ? tr("tour.next") : tr("tour.done");
+    bNext.addEventListener("click", function () {
+      if (idx < STEPS.length - 1) { idx += 1; render(); }
+      else { end(true); }
+    });
+    row.appendChild(count); row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bNext);
+    card.appendChild(h); card.appendChild(p); card.appendChild(row);
+    aim(idx);
+  }
+
+  function start() {
+    if (active) return;
+    active = true;
+    idx = 0;
+    ensureDom();
+    document.body.classList.add("tour-lock");
+    render();
+  }
+
+  function end(permanent) {
+    active = false;
+    if (layer) layer.remove();
+    layer = spot = card = null;
+    document.body.classList.remove("tour-lock");
+    if (!permanent) {
+      try { sessionStorage.setItem(TOUR_SS_SKIP, "1"); } catch (e) {}
+    }
+  }
+
+  window.addEventListener("resize", function () { if (active && card) aim(idx); });
+
+  // trigger: logged-in (app header visible), mobile viewport, prefs resolved,
+  // not permanently dismissed, not session-skipped. Poll caps at ~90s.
+  let tries = 0;
+  const tick = function () {
+    tries += 1;
+    const header = document.getElementById("app-header");
+    const ready = header && !header.classList.contains("hidden") &&
+      window.matchMedia && window.matchMedia(MOBILE_MQ).matches &&
+      typeof userPrefs !== "undefined" && userPrefs !== null;
+    if (ready && !(userPrefs && userPrefs.onboarding_dismissed) && !sessionSkipped()) { start(); return; }
+    if (tries < 120) setTimeout(tick, 750);
+  };
+  setTimeout(tick, 1600);
+})();
 })();
