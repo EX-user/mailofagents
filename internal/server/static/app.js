@@ -5915,7 +5915,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
     { // boss rc20: when the success page is up, spotlight the whole page and
       // hold there - the beat advances only when the USER closes it
-      auto: true,
+      auto: true, passSel: "#subreg-modal",
       advance: function () {
         const m = document.getElementById("subreg-modal");
         return !m || m.classList.contains("hidden");
