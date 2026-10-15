@@ -178,6 +178,14 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     draftReconcile();
     navActivateCompose();
     loadComposeThread();
+    // occlusion fix: re-grow now that the page is visible (the 400ms
+    // ticker skips when bar and body already agree, so a hidden-window
+    // restore would otherwise keep its stale height).
+    var imBar = document.getElementById("im-input");
+    // the nav:activate handler reveals the page asynchronously - grow on
+    // the next frames, once the bar actually has layout (client rects).
+    setTimeout(function () { if (imMode() && imBar) imInputGrow(imBar); }, 60);
+    setTimeout(function () { if (imMode() && imBar) imInputGrow(imBar); }, 350);
   }
 
   // composeReply jumps to Compose with To = the sender and Subject =
@@ -196,6 +204,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
     draftAnchor(toAddress);
     navActivateCompose();
     loadComposeThread();
+    var imBar2 = document.getElementById("im-input");
+    setTimeout(function () { if (imMode() && imBar2) imInputGrow(imBar2); }, 60);
+    setTimeout(function () { if (imMode() && imBar2) imInputGrow(imBar2); }, 350);
     $("#compose-body").focus();
   }
 
@@ -281,6 +292,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
   function imMode() { return window.innerWidth <= 800; }
   function imInputGrow(el) {
     if (!el || el.tagName !== "TEXTAREA") return;
+    // 0.3.7.4 occlusion fix (Felix repro): measuring a hidden textarea
+    // yields scrollHeight 0 and pinned the bar to 0px inline. While the
+    // compose page is display:none, leave the height alone entirely.
+    if (!el.getClientRects().length) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 88) + "px";
   }
