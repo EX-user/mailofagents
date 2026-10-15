@@ -255,6 +255,26 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       document.documentElement.style.setProperty("--app-vh", window.innerHeight + "px");
     }
   });
+  // boss 17:50 (Android real device, rc19): with the page locked, any stray
+  // programmatic scroll (tour scrollIntoView, IME, URL-bar reflow) parked
+  // the accounts list under the floating header and the user could not
+  // scroll it back - overflow:hidden means zero legal scroll offset. Snap
+  // any offset back to zero and keep scroll-padding-top in sync with the
+  // real (possibly wrapped) header height for future scrollIntoView calls.
+  (function guardLockedScroll() {
+    const snap = function () {
+      const de = document.documentElement;
+      if (!de.classList.contains("page-locked")) return;
+      if (de.scrollTop || document.body.scrollTop) { de.scrollTop = 0; document.body.scrollTop = 0; }
+      const header = document.getElementById("app-header");
+      if (header && header.offsetHeight) {
+        try { de.style.scrollPaddingTop = header.offsetHeight + "px"; } catch (e) {}
+      }
+    };
+    window.addEventListener("scroll", snap, { passive: true });
+    window.addEventListener("resize", snap, { passive: true });
+    setInterval(snap, 1200);
+  })();
   function activateTab(name) {
     // Leaving a message view by any route (tab switch included) must stop
     // all audio (feedback: sound kept playing after leaving the content).
@@ -6007,7 +6027,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const s = (steps || STEPS)[i];
     const first = pickEl(s.sel);
     if (!first) { nextStep(); return; }
-    try { first.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
+    // anchors inside the floating header must not push the locked page
+    try { if (!first.closest("#app-header")) first.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
     const paint = function () {
       if (!active) return;
       const el = pickEl(s.sel);
