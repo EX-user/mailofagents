@@ -5854,13 +5854,22 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   const TOUR_SS_SKIP = "moa_tour_skip";
   const MOBILE_MQ = "(max-width: 800px)";
   const STEPS = [
-    { tab: "accounts", sel: "#app-header", t: "tour.s1t", b: "tour.s1b" },
+    { tab: "accounts", sel: "#app-header .header-row", t: "tour.s1t", b: "tour.s1b" },
+    { tab: "accounts", sel: "#app-header nav", t: "tour.navt", b: "tour.navb" },
     { tab: "accounts", sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
-    { tab: "compose", sel: "#btn-send", t: "tour.s3t", b: "tour.s3b" },
+    { // boss: after the register step, enter Compose the way real users do -
+      // tapping a sub row opens the IM-style session (prefilled To). When no
+      // row exists (nothing registered yet) fall back to the plain form.
+      prep: function () {
+        const row = document.querySelector("#acc-m-contacts .im3-row[data-claddr]");
+        if (row) { row.click(); return { sel: "#im-input", t: "tour.s3t", b: "tour.s3imb" }; }
+        return { sel: "#btn-send", t: "tour.s3t", b: "tour.s3b" };
+      },
+      t: "tour.s3t", b: "tour.s3b" },
     { tab: "inbox", sel: "#inbox-row-pill", t: "tour.s4t", b: "tour.s4b" },
     { tab: "mail", sel: "#mgmt-seg", t: "tour.s5t", b: "tour.s5b" }
   ];
-  let layer = null, spot = null, card = null, idx = 0, active = false;
+  let layer = null, spot = null, card = null, idx = 0, active = false, paintTimer = null;
 
   function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
 
@@ -5949,10 +5958,14 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const vh = window.innerHeight || 800;
       const below = r.top + r.height + 200 < vh;
       if (below) { card.style.top = Math.min(r.top + r.height + 12, vh - 170) + "px"; card.style.bottom = ""; }
-      else { card.style.top = ""; card.style.bottom = "12px"; }
+      else { card.style.top = ""; card.style.bottom = Math.max(12, vh - r.top + 12) + "px"; }
     };
     paint();
     setTimeout(paint, 250); setTimeout(paint, 600); setTimeout(paint, 1000);
+    // async pages keep shifting layout after the fixed paints (mail counts,
+    // list renders) - a slow repaint loop tracks them for the whole beat
+    if (paintTimer) clearInterval(paintTimer);
+    paintTimer = setInterval(function () { if (active) paint(); }, 700);
   }
 
   function nextStep() {
@@ -5962,7 +5975,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   function render() {
     const s = STEPS[idx];
-    activateTab(s.tab);
+    if (s.tab) activateTab(s.tab);
+    if (s.prep) {
+      const eff = s.prep();
+      if (eff) { s.sel = eff.sel; s.t = eff.t; s.b = eff.b; }
+    }
     card.innerHTML = "";
     const h = document.createElement("h3");
     h.textContent = tr(s.t);
@@ -6015,6 +6032,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   function end(permanent) {
     active = false;
+    if (paintTimer) { clearInterval(paintTimer); paintTimer = null; }
     if (layer) layer.remove();
     layer = spot = card = null;
     document.body.classList.remove("tour-lock");
