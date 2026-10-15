@@ -255,6 +255,35 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       document.documentElement.style.setProperty("--app-vh", window.innerHeight + "px");
     }
   });
+  // boss 17:50 (Android real device, rc19): with the page locked, any stray
+  // programmatic scroll (tour scrollIntoView, IME, URL-bar reflow) parked
+  // the accounts list under the floating header and the user could not
+  // scroll it back - overflow:hidden means zero legal scroll offset. Snap
+  // any offset back to zero and keep scroll-padding-top in sync with the
+  // real (possibly wrapped) header height for future scrollIntoView calls.
+  (function guardLockedScroll() {
+    const snap = function () {
+      const de = document.documentElement;
+      if (!de.classList.contains("page-locked")) return;
+      if (de.scrollTop || document.body.scrollTop) { de.scrollTop = 0; document.body.scrollTop = 0; }
+      const header = document.getElementById("app-header");
+      if (header && header.offsetHeight) {
+        try { de.style.scrollPaddingTop = header.offsetHeight + "px"; } catch (e) {}
+      }
+    };
+    // capture: body-level scroll does NOT bubble to window
+    window.addEventListener("scroll", snap, { passive: true, capture: true });
+    window.addEventListener("resize", snap, { passive: true });
+    // Felix occl2 vectors: IME focus and visual-viewport changes (URL-bar,
+    // pinch) place body.scrollTop without a window scroll/resize event on
+    // some kernels - hook the entry points directly so the offset never
+    // survives a beat
+    window.addEventListener("focusin", snap, { passive: true });
+    if (window.visualViewport) {
+      try { window.visualViewport.addEventListener("resize", snap, { passive: true }); } catch (e) {}
+    }
+    setInterval(snap, 1200);
+  })();
   function activateTab(name) {
     // Leaving a message view by any route (tab switch included) must stop
     // all audio (feedback: sound kept playing after leaving the content).
@@ -5880,6 +5909,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // "Exit tour" ends the whole tour for this session (sessionStorage;
       // back next login until permanently dismissed).
       interact: true, exitBtn: true, passSel: "#subreg-ask-modal",
+      passSpotSel: "#btn-subreg-ask-ok",
       skipIf: function () { return !!subRowEl(); },
       advance: function () { return !!subRowEl(); },
       sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
@@ -6006,7 +6036,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const s = (steps || STEPS)[i];
     const first = pickEl(s.sel);
     if (!first) { nextStep(); return; }
-    try { first.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
+    // anchors inside the floating header must not push the locked page
+    try { if (!first.closest("#app-header")) first.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
     const paint = function () {
       if (!active) return;
       const el = pickEl(s.sel);
@@ -6045,6 +6076,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function render() {
     const s = steps[idx];
     if (s.dropIf && s.dropIf()) { nextStep(); return; }
+    if (card) card.style.display = "";
     if (s.tab) activateTab(s.tab);
     if (s.prep) {
       const eff = s.prep();
@@ -6071,28 +6103,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     bNever.addEventListener("click", function () { persistDismissed(); end(true); });
     row.appendChild(count);
     if (s.interact) {
-      if (s.exitBtn) {
-        // boss: the register beat has no skip-this-step - the only way out
-        // of the tour here is "Exit tour", which parks the whole tour for
-        // this session (sessionStorage; back next login until dismissed)
-        const bExit = document.createElement("button");
-        bExit.className = "tour-btn";
-        bExit.textContent = tr("tour.exit");
-        bExit.addEventListener("click", function () { end(false); });
-        row.appendChild(bExit);
-      } else {
-        // hands-on beat: no Next - the user performs the action (the spot
-        // forwards clicks to the target) or skips this step
-        const bSkipStep = document.createElement("button");
-        bSkipStep.className = "tour-btn";
-        bSkipStep.textContent = tr("tour.skipstep");
-        bSkipStep.addEventListener("click", function () {
-          if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; }
-          nextStep();
-        });
-        row.appendChild(bSkipStep);
-      }
-      row.appendChild(bNever);
+      // boss: hands-on beats get no per-step skip - skipping one step left
+      // the following beats without their context (abnormal state report).
+      // The only way out of a hands-on beat is the whole-tour skip, same
+      // control and semantics as the plain beats' quiet button.
+      const bSkipTour = document.createElement("button");
+      bSkipTour.className = "tour-btn quiet";
+      bSkipTour.textContent = tr("tour.skip");
+      bSkipTour.addEventListener("click", function () { end(false); });
+      row.appendChild(bSkipTour); row.appendChild(bNever);
     } else {
       const bNext = document.createElement("button");
       bNext.className = "tour-btn primary";
@@ -6105,11 +6124,27 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       advanceTimer = setInterval(function () {
         if (!active) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } return; }
         // z-order fix (Felix): while the beat's modal is open the mask
-        // would eat real clicks into it - yield the layer and spot,
-        // keep the card's buttons live; the poll re-arms on close
+        // would eat real clicks into it - the layer yields; (boss) the
+        // card must not cover the dialog either: it steps aside and the
+        // spot moves onto the dialog's own Register button
         if (layer && s.passSel) {
           const m = document.querySelector(s.passSel);
-          layer.classList.toggle("tour-pass", !!m && !m.classList.contains("hidden"));
+          const on = !!m && !m.classList.contains("hidden");
+          layer.classList.toggle("tour-pass", on);
+          if (card) card.style.display = on ? "none" : "";
+          if (s.passSpotSel) {
+            if (on) {
+              if (!s._mainSel) s._mainSel = s.sel;
+              s.sel = s.passSpotSel;
+            } else if (s._mainSel) {
+              s.sel = s._mainSel;
+            }
+          }
+          if (on) {
+            const tgt = pickEl(s.sel);
+            if (tgt) { try { tgt.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {} }
+            aim(idx); // re-seat the spot onto the button with a fresh scroll+paint
+          }
         }
         if (s.advance()) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } nextStep(); }
       }, 300);
