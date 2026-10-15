@@ -5880,6 +5880,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // "Exit tour" ends the whole tour for this session (sessionStorage;
       // back next login until permanently dismissed).
       interact: true, exitBtn: true, passSel: "#subreg-ask-modal",
+      passSpotSel: "#btn-subreg-ask-ok",
       skipIf: function () { return !!subRowEl(); },
       advance: function () { return !!subRowEl(); },
       sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
@@ -6045,6 +6046,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function render() {
     const s = steps[idx];
     if (s.dropIf && s.dropIf()) { nextStep(); return; }
+    if (card) card.style.display = "";
     if (s.tab) activateTab(s.tab);
     if (s.prep) {
       const eff = s.prep();
@@ -6105,11 +6107,27 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       advanceTimer = setInterval(function () {
         if (!active) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } return; }
         // z-order fix (Felix): while the beat's modal is open the mask
-        // would eat real clicks into it - yield the layer and spot,
-        // keep the card's buttons live; the poll re-arms on close
+        // would eat real clicks into it - the layer yields; (boss) the
+        // card must not cover the dialog either: it steps aside and the
+        // spot moves onto the dialog's own Register button
         if (layer && s.passSel) {
           const m = document.querySelector(s.passSel);
-          layer.classList.toggle("tour-pass", !!m && !m.classList.contains("hidden"));
+          const on = !!m && !m.classList.contains("hidden");
+          layer.classList.toggle("tour-pass", on);
+          if (card) card.style.display = on ? "none" : "";
+          if (s.passSpotSel) {
+            if (on) {
+              if (!s._mainSel) s._mainSel = s.sel;
+              s.sel = s.passSpotSel;
+            } else if (s._mainSel) {
+              s.sel = s._mainSel;
+            }
+          }
+          if (on) {
+            const tgt = pickEl(s.sel);
+            if (tgt) { try { tgt.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {} }
+            aim(idx); // re-seat the spot onto the button with a fresh scroll+paint
+          }
         }
         if (s.advance()) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } nextStep(); }
       }, 300);

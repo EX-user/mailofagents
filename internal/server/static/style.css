@@ -3604,8 +3604,10 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
    beat deliberately asked the user to type into. While a passSel modal is
    open the layer and spot yield (pointer-events none); the card keeps its
    buttons live. Dialog closes -> the 300ms poll re-arms the mask. */
-.tour-layer.tour-pass, .tour-layer.tour-pass .tour-spot { pointer-events: none; }
-.tour-layer.tour-pass .tour-card { pointer-events: auto; }
+.tour-layer.tour-pass { pointer-events: none; }
+/* boss: in pass state the spot rides on the dialog's Register button and
+   must stay clickable (it forwards the tap); the card is display:none. */
+.tour-layer.tour-pass .tour-card { display: none; pointer-events: none; }
 .tour-spot { position: fixed; z-index: 9999; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(15, 23, 42, 0.55); pointer-events: none; transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
 .tour-card { position: fixed; left: 16px; right: 16px; z-index: 10000; background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28); }
 .tour-card h3 { margin: 0 0 6px; font-size: 15px; color: #1f2328; }
