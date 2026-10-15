@@ -3607,7 +3607,11 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 /* boss rc20: in pass state the mask KEEPS blocking the page around the
    dialog - the dialog itself floats above the tour (its own hit area),
    the spot rides its Register button above that, the card steps aside. */
-.tour-layer.tour-pass .tour-spot { z-index: 10002; }
+.tour-layer.tour-pass .tour-spot { z-index: 10002; transition: none; }
+/* boss 22:08: with the .25s position transition live, the spot (and its
+   200vmax mask shadow, z 10002 over the dialog's 10001) SLIDES across the
+   dialog from its old anchor - reading as a broken spotlight the moment
+   the dialog opens. In pass state it jump-cuts onto the Register button. */
 .tour-layer.tour-pass .tour-card { display: none; pointer-events: none; }
 .tour-pass-modal { z-index: 10001 !important; }
 /* boss rc20 (clarified): while the register dialog is up the ONLY clickable
