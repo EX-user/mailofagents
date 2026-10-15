@@ -5863,7 +5863,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     { tab: "accounts", sel: "#btn-prefs", t: "tour.prefst", b: "tour.prefsb" },
     { tab: "accounts", sel: "#btn-logout", t: "tour.logoutt", b: "tour.logoutb" },
     { tab: "accounts", sel: "#app-header nav", t: "tour.navt", b: "tour.navb" },
-    { tab: "accounts", sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
+    { // boss: the register beat is hands-on - the spot forwards the click to
+      // the button and the beat advances only when the ask modal opens (or
+      // the user skips this step).
+      interact: true,
+      advance: function () {
+        const m = document.getElementById("subreg-ask-modal");
+        return m && !m.classList.contains("hidden");
+      },
+      sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
     { tab: "compose", // boss: after the register step, enter Compose the way
       // real users do - tapping a sub row opens the IM-style session
       // (prefilled To). When no row exists (nothing registered yet) the same
@@ -5874,10 +5882,24 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         return { sel: "#btn-send", t: "tour.s3t", b: "tour.s3b" };
       },
       t: "tour.s3t", b: "tour.s3b" },
+    { // boss: guided tap - the user opens the Mail page from the bottom nav
+      interact: true,
+      advance: function () {
+        const s = document.getElementById("tab-inbox");
+        return s && !s.classList.contains("hidden");
+      },
+      sel: ".tab[data-tab=\"inbox\"]", t: "tour.enterInboxT", b: "tour.enterInboxB" },
     { tab: "inbox", sel: "#inbox-row-pill", t: "tour.s4t", b: "tour.s4b" },
+    { // guided tap for the Manage page, same shape
+      interact: true,
+      advance: function () {
+        const s = document.getElementById("tab-mail");
+        return s && !s.classList.contains("hidden");
+      },
+      sel: ".tab[data-tab=\"mail\"]", t: "tour.enterMgmtT", b: "tour.enterMgmtB" },
     { tab: "mail", sel: "#mgmt-seg", t: "tour.s5t", b: "tour.s5b" }
   ];
-  let layer = null, spot = null, card = null, idx = 0, active = false, paintTimer = null;
+  let layer = null, spot = null, card = null, idx = 0, active = false, paintTimer = null, advanceTimer = null;
 
   function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
 
@@ -5968,6 +5990,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       if (below) { card.style.top = Math.min(r.top + r.height + 12, vh - 170) + "px"; card.style.bottom = ""; }
       else { card.style.top = ""; card.style.bottom = Math.max(12, vh - r.top + 12) + "px"; }
     };
+    spot.style.pointerEvents = s.interact ? "auto" : "none";
+    spot.style.cursor = s.interact ? "pointer" : "";
+    spot.onclick = s.interact ? function () {
+      const el = pickEl(s.sel);
+      if (el) el.click();
+    } : null;
     paint();
     setTimeout(paint, 250); setTimeout(paint, 600); setTimeout(paint, 1000);
     // async pages keep shifting layout after the fixed paints (mail counts,
@@ -5988,6 +6016,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const eff = s.prep();
       if (eff) { s.sel = eff.sel; s.t = eff.t; s.b = eff.b; }
     }
+    if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; }
     card.innerHTML = "";
     const h = document.createElement("h3");
     h.textContent = tr(s.t);
@@ -6006,12 +6035,32 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     bNever.className = "tour-btn";
     bNever.textContent = tr("tour.never");
     bNever.addEventListener("click", function () { persistDismissed(); end(true); });
-    const bNext = document.createElement("button");
-    bNext.className = "tour-btn primary";
-    bNext.textContent = idx < STEPS.length - 1 ? tr("tour.next") : tr("tour.done");
-    bNext.addEventListener("click", nextStep);
-    row.appendChild(count); row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bNext);
+    row.appendChild(count);
+    if (s.interact) {
+      // hands-on beat: no Next - the user performs the action (the spot
+      // forwards clicks to the target) or skips this step
+      const bSkipStep = document.createElement("button");
+      bSkipStep.className = "tour-btn";
+      bSkipStep.textContent = tr("tour.skipstep");
+      bSkipStep.addEventListener("click", function () {
+        if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; }
+        nextStep();
+      });
+      row.appendChild(bSkipStep); row.appendChild(bNever);
+    } else {
+      const bNext = document.createElement("button");
+      bNext.className = "tour-btn primary";
+      bNext.textContent = idx < STEPS.length - 1 ? tr("tour.next") : tr("tour.done");
+      bNext.addEventListener("click", nextStep);
+      row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bNext);
+    }
     card.appendChild(h); card.appendChild(p); card.appendChild(row);
+    if (s.interact && s.advance) {
+      advanceTimer = setInterval(function () {
+        if (!active) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } return; }
+        if (s.advance()) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } nextStep(); }
+      }, 300);
+    }
     // the panel flip can settle asynchronously (page-lock pinning re-lays
     // the section) - retry the pick instead of killing the whole tour on
     // a layout race; a step with no visible target is skipped, not fatal.
@@ -6049,6 +6098,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function end(permanent) {
     active = false;
     if (paintTimer) { clearInterval(paintTimer); paintTimer = null; }
+    if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; }
+    if (spot) spot.onclick = null;
     if (layer) layer.remove();
     layer = spot = card = null;
     document.body.classList.remove("tour-lock");
