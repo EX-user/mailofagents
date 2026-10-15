@@ -38,6 +38,11 @@ type MailSummary struct {
 	Preview    string `json:"preview"`
 	ReceivedAt int64  `json:"received_at"`
 	Unread     bool   `json:"unread"`
+	// InReplyTo is the parent message ULID when this letter is a reply
+	// (server list entries carry it since threads v0.6.15). The digest
+	// surfaces only its PRESENCE (the ↩[irt] marker) — the id itself stays
+	// a detail-fetch concern (boss 2026-10-15: "只要能表明这是一封有irt的信").
+	InReplyTo string `json:"in_reply_to,omitempty"`
 }
 
 // MailStats is the volume snapshot injected into the fresh-session digest:
