@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -117,5 +118,57 @@ func TestPrefsLivenessNumericKeys(t *testing.T) {
 	}
 	if code := post(`{"prefs":{"liveness.weakHours":null}}`); code != http.StatusOK {
 		t.Fatalf("null remove = %d, want 200", code)
+	}
+}
+
+// 0.3.7.4: the mobile onboarding flow persists its per-account "don't show
+// again" through prefs.onboarding_dismissed (Iris fa37e42). The key must be
+// accepted as a bool, round-trip through GET /api/profile/self, and keep the
+// closed-whitelist guarantee (unknown keys still rejected).
+func TestOnboardingDismissedPref(t *testing.T) {
+	ts, _ := newRegisterTestServer(t)
+	h := map[string][]string{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte("admin@test.example:adminpassword1"))}}
+
+	post := func(body string) int {
+		req, _ := http.NewRequest("POST", ts.URL+"/api/profile/self", strings.NewReader(body))
+		req.Header = h
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// set the key
+	if code := post(`{"prefs":{"onboarding_dismissed":true}}`); code != http.StatusOK {
+		t.Fatalf("onboarding_dismissed post = %d, want 200", code)
+	}
+	// round-trip
+	req, _ := http.NewRequest("GET", ts.URL+"/api/profile/self", nil)
+	req.Header = h
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	json.NewDecoder(resp.Body).Decode(&got)
+	resp.Body.Close()
+	prefs, _ := got["prefs"].(map[string]any)
+	if prefs == nil || prefs["onboarding_dismissed"] != true {
+		t.Fatalf("prefs round-trip missing onboarding_dismissed=true: %v", got["prefs"])
+	}
+	// clear via null
+	if code := post(`{"prefs":{"onboarding_dismissed":null}}`); code != http.StatusOK {
+		t.Fatalf("null clear = %d, want 200", code)
+	}
+	// wrong type rejected
+	if code := post(`{"prefs":{"onboarding_dismissed":"yes"}}`); code != http.StatusBadRequest {
+		t.Fatalf("string value = %d, want 400", code)
+	}
+	// unknown keys stay rejected (closed whitelist preserved)
+	if code := post(`{"prefs":{"onboarding_step":2}}`); code != http.StatusBadRequest {
+		t.Fatalf("unknown key = %d, want 400", code)
 	}
 }
