@@ -5814,6 +5814,11 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     var shownId = null;
     function maybeShowUpdates() {
       if (!getSession() || shownId !== null) return;
+      // boss 0.3.7.4: on mobile, while the onboarding tour is still live for
+      // this account (not permanently dismissed), the version-update modal
+      // never pops - the two overlays fight over the first-run attention.
+      if (window.matchMedia && window.matchMedia("(max-width: 800px)").matches &&
+          !(typeof userPrefs !== "undefined" && userPrefs && userPrefs.onboarding_dismissed)) return;
       api("/api/updates/latest", { keepSession: true }).then(function (d) {
         if (!d || !d.unread || !d.push || shownId !== null) return;
         shownId = d.push.id;
@@ -5854,7 +5859,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   const TOUR_SS_SKIP = "moa_tour_skip";
   const MOBILE_MQ = "(max-width: 800px)";
   const STEPS = [
-    { tab: "accounts", sel: "#app-header .header-row", t: "tour.s1t", b: "tour.s1b" },
+    { tab: "accounts", sel: "#brand-home", t: "tour.brandt", b: "tour.brandb" },
+    { tab: "accounts", sel: "#btn-prefs", t: "tour.prefst", b: "tour.prefsb" },
+    { tab: "accounts", sel: "#btn-logout", t: "tour.logoutt", b: "tour.logoutb" },
     { tab: "accounts", sel: "#app-header nav", t: "tour.navt", b: "tour.navb" },
     { tab: "accounts", sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
     { // boss: after the register step, enter Compose the way real users do -
