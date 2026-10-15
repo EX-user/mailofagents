@@ -1010,10 +1010,23 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	name, args, stdin, cfg := codexAdapter{}.Plan(cfg, sessionID, digest)
 
 	out, wakeTokens, err := runWake(ctx, cfg, name, args, stdin, localPart(cfg.Address))
+	// ctx readout, boss order 2026-10-15 15:38: the streamed-tee estimate is
+	// provisional during the wake; once the thread is known, the session
+	// file's measured TokenUsage (last token_count) anchors the readout and
+	// only post-anchor entries stay estimated. Duty persists the board value
+	// (duty.go reads board.CurrentCtx, not wakeTokens), so publishing here
+	// covers the board, the wake return and the lastCtx persistence at once.
+	publishCodexCtx := func(id string, tok int64) int64 {
+		if n := codexSessionCtx(cfg.Env, id); n > 0 {
+			board.SetCtx(localPart(cfg.Address), n)
+			return n
+		}
+		return tok
+	}
 	if err != nil {
 		// Salvage: a partial stream may still name the thread.
 		if id, perr := firstJSONField(out, "type", "thread.started", "thread_id"); perr == nil {
-			return id, wakeTokens, err
+			return id, publishCodexCtx(id, wakeTokens), err
 		}
 		return "", wakeTokens, err
 	}
@@ -1021,6 +1034,7 @@ func (codexAdapter) Wake(ctx context.Context, cfg *Config, sessionID, digest str
 	if err != nil {
 		return "", wakeTokens, fmt.Errorf("codex wake: %w", err)
 	}
+	wakeTokens = publishCodexCtx(id, wakeTokens)
 	return id, wakeTokens, nil
 }
 

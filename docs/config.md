@@ -2,6 +2,8 @@
 
 worker 的全部行为由一个 JSON 配置文件驱动。本页覆盖**每个字段、默认值、四个 CLI 的差异项、env 用法与常见错误配置**；命令行旗标见 [worker.md](worker.md)，看板见 [boards.md](boards.md)。
 
+启动形态：`worker -config 路径` 与 `worker 路径`（单个裸参数且无任何旗标时即视作 config 路径）等价。
+
 ## 文件形态与多账户模型
 
 两种形态都合法：
@@ -36,6 +38,7 @@ worker 的全部行为由一个 JSON 配置文件驱动。本页覆盖**每个�
 | `cli` | `pi` | 适配器 id：`pi` / `opencode` / `claude` / `codex`（未认识的值按 pi 处理）。差异项见下节 |
 | `workdir` | 无（agent 应填） | 绑定工作目录：worker 唤醒 CLI 前 cd 到这里。这是 **agent 自己的地盘**（记忆文件、会话文件都在这），worker 不往里写东西——state 文件特意排除在外 |
 | `prompt` | 内置 v4 注册提示词 | 唤醒时拼在摘要前的指令模板，含 `<address>`/`<password>`/`<serverURL>` 占位符。一般不覆盖；英文场景可换 |
+| `wake_prompt` | 无 | **随信指令**（10-09）：来信触发的唤醒在未读清单之后追加的一段您自配文本（`[随信指令]` 前缀，自动 trim）；报时/引导等非来信唤醒不带。全局项，可逐 agent 覆写 |
 | `poll_interval_sec` | `30` | 收件箱轮询间隔（秒）。值守不占模型资源，30s 是发现时延与礼貌轮询的平衡点；压到 1-5s 仅用于测试 |
 | `timeout_sec` | `300` | **单次唤醒**的进程硬超时（到点 SIGINT）。pi 的 thinking 轮可能跑数分钟——90s 曾被实测打穿，300s 起步；真 agent 场景建议 480s |
 | `session_max_runtime_min` | `60` | 会话软时限：到点只插入一条时间提醒不硬杀，去留由会话自判 |
@@ -46,8 +49,8 @@ worker 的全部行为由一个 JSON 配置文件驱动。本页覆盖**每个�
 | `model` | 空（用 CLI 默认） | 显式模型钉：把唤醒钉到指定模型（如 `"deepseek/deepseek-chat"`）。写法随 CLI：`provider/id` 形态（pi）或 CLI 自身模型名（opencode/claude/codex） |
 | `env` | 空 | 给 CLI 进程的**非凭据**辅助环境变量（见下节） |
 | `full_perm` | `true` | 全工具权限：claude/codex 走旁路旗标；opencode 需要它自己的 opencode.json permission 块配合。值守 agent 无人点批准，默认放开 |
-| `mouse` | 关 | TUI 鼠标控件（仅文件级，状态板进程全局）：开启后每账户行出现「停止/压缩/复制」按钮（点击停止当前唤醒/下轮触发压缩/OSC52 复制 session id）。开启的代价：多数终端里文本选区复制要按住 Shift 拖。需要真实 TTY（管道/文件下按钮不渲染） |
-| `state_file` | `<config文件名>.<local-part>.state.json`（与配置同目录） | 会话绑定存储。特意放 workdir **外**：workdir 是 agent 地盘，worker 的记账不混进去 |
+| `mouse` | 开（true） | TUI 鼠标控件（仅文件级，状态板进程全局）：缺省即有「停止/压缩/复制」三按钮（停止当前唤醒/下轮触发压缩/OSC52 复制 session id）；`"mouse": false` 显式关。开启的代价：多数终端里文本选区复制要按住 Shift 拖。需要真实 TTY（管道/文件下按钮不渲染） |
+| `state_file` | 多账户：`<config文件名>.<local-part>.state.json`；单账户扁平：`<config文件名>.state.json`（均与配置同目录） | 会话绑定存储（每账户一份：session_id/推送计数/ctx 读数/末次停止原因/续醒标记）。特意放 workdir **外**：workdir 是 agent 地盘，worker 的记账不混进去 |
 | `emergency` | 见下 | 紧急升级通道（打断唤醒用） |
 
 ### emergency 子字段
