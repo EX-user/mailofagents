@@ -138,7 +138,7 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 			// indistinguishable from each other. Previews clamp at 60
 			// runes on top of the server-side 100.
 			fmt.Fprintf(&b, "[未读 %d/%d]\n  发件人: %s\n  主题: %s（%s）\n  预览: %s\n",
-				i+1, len(mails), oneLine(m.From), oneLine(m.Subject),
+				i+1, len(mails), oneLine(m.From), irtMark(m)+oneLine(m.Subject),
 				time.Unix(m.ReceivedAt, 0).Format("01-02 15:04"),
 				oneLine(clampRunes(m.Preview, 60)))
 		}
@@ -159,6 +159,17 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 		}
 	}
 	return b.String()
+}
+
+// irtMark prefixes a reply letter's subject with [↩reply to <parent-id>]
+// (boss 2026-10-15 18:00: "改成 [↩reply to ID] 其中ID换成irt参数") — the
+// marker names the parent message id directly, so the agent can thread
+// without a detail fetch. No parent subject rides the digest.
+func irtMark(m MailSummary) string {
+	if m.InReplyTo != "" {
+		return "[↩reply to " + m.InReplyTo + "] "
+	}
+	return ""
 }
 
 // oneLine collapses every whitespace run (newlines, tabs, multi-spaces) in

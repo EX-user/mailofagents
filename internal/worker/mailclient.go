@@ -38,6 +38,11 @@ type MailSummary struct {
 	Preview    string `json:"preview"`
 	ReceivedAt int64  `json:"received_at"`
 	Unread     bool   `json:"unread"`
+	// InReplyTo is the parent message ULID when this letter is a reply
+	// (server list entries carry it since threads v0.6.15). The digest
+	// surfaces it as [↩reply to <id>] on the subject line (boss
+	// 2026-10-15 18:00) so the agent can thread without a detail fetch.
+	InReplyTo string `json:"in_reply_to,omitempty"`
 }
 
 // MailStats is the volume snapshot injected into the fresh-session digest:
