@@ -1525,8 +1525,10 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes, copyT
         $("#subreg-copy-status").textContent = "";
         // Prompt copy lives in app.js (buildAgentPrompt) — hand the fresh
         // credentials over before the modal is shown (superior 09-02).
-        document.dispatchEvent(new CustomEvent("subreg:success", { detail: { address: first.address || "", password: first.password || "", accounts: created } }));
         $("#subreg-modal").classList.remove("hidden");
+        // tour (boss 21:53): dispatch AFTER the reveal so the success-page
+        // spotlight sees an open dialog in the same tick - no masked gap
+        document.dispatchEvent(new CustomEvent("subreg:success", { detail: { address: first.address || "", password: first.password || "", accounts: created } }));
         $("#btn-subreg-close").focus();
         status.textContent = created.length > 1 ? t("subs.regBatchDone", { n: created.length }) : t("subs.regDone");
         if (failed.length) status.textContent += " " + t("subs.regBatchFail", { n: failed.map(function (f) { return f.name; }).join(", ") });
