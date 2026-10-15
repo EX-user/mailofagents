@@ -356,6 +356,25 @@ func isMessageRecipient(m store.Message, addr string) bool {
 	return false
 }
 
+// sendSubordinateIntro delivers the system-drafted first letter from a newly
+// registered subordinate to its superior (boss 10-15 12:38 order, 0.3.7.4).
+// Best-effort: a delivery failure must never fail the registration itself —
+// the account already exists and the edge is set; the letter is a courtesy.
+// Hierarchy exemption makes it deliverable even under an enabled whitelist.
+func (s *Server) sendSubordinateIntro(subAddr, superior string) {
+	subject := fmt.Sprintf("报到：%s 已就位", localPart(subAddr))
+	body := "这是一封系统代发的报到信。\n\n" +
+		"新从属账户 " + subAddr + " 已完成注册，并挂靠到你的名下。\n\n" +
+		"你可以：\n" +
+		"· 查看它与任何账户的往来信件（上级可查看从属往来）；\n" +
+		"· 为它设置发信限制、白名单等管理动作（总览页或账户页）；\n" +
+		"· 直接回复本信，与它建立第一次联系。\n\n" +
+		"（本信由系统代新从属账户发出，无需处理。）"
+	if _, err := s.store.Send(subAddr, localPart(subAddr), []string{superior}, nil, subject, body, ""); err != nil {
+		fmt.Printf("intro letter delivery failed for %s -> %s: %v\n", subAddr, superior, err)
+	}
+}
+
 // handleRegisterSubordinate creates a fresh random account and declares it
 // a subordinate of the authenticated caller, in one step — the panel's
 // "register subordinate account" button (mrf2000/上级 request via alice's
@@ -468,6 +487,7 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 				created = append(created, map[string]any{"name": n, "failed": true, "reason": "declare: " + err.Error()})
 				continue
 			}
+			s.sendSubordinateIntro(ca.Address, owner) // 0.3.7.4 boss order: one intro letter per subordinate
 			entry := map[string]any{"address": ca.Address, "password": ca.Password, "declared": true}
 			s.appendWorkerConfig(r, entry, bodyCLI)
 			created = append(created, entry)
@@ -516,6 +536,7 @@ func (s *Server) handleRegisterSubordinate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	_ = s.audit.Record(r.Context(), audit.ActionSubDeclare, owner, "register-subordinate "+res.Address)
+	s.sendSubordinateIntro(res.Address, owner) // 0.3.7.4 boss order: intro letter on registration
 	resp := map[string]any{
 		"address":  res.Address,
 		"password": res.Password, // one-time, never stored in the clear again

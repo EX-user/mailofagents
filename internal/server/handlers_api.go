@@ -1065,6 +1065,9 @@ func (s *Server) handleRegisterTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.audit.Record(r.Context(), audit.ActionRegisterTeam, owner.Address,
 		fmt.Sprintf("team_size=%d members=%d named=%d", size, len(*membersRes), len(members)))
+	for i := range *membersRes { // 0.3.7.4 boss order: intro letter per team member
+		s.sendSubordinateIntro((*membersRes)[i].Address, owner.Address)
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"owner":   owner,
 		"members": membersRes,
