@@ -3172,7 +3172,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       try { localStorage.setItem("compose_thread_pool_max", String(pool)); } catch (_) {}
     }
     const prefs = {
-      onboarding_dismissed: !!(userPrefs && userPrefs.onboarding_dismissed),
+      // boss 16:53: the preferences page owns the tour switch - unchecked
+      // means dismissed (permanently off for this account, all devices)
+      onboarding_dismissed: $("#pref-onboarding") ? !$("#pref-onboarding").checked
+        : !!(userPrefs && userPrefs.onboarding_dismissed),
       audio_autoplay: !!$("#pref-audio-autoplay").checked,
       image_preview: !!$("#pref-image-preview").checked,
       body_markdown: !!$("#pref-body-markdown").checked,
@@ -3390,6 +3393,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       mergePrefs(p.prefs);
       $("#pref-audio-autoplay").checked = userPrefs.audio_autoplay;
       $("#pref-image-preview").checked = userPrefs.image_preview;
+      const obEl = $("#pref-onboarding");
+      if (obEl) obEl.checked = !(userPrefs.onboarding_dismissed === true);
       $("#pref-body-markdown").checked = userPrefs.body_markdown === true;
       const lvS = $("#pref-liveness-strong"), lvW = $("#pref-liveness-weak");
       if (lvS) lvS.value = userPrefs.livenessStrongHours;
