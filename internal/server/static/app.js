@@ -5909,10 +5909,18 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // "Exit tour" ends the whole tour for this session (sessionStorage;
       // back next login until permanently dismissed).
       interact: true, exitBtn: true, passSel: "#subreg-ask-modal",
-      passSpotSel: "#btn-subreg-ask-ok",
+      passSpotSel: "#btn-subreg-ask-ok", lockInside: true,
       skipIf: function () { return !!subRowEl(); },
       advance: function () { return !!subRowEl(); },
       sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
+    { // boss rc20: when the success page is up, spotlight the whole page and
+      // hold there - the beat advances only when the USER closes it
+      auto: true, passSel: "#subreg-modal",
+      advance: function () {
+        const m = document.getElementById("subreg-modal");
+        return !m || m.classList.contains("hidden");
+      },
+      sel: "#subreg-modal .modal-card", t: "tour.s2okt", b: "tour.s2okb" },
     { // boss: the sub-row tap is hands-on now - the user taps the
       // highlighted row themselves (the production composeTo path opens
       // the IM-style session with the recipient prefilled); the beat
@@ -5932,20 +5940,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         // bar is display:none, spotlighting it would stall - skip the beat
         const sec = document.getElementById("tab-compose");
         return !!sec && sec.classList.contains("im-full"); } },
-    { // boss: guided tap - the user opens the Mail page from the bottom nav
-      interact: true,
-      advance: function () {
-        const s = document.getElementById("tab-inbox");
-        return s && !s.classList.contains("hidden");
-      },
+    { // boss rc20: narrated like the other buttons - highlight only, the
+      // page switch is automatic, no action required
+      tab: "inbox",
       sel: ".tab[data-tab=\"inbox\"]", t: "tour.enterInboxT", b: "tour.enterInboxB" },
     { tab: "inbox", sel: "#inbox-row-pill", t: "tour.s4t", b: "tour.s4b" },
-    { // guided tap for the Manage page, same shape
-      interact: true,
-      advance: function () {
-        const s = document.getElementById("tab-mail");
-        return s && !s.classList.contains("hidden");
-      },
+    { // narrated, same as above
+      tab: "mail",
       sel: ".tab[data-tab=\"mail\"]", t: "tour.enterMgmtT", b: "tour.enterMgmtB" },
     { tab: "mail", sel: "#mgmt-seg", t: "tour.s5t", b: "tour.s5b" }
   ];
@@ -6102,7 +6103,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     bNever.textContent = tr("tour.never");
     bNever.addEventListener("click", function () { persistDismissed(); end(true); });
     row.appendChild(count);
-    if (s.interact) {
+    if (s.auto) {
+      // boss: the success page speaks for itself - no buttons, the beat
+      // ends when the user closes the dialog (advance poll)
+    } else if (s.interact) {
       // boss: hands-on beats get no per-step skip - skipping one step left
       // the following beats without their context (abnormal state report).
       // The only way out of a hands-on beat is the whole-tour skip, same
@@ -6120,7 +6124,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bNext);
     }
     card.appendChild(h); card.appendChild(p); card.appendChild(row);
-    if (s.interact && s.advance) {
+    if ((s.interact || s.auto) && s.advance) {
       advanceTimer = setInterval(function () {
         if (!active) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } return; }
         // z-order fix (Felix): while the beat's modal is open the mask
@@ -6131,6 +6135,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           const m = document.querySelector(s.passSel);
           const on = !!m && !m.classList.contains("hidden");
           layer.classList.toggle("tour-pass", on);
+          // boss rc20: the mask must keep blocking the page around the
+          // dialog - the dialog itself floats above the tour layer and
+          // keeps its own hit area (the spot rides its Register button)
+          if (m) {
+            m.classList.toggle("tour-pass-modal", on);
+            m.classList.toggle("tour-lock-inside", on && !!s.lockInside);
+          }
           if (card) card.style.display = on ? "none" : "";
           if (s.passSpotSel) {
             if (on) {
