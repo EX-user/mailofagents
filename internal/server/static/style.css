@@ -3613,7 +3613,14 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
    dialog from its old anchor - reading as a broken spotlight the moment
    the dialog opens. In pass state it jump-cuts onto the Register button. */
 .tour-layer.tour-pass .tour-card { display: none; pointer-events: none; }
-.tour-pass-modal { z-index: 10001 !important; }
+/* boss 22:54: the mask must float ON TOP of the dialog - the previous
+   float (modal z 10001 over the layer 9999) put the whole tour layer,
+   spot hole and 200vmax dim UNDER the dialog (the spot z 10002 only
+   counts inside the layer stacking context), so the dialog showed no
+   mask at all. The dialog stays at its native z (below the layer); the
+   layer yields pointer-events in pass so the dialog stays clickable;
+   outside clicks land on the dialog backdrop as before. */
+.tour-layer.tour-pass { pointer-events: none; }
 /* boss rc20 (clarified): while the register dialog is up the ONLY clickable
    thing is its Register button - every other control inside goes inert
    (random-name path; an account wanting a custom name exits the tour).
