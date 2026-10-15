@@ -3623,6 +3623,13 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
    ancestors (:not() does not un-inherit an ancestor's none) */
 .tour-lock-inside #btn-subreg-ask-ok { pointer-events: auto !important; }
 .tour-spot { position: fixed; z-index: 9999; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(15, 23, 42, 0.55); pointer-events: none; transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
+/* boss 22:33 acceptance: the spotlight mask must read as present - on the
+   dark theme a 55% black shadow on the dark page is imperceptible (boss
+   saw no mask at all), so under the dark theme the dim field goes to 80%
+   near-black navy; explicit pick and system-follow both covered. */
+html[data-theme="dark"] .tour-spot { box-shadow: 0 0 0 200vmax rgba(2, 6, 23, 0.8); }
+@media (prefers-color-scheme: dark) { html:not([data-theme]) .tour-spot { box-shadow: 0 0 0 200vmax rgba(2, 6, 23, 0.8); } }
+
 .tour-card { position: fixed; left: 16px; right: 16px; z-index: 10000; background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28); }
 .tour-card h3 { margin: 0 0 6px; font-size: 15px; color: #1f2328; }
 .tour-card p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.65; color: #4a5158; }
