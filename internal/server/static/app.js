@@ -5911,7 +5911,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       interact: true, exitBtn: true, passSel: "#subreg-ask-modal",
       passSpotSel: "#btn-subreg-ask-ok", lockInside: true,
       skipIf: function () { return !!subRowEl(); },
-      advance: function () { return !!subRowEl(); },
+      // boss 21:53 (timing): advance on the SUCCESS DIALOG opening - it is
+      // the first, unambiguous proof the registration landed (the row can
+      // lag behind on slow list renders)
+      advance: function () {
+        const m = document.getElementById("subreg-modal");
+        return !!m && !m.classList.contains("hidden");
+      },
       sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
     { // boss rc20: when the success page is up, spotlight the whole page and
       // hold there - the beat advances only when the USER closes it
@@ -6074,11 +6080,50 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     else { end(true); }
   }
 
+  // pass state, applied synchronously (render / event / poll all call it) -
+  // zero-poll-gap: the success dialog floats the very tick it opens
+  function applyPass(s) {
+    if (!layer || !s || !s.passSel) return;
+    const m = document.querySelector(s.passSel);
+    const on = !!m && !m.classList.contains("hidden");
+    layer.classList.toggle("tour-pass", on);
+    if (card) card.style.display = on ? "none" : "";
+    // boss rc20: the mask must keep blocking the page around the dialog -
+    // the dialog itself floats above the tour layer and keeps its own hit
+    // area (the spot rides its Register button)
+    if (m) {
+      m.classList.toggle("tour-pass-modal", on);
+      m.classList.toggle("tour-lock-inside", on && !!s.lockInside);
+    }
+    if (s.passSpotSel) {
+      if (on) {
+        if (!s._mainSel) s._mainSel = s.sel;
+        s.sel = s.passSpotSel;
+      } else if (s._mainSel) {
+        s.sel = s._mainSel;
+      }
+    }
+    if (on) {
+      const tgt = pickEl(s.sel);
+      if (tgt) { try { tgt.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {} }
+      aim(idx); // re-seat the spot onto the target with a fresh scroll+paint
+    }
+  }
+
+  // boss 21:53 (timing): the success reveal is event-driven - the tour
+  // advances the same tick manage.js opens the dialog, no poll wait
+  document.addEventListener("subreg:success", function () {
+    if (!active || !steps) return;
+    const s = steps[idx];
+    if (s && s.advance && s.advance()) nextStep();
+  });
+
   function render() {
     const s = steps[idx];
     if (s.dropIf && s.dropIf()) { nextStep(); return; }
     if (card) card.style.display = "";
     if (s.tab) activateTab(s.tab);
+    applyPass(s);
     if (s.prep) {
       const eff = s.prep();
       if (eff) { s.sel = eff.sel; s.t = eff.t; s.b = eff.b; }
@@ -6131,32 +6176,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         // would eat real clicks into it - the layer yields; (boss) the
         // card must not cover the dialog either: it steps aside and the
         // spot moves onto the dialog's own Register button
-        if (layer && s.passSel) {
-          const m = document.querySelector(s.passSel);
-          const on = !!m && !m.classList.contains("hidden");
-          layer.classList.toggle("tour-pass", on);
-          // boss rc20: the mask must keep blocking the page around the
-          // dialog - the dialog itself floats above the tour layer and
-          // keeps its own hit area (the spot rides its Register button)
-          if (m) {
-            m.classList.toggle("tour-pass-modal", on);
-            m.classList.toggle("tour-lock-inside", on && !!s.lockInside);
-          }
-          if (card) card.style.display = on ? "none" : "";
-          if (s.passSpotSel) {
-            if (on) {
-              if (!s._mainSel) s._mainSel = s.sel;
-              s.sel = s.passSpotSel;
-            } else if (s._mainSel) {
-              s.sel = s._mainSel;
-            }
-          }
-          if (on) {
-            const tgt = pickEl(s.sel);
-            if (tgt) { try { tgt.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {} }
-            aim(idx); // re-seat the spot onto the button with a fresh scroll+paint
-          }
-        }
+        applyPass(s);
         if (s.advance()) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } nextStep(); }
       }, 300);
     }
