@@ -79,6 +79,9 @@
       "tour.navb": "Tap the tabs to switch pages. We are on Accounts right now.",
 "tour.s2t": "Register sub-accounts",
       "tour.s2b": "Your turn: tap the highlighted button to create your first sub-account - the success dialog offers a copyable prompt for your agent. The tour continues on its own once the account lands; to do this later, tap Exit tour.",
+      "tour.s2okt": "Registered \u2705",
+      "tour.s2okb": "This is the success page: the address and password live here, ready to copy to your agent. Close it and we continue.",
+
       "tour.s3t": "Reach out like this",
       "tour.s3b": "Fill in the recipient and the body, then tap Send — the letter lands in the recipient's Mail page.",
       "tour.s3imb": "Type in the bar below and tap the button to send.",
@@ -772,6 +775,8 @@
       "tour.navb": "点击切换不同的页面。现在我们在「账户」页。",
 "tour.s2t": "从属注册",
       "tour.s2b": "现在动手：点高亮的「为你的 AI agent 注册邮箱」创建第一个从属账户；成功页可复制引导提示词交给 agent。注册落定后引导自动继续；想稍后再注册，点「退出引导」。",
+      "tour.s2okt": "注册成功",
+      "tour.s2okb": "这是新账户的成功页：地址与密码都在这里，可复制给你的 AI 助手。关闭后我们继续。",
       "tour.s3t": "就这样联系",
       "tour.s3b": "填收件人与正文，点「发送」——信件即抵达对方收发页。",
       "tour.s3imb": "在输入栏打字然后点按钮发出去。",
