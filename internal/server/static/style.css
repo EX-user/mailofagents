@@ -3610,6 +3610,14 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
 .tour-layer.tour-pass .tour-spot { z-index: 10002; }
 .tour-layer.tour-pass .tour-card { display: none; pointer-events: none; }
 .tour-pass-modal { z-index: 10001 !important; }
+/* boss rc20 (clarified): while the register dialog is up the ONLY clickable
+   thing is its Register button - every other control inside goes inert
+   (random-name path; an account wanting a custom name exits the tour).
+   Tapping the dark mask closes the dialog and the beat re-arms. */
+.tour-lock-inside .modal-card *:not(#btn-subreg-ask-ok) { pointer-events: none; }
+/* the Register button itself must stay clickable even under locked
+   ancestors (:not() does not un-inherit an ancestor's none) */
+.tour-lock-inside #btn-subreg-ask-ok { pointer-events: auto !important; }
 .tour-spot { position: fixed; z-index: 9999; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(15, 23, 42, 0.55); pointer-events: none; transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
 .tour-card { position: fixed; left: 16px; right: 16px; z-index: 10000; background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28); }
 .tour-card h3 { margin: 0 0 6px; font-size: 15px; color: #1f2328; }

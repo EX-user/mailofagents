@@ -5909,7 +5909,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // "Exit tour" ends the whole tour for this session (sessionStorage;
       // back next login until permanently dismissed).
       interact: true, exitBtn: true, passSel: "#subreg-ask-modal",
-      passSpotSel: "#btn-subreg-ask-ok",
+      passSpotSel: "#btn-subreg-ask-ok", lockInside: true,
       skipIf: function () { return !!subRowEl(); },
       advance: function () { return !!subRowEl(); },
       sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
@@ -6138,7 +6138,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
           // boss rc20: the mask must keep blocking the page around the
           // dialog - the dialog itself floats above the tour layer and
           // keeps its own hit area (the spot rides its Register button)
-          if (m) m.classList.toggle("tour-pass-modal", on);
+          if (m) {
+            m.classList.toggle("tour-pass-modal", on);
+            m.classList.toggle("tour-lock-inside", on && !!s.lockInside);
+          }
           if (card) card.style.display = on ? "none" : "";
           if (s.passSpotSel) {
             if (on) {
