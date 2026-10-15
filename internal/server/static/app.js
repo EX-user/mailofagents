@@ -6016,14 +6016,20 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     // the section) - retry the pick instead of killing the whole tour on
     // a layout race; a step with no visible target is skipped, not fatal.
     // cold first open: the reveal and its layout settle asynchronously -
-    // retry the pick ~2.4s before judging the target truly absent
+    // retry the pick up to ~5s before judging the target truly absent
     let tries = 0;
     const attempt = function () {
       const first = pickEl(s.sel);
       if (!first) {
         tries += 1;
-        if (tries < 16) { setTimeout(attempt, 150); }
-        else { aim(idx); }
+        if (tries < 20) { setTimeout(attempt, 250); }
+        else {
+          // audit hook (Felix): catches intermittent skips in the act
+          const why = 'beat ' + (idx + 1) + ' skipped: no visible anchor (' + (Array.isArray(s.sel) ? s.sel.join(' | ') : s.sel) + ')';
+          try { document.documentElement.setAttribute('data-tour-skip', why + ' @ ' + new Date().toISOString()); } catch (e) {}
+          try { console.warn('[tour]', why); } catch (e) {}
+          aim(idx);
+        }
         return;
       }
       aim(idx);
