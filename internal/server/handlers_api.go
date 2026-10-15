@@ -634,6 +634,7 @@ func (s *Server) handleProfileSelf(w http.ResponseWriter, r *http.Request) {
 			"audio_autoplay":       "bool",
 			"image_preview":        "bool",
 			"body_markdown":        "bool",
+			"onboarding_dismissed": "bool",
 			"liveness.weakHours":   "number",
 			"liveness.strongHours": "number",
 		}
