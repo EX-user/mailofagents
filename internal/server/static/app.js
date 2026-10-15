@@ -5922,7 +5922,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
 
   function sessionSkipped() {
-    try { return sessionStorage.getItem(TOUR_SS_SKIP) === "1"; } catch (e) { return false; }
+    // boss 17:11 bug (no tour on a NEW account, same tab): the old bare "1"
+    // flag was per-tab, so one account's skip/complete silenced every later
+    // account in that tab - asymmetric with the per-account "never" pref.
+    // The flag now stores the address and only silences that same account
+    // (same-tab reload included); switching accounts re-arms the tour.
+    try {
+      const v = sessionStorage.getItem(TOUR_SS_SKIP);
+      if (!v) return false;
+      const sess = getSession();
+      return !!sess && v === sess.address;
+    } catch (e) { return false; }
   }
 
   function persistDismissed() {
@@ -6150,7 +6160,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     layer = spot = card = null;
     document.body.classList.remove("tour-lock");
     if (!permanent) {
-      try { sessionStorage.setItem(TOUR_SS_SKIP, "1"); } catch (e) {}
+      try {
+        const sess = getSession();
+        sessionStorage.setItem(TOUR_SS_SKIP, sess && sess.address ? sess.address : "1");
+      } catch (e) {}
     }
   }
 
