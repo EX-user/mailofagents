@@ -5869,7 +5869,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // keeps the beat parked; tapping the spot reopens the dialog).
       // "Exit tour" ends the whole tour for this session (sessionStorage;
       // back next login until permanently dismissed).
-      interact: true, exitBtn: true,
+      interact: true, exitBtn: true, passSel: "#subreg-ask-modal",
       skipIf: function () { return !!subRowEl(); },
       advance: function () { return !!subRowEl(); },
       sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
@@ -6084,6 +6084,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     if (s.interact && s.advance) {
       advanceTimer = setInterval(function () {
         if (!active) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } return; }
+        // z-order fix (Felix): while the beat's modal is open the mask
+        // would eat real clicks into it - yield the layer and spot,
+        // keep the card's buttons live; the poll re-arms on close
+        if (layer && s.passSel) {
+          const m = document.querySelector(s.passSel);
+          layer.classList.toggle("tour-pass", !!m && !m.classList.contains("hidden"));
+        }
         if (s.advance()) { if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; } nextStep(); }
       }, 300);
     }
