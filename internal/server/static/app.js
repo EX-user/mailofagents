@@ -6103,28 +6103,15 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     bNever.addEventListener("click", function () { persistDismissed(); end(true); });
     row.appendChild(count);
     if (s.interact) {
-      if (s.exitBtn) {
-        // boss: the register beat has no skip-this-step - the only way out
-        // of the tour here is "Exit tour", which parks the whole tour for
-        // this session (sessionStorage; back next login until dismissed)
-        const bExit = document.createElement("button");
-        bExit.className = "tour-btn";
-        bExit.textContent = tr("tour.exit");
-        bExit.addEventListener("click", function () { end(false); });
-        row.appendChild(bExit);
-      } else {
-        // hands-on beat: no Next - the user performs the action (the spot
-        // forwards clicks to the target) or skips this step
-        const bSkipStep = document.createElement("button");
-        bSkipStep.className = "tour-btn";
-        bSkipStep.textContent = tr("tour.skipstep");
-        bSkipStep.addEventListener("click", function () {
-          if (advanceTimer) { clearInterval(advanceTimer); advanceTimer = null; }
-          nextStep();
-        });
-        row.appendChild(bSkipStep);
-      }
-      row.appendChild(bNever);
+      // boss: hands-on beats get no per-step skip - skipping one step left
+      // the following beats without their context (abnormal state report).
+      // The only way out of a hands-on beat is the whole-tour skip, same
+      // control and semantics as the plain beats' quiet button.
+      const bSkipTour = document.createElement("button");
+      bSkipTour.className = "tour-btn quiet";
+      bSkipTour.textContent = tr("tour.skip");
+      bSkipTour.addEventListener("click", function () { end(false); });
+      row.appendChild(bSkipTour); row.appendChild(bNever);
     } else {
       const bNext = document.createElement("button");
       bNext.className = "tour-btn primary";
