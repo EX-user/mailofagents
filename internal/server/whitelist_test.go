@@ -169,6 +169,28 @@ func TestWhitelistSendGate(t *testing.T) {
 	}
 }
 
+
+// TestWhitelistSelfSendExempt pins the boss 10-15 13:43 order: a letter
+// addressed to yourself (sender == recipient) delivers even when the
+// recipient's gate is on and the sender is not on the list.
+func TestWhitelistSelfSendExempt(t *testing.T) {
+	ts, st := newWhitelistTestServer(t)
+	if _, _, err := st.RegisterTeam("owner", "test.example", "ownerpassword1", 1, []string{"bot1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetWhitelistEnabled("owner@test.example", true); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(map[string]any{"to": []string{"owner@test.example"}, "subject": "note to self", "body": "remember this"})
+	resp, body := wlReq(t, "POST", ts.URL+"/api/send", "owner@test.example", "ownerpassword1", string(payload))
+	if resp.StatusCode != 200 || !strings.Contains(body, `"status":"sent"`) {
+		t.Fatalf("self send = %d %s, want 200 sent", resp.StatusCode, body)
+	}
+	if n := len(mustInbox(t, st, "owner@test.example")); n != 1 {
+		t.Fatalf("self letter must land despite gate+empty list, inbox=%d", n)
+	}
+}
+
 // TestWhitelistPartialReject pins the partial shape: one gated recipient
 // + one open recipient -> 200 sent with a "rejected" array naming the
 // gated one.

@@ -161,13 +161,15 @@ func (s *Store) Send(from, fromName string, to []string, cc []string, subject, b
 				missing++ // unknown recipient: skip (counts toward the missing state)
 				continue
 			}
-			// Whitelist gate (0.3.7): hierarchy exemption first (either
-			// direction, spec point 6), then the list when enabled. A
-			// declined recipient gets NO inbox/unread reference and NO
-			// push — zero awareness. System-notification writes elsewhere
-			// (declare/revoke notices) do not pass through Send and are
-			// exempt by construction.
-			if acc.WhitelistEnabled && !whitelistRelatedInTx(tx, from, l) && !whitelistHasInTx(acc, from) {
+			// Whitelist gate (0.3.7): self-send exemption first (boss
+			// 10-15 13:43 — notes to yourself bypass your own gate),
+			// then hierarchy exemption (either direction, spec point 6),
+			// then the list when enabled. A declined recipient gets NO
+			// inbox/unread reference and NO push — zero awareness.
+			// System-notification writes elsewhere (declare/revoke
+			// notices) do not pass through Send and are exempt by
+			// construction.
+			if l != from && acc.WhitelistEnabled && !whitelistRelatedInTx(tx, from, l) && !whitelistHasInTx(acc, from) {
 				rejected = append(rejected, l)
 				continue
 			}

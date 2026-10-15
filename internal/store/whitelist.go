@@ -117,9 +117,14 @@ func (s *Store) WhitelistRelated(a, b string) bool {
 }
 
 // WhitelistAdmits answers "may sender deliver into recipient's inbox?".
-// Hierarchy exemption first (spec point 6), then the list. A disabled
-// gate always admits without touching the list (spec point 4).
+// Self-send exemption first (boss 10-15 13:43: a letter to yourself is
+// always deliverable — notes-to-self must not be gated by the recipient's
+// own list), then hierarchy exemption (spec point 6), then the list. A
+// disabled gate always admits without touching the list (spec point 4).
 func (s *Store) WhitelistAdmits(recipient, sender string) bool {
+	if strings.EqualFold(recipient, sender) {
+		return true
+	}
 	if s.WhitelistRelated(recipient, sender) {
 		return true
 	}
