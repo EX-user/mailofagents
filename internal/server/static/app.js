@@ -5857,8 +5857,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     { tab: "accounts", sel: "#app-header", t: "tour.s1t", b: "tour.s1b" },
     { tab: "accounts", sel: ["#btn-subreg-pc", "#acc-m-contacts [data-reg]", "#btn-register"], t: "tour.s2t", b: "tour.s2b" },
     { tab: "compose", sel: "#btn-send", t: "tour.s3t", b: "tour.s3b" },
-    { tab: "inbox", sel: "#tab-inbox", t: "tour.s4t", b: "tour.s4b" },
-    { tab: "mail", sel: "#tab-mail", t: "tour.s5t", b: "tour.s5b" }
+    { tab: "inbox", sel: "#inbox-row-pill", t: "tour.s4t", b: "tour.s4b" },
+    { tab: "mail", sel: "#mgmt-seg", t: "tour.s5t", b: "tour.s5b" }
   ];
   let layer = null, spot = null, card = null, idx = 0, active = false;
 
@@ -5916,9 +5916,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     let bottom = Math.min(vh, r.bottom + pad);
     let height = bottom - top;
     if (height > vh * 0.5) height = vh * 0.5;
-    let left = Math.max(0, r.left - pad);
-    let width = Math.min(vw - left, r.width + pad * 2);
-    if (width < 120) width = Math.min(240, vw - left * 2);
+    const left = Math.max(0, r.left - pad);
+    const width = Math.min(vw - left, r.width + pad * 2);
     return { left: left, top: top, width: width, height: height };
   }
 
@@ -5933,22 +5932,32 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
 
   function aim(i) {
     const s = STEPS[i];
-    const el = pickEl(s.sel);
-    if (!el) { end(false); return; }
-    try { el.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
+    const first = pickEl(s.sel);
+    if (!first) { nextStep(); return; }
+    try { first.scrollIntoView({ block: "center", behavior: "auto" }); } catch (e) {}
     const paint = function () {
       if (!active) return;
+      const el = pickEl(s.sel);
+      if (!el) return;
+      const raw = el.getBoundingClientRect();
+      if (raw.width === 0 || raw.height === 0) return;
       const r = spotRect(el);
       spot.style.left = r.left + "px";
       spot.style.top = r.top + "px";
       spot.style.width = r.width + "px";
       spot.style.height = r.height + "px";
-      const below = r.top + r.height + 200 < (window.innerHeight || 800);
-      if (below) { card.style.top = (r.top + r.height + 12) + "px"; card.style.bottom = ""; }
+      const vh = window.innerHeight || 800;
+      const below = r.top + r.height + 200 < vh;
+      if (below) { card.style.top = Math.min(r.top + r.height + 12, vh - 170) + "px"; card.style.bottom = ""; }
       else { card.style.top = ""; card.style.bottom = "12px"; }
     };
     paint();
     setTimeout(paint, 250); setTimeout(paint, 600); setTimeout(paint, 1000);
+  }
+
+  function nextStep() {
+    if (idx < STEPS.length - 1) { idx += 1; render(); }
+    else { end(true); }
   }
 
   function render() {
@@ -5975,13 +5984,24 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const bNext = document.createElement("button");
     bNext.className = "tour-btn primary";
     bNext.textContent = idx < STEPS.length - 1 ? tr("tour.next") : tr("tour.done");
-    bNext.addEventListener("click", function () {
-      if (idx < STEPS.length - 1) { idx += 1; render(); }
-      else { end(true); }
-    });
+    bNext.addEventListener("click", nextStep);
     row.appendChild(count); row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bNext);
     card.appendChild(h); card.appendChild(p); card.appendChild(row);
-    aim(idx);
+    // the panel flip can settle asynchronously (page-lock pinning re-lays
+    // the section) - retry the pick instead of killing the whole tour on
+    // a layout race; a step with no visible target is skipped, not fatal.
+    let tries = 0;
+    const attempt = function () {
+      const first = pickEl(s.sel);
+      if (!first) {
+        tries += 1;
+        if (tries < 8) { setTimeout(attempt, 150); }
+        else { aim(idx); }
+        return;
+      }
+      aim(idx);
+    };
+    attempt();
   }
 
   function start() {
