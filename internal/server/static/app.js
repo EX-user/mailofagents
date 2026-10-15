@@ -3139,8 +3139,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         : (typeof local.image_preview === "boolean" ? local.image_preview : PREFS_DEFAULTS.image_preview),
       body_markdown: typeof src.body_markdown === "boolean" ? src.body_markdown
         : (typeof local.body_markdown === "boolean" ? local.body_markdown : PREFS_DEFAULTS.body_markdown),
+      // Felix vector-1: the localStorage mirror is per-browser, not
+      // per-account - a Don't-show-again on any account leaked into every
+      // fresh account via the local fallback. The server is authoritative:
+      // no server boolean -> default (tour armed); the mirror stays
+      // write-only for older frontends.
       onboarding_dismissed: typeof src.onboarding_dismissed === "boolean" ? src.onboarding_dismissed
-        : (typeof local.onboarding_dismissed === "boolean" ? local.onboarding_dismissed : PREFS_DEFAULTS.onboarding_dismissed),
+        : PREFS_DEFAULTS.onboarding_dismissed,
       livenessStrongHours: numHours(src["liveness.strongHours"],
         numHours(local["liveness.strongHours"], PREFS_DEFAULTS.livenessStrongHours)),
       livenessWeakHours: numHours(src["liveness.weakHours"],
@@ -3172,7 +3177,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       try { localStorage.setItem("compose_thread_pool_max", String(pool)); } catch (_) {}
     }
     const prefs = {
-      onboarding_dismissed: !!(userPrefs && userPrefs.onboarding_dismissed),
+      // boss 16:53: the preferences page owns the tour switch - unchecked
+      // means dismissed (permanently off for this account, all devices)
+      onboarding_dismissed: $("#pref-onboarding") ? !$("#pref-onboarding").checked
+        : !!(userPrefs && userPrefs.onboarding_dismissed),
       audio_autoplay: !!$("#pref-audio-autoplay").checked,
       image_preview: !!$("#pref-image-preview").checked,
       body_markdown: !!$("#pref-body-markdown").checked,
@@ -3390,6 +3398,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       mergePrefs(p.prefs);
       $("#pref-audio-autoplay").checked = userPrefs.audio_autoplay;
       $("#pref-image-preview").checked = userPrefs.image_preview;
+      const obEl = $("#pref-onboarding");
+      if (obEl) obEl.checked = !(userPrefs.onboarding_dismissed === true);
       $("#pref-body-markdown").checked = userPrefs.body_markdown === true;
       const lvS = $("#pref-liveness-strong"), lvW = $("#pref-liveness-weak");
       if (lvS) lvS.value = userPrefs.livenessStrongHours;
@@ -5917,7 +5927,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
 
   function sessionSkipped() {
-    try { return sessionStorage.getItem(TOUR_SS_SKIP) === "1"; } catch (e) { return false; }
+    // boss 17:11 bug (no tour on a NEW account, same tab): the old bare "1"
+    // flag was per-tab, so one account's skip/complete silenced every later
+    // account in that tab - asymmetric with the per-account "never" pref.
+    // The flag now stores the address and only silences that same account
+    // (same-tab reload included); switching accounts re-arms the tour.
+    try {
+      const v = sessionStorage.getItem(TOUR_SS_SKIP);
+      if (!v) return false;
+      const sess = getSession();
+      return !!sess && v === sess.address;
+    } catch (e) { return false; }
   }
 
   function persistDismissed() {
@@ -6145,7 +6165,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     layer = spot = card = null;
     document.body.classList.remove("tour-lock");
     if (!permanent) {
-      try { sessionStorage.setItem(TOUR_SS_SKIP, "1"); } catch (e) {}
+      try {
+        const sess = getSession();
+        sessionStorage.setItem(TOUR_SS_SKIP, sess && sess.address ? sess.address : "1");
+      } catch (e) {}
     }
   }
 
