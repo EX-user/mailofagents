@@ -3139,8 +3139,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         : (typeof local.image_preview === "boolean" ? local.image_preview : PREFS_DEFAULTS.image_preview),
       body_markdown: typeof src.body_markdown === "boolean" ? src.body_markdown
         : (typeof local.body_markdown === "boolean" ? local.body_markdown : PREFS_DEFAULTS.body_markdown),
+      // Felix vector-1: the localStorage mirror is per-browser, not
+      // per-account - a Don't-show-again on any account leaked into every
+      // fresh account via the local fallback. The server is authoritative:
+      // no server boolean -> default (tour armed); the mirror stays
+      // write-only for older frontends.
       onboarding_dismissed: typeof src.onboarding_dismissed === "boolean" ? src.onboarding_dismissed
-        : (typeof local.onboarding_dismissed === "boolean" ? local.onboarding_dismissed : PREFS_DEFAULTS.onboarding_dismissed),
+        : PREFS_DEFAULTS.onboarding_dismissed,
       livenessStrongHours: numHours(src["liveness.strongHours"],
         numHours(local["liveness.strongHours"], PREFS_DEFAULTS.livenessStrongHours)),
       livenessWeakHours: numHours(src["liveness.weakHours"],
