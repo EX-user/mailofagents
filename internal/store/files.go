@@ -45,6 +45,8 @@ type FileRecord struct {
 var (
 	ErrFileNotFound  = fmt.Errorf("file not found")
 	ErrQuotaExceeded = fmt.Errorf("storage quota exceeded")
+	// ErrFileAllowedCap: the file's allowed list is full (FileAllowedMax).
+	ErrFileAllowedCap = fmt.Errorf("allowed list limit reached")
 )
 
 func fileDataKey(id string) []byte { return []byte(id + ":d") }
@@ -154,6 +156,61 @@ func (s *Store) AuthorizeFileDownload(requester, id, code string) (*FileRecord, 
 		return nil, ErrFileNotFound
 	}
 	return rec, nil
+}
+
+// FileAllowedMax caps one file's allowed list (the owner-specific
+// re-authorization endpoint and send-time extension both respect it).
+const FileAllowedMax = 64
+
+// AddFileAllowed extends the file's allowed list (owner-only). addrs are
+// lowercased, deduped, and the owner's own address is skipped (owners can
+// always download). Returns the updated list. Missing/foreign ids answer
+// ErrFileNotFound (no oracle); lists past FileAllowedMax answer
+// ErrFileAllowedCap.
+func (s *Store) AddFileAllowed(owner, id string, addrs []string) ([]string, error) {
+	var out []string
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		raw := tx.Bucket(bFiles).Get([]byte(id))
+		if raw == nil {
+			return ErrFileNotFound
+		}
+		var fr FileRecord
+		if err := json.Unmarshal(raw, &fr); err != nil {
+			return ErrFileNotFound
+		}
+		if !strings.EqualFold(fr.Owner, owner) {
+			return ErrFileNotFound
+		}
+		set := map[string]bool{}
+		for _, a := range fr.Allowed {
+			set[strings.ToLower(a)] = true
+		}
+		for _, a := range addrs {
+			a = strings.ToLower(strings.TrimSpace(a))
+			if a == "" || set[a] || strings.EqualFold(a, fr.Owner) {
+				continue
+			}
+			set[a] = true
+		}
+		if len(set) > FileAllowedMax {
+			return ErrFileAllowedCap
+		}
+		fr.Allowed = make([]string, 0, len(set))
+		for a := range set {
+			fr.Allowed = append(fr.Allowed, a)
+		}
+		sortStrings(fr.Allowed)
+		val, err := json.Marshal(fr)
+		if err != nil {
+			return err
+		}
+		if err := tx.Bucket(bFiles).Put([]byte(id), val); err != nil {
+			return err
+		}
+		out = append([]string(nil), fr.Allowed...)
+		return nil
+	})
+	return out, err
 }
 
 // CleanupExpiredFiles removes files older than the TTL. Returns the number
