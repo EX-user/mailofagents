@@ -3647,3 +3647,10 @@ html[data-theme="dark"] .tour-spot { box-shadow: 0 0 0 200vmax rgba(2, 6, 23, 0.
 .tour-btn.quiet { border-color: transparent; background: transparent; color: #66707a; }
 body.tour-lock { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .tour-spot { transition: none; } }
+/* 0.3.7.5 PC face (boss 22:25): on PC the tour card docks right and keeps
+   following the anchor vertically (aim sets top/bottom inline); the welcome
+   card centers instead of stretching edge to edge. */
+@media (min-width: 801px) {
+  .tour-card { left: auto; right: 24px; max-width: 380px; }
+  #welcome-card { left: 50% !important; right: auto !important; width: 460px; margin-left: -230px; }
+}

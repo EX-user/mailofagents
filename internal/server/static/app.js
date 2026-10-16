@@ -5940,10 +5940,16 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         // boss 09-29: a peer with NO conversation lands in the full form
         // (the session bar stays hidden) - that still counts as entered
         const sec = document.getElementById("tab-compose");
-        return !!sec && sec.classList.contains("im-full");
+        if (!!sec && sec.classList.contains("im-full")) return true;
+        // PC (0.3.7.5): the row's write button opens the two-column form
+        // with the recipient prefilled (#compose-to) - that is "entered"
+        const to = document.getElementById("compose-to");
+        return !!to && to.getClientRects().length > 0;
       },
-      sel: "#acc-m-contacts .im3-row[data-claddr]", t: "tour.s3rowt", b: "tour.s3rowb" },
-    { tab: "compose", sel: "#im-input", t: "tour.s3t", b: "tour.s3imb",
+      // PC taps the row's write button ([data-compose] dispatches
+      // compose:to); the bare row has no click action there
+      sel: ["#acc-m-contacts .im3-row[data-claddr]", "#accounts-table tbody tr.subrow-pc [data-compose]", "#accounts-table tbody tr.ct-row [data-compose]"], t: "tour.s3rowt", b: "tour.s3rowb" },
+    { tab: "compose", sel: ["#compose-to", "#im-input"], t: "tour.s3t", b: "tour.s3imb",
       dropIf: function () { // empty conversation -> full form: the session
         // bar is display:none, spotlighting it would stall - skip the beat
         const sec = document.getElementById("tab-compose");
@@ -6323,8 +6329,10 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     tries += 1;
     const header = document.getElementById("app-header");
     const ready = header && !header.classList.contains("hidden") &&
-      window.matchMedia && window.matchMedia(MOBILE_MQ).matches &&
       typeof userPrefs !== "undefined" && userPrefs !== null;
+    // 0.3.7.5 PC face (boss 22:25): the gate is no longer width-bound -
+    // the same beats run on PC, anchors fall through to PC equivalents
+    // (subrow-pc / compose form).
     if (ready && !(userPrefs && userPrefs.onboarding_dismissed) && !sessionSkipped()) {
       // 0.3.7.5 welcome page (boss): a plain tour-card "beat 0" - no mask,
       // three buttons straight from the tour-card vocabulary. Shows once
