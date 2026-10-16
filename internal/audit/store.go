@@ -42,7 +42,6 @@ const (
 	ActionFileDownload         Action = "file_download"
 	ActionFileDelete           Action = "file_delete"
 	ActionFileExtend           Action = "file_extend"
-	ActionFileAllowed          Action = "file_allowed"
 	ActionRegisterTeam         Action = "register_team"
 	ActionSubDeclare           Action = "sub_declare"
 	ActionSubRevoke            Action = "sub_revoke"
