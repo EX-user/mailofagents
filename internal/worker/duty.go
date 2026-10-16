@@ -350,8 +350,8 @@ func compactNoticeText(server string) string {
 		"The session will be compacted right after this wake. 请先把需要延续的信息" +
 		"写入并更新你的记忆文件（memory file in the workdir），再正常结束本轮。\n" +
 		"Please persist or update your memory file BEFORE finishing this wake.\n" +
-		"压缩后若是新会话，请先查看系统自述端点以免忘记用法：GET " + info + "。" +
-		"If this is a fresh session after compaction, re-read the system self-description endpoint: GET " + info + ".")
+		"压缩后即新会话，请先查看系统自述端点以免忘记用法：GET " + info + "。" +
+		"The post-compaction session is fresh — re-read the system self-description endpoint: GET " + info + ".")
 }
 
 // watchActions consumes board mouse actions for this account (boss 0.2.10
