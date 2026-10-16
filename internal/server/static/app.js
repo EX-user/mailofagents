@@ -3145,7 +3145,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // ---- user preferences (v0.6) ----
   // Read order: server account.prefs > localStorage fallback > defaults.
   // Cached in memory: message rendering consults it without a request.
-  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24, onboarding_dismissed: false };
+  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24, onboarding_dismissed: false, welcome_seen: false };
   let userPrefs = null;
   const PREFS_LS_KEY = "agentmail_prefs";
 
@@ -3175,6 +3175,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // write-only for older frontends.
       onboarding_dismissed: typeof src.onboarding_dismissed === "boolean" ? src.onboarding_dismissed
         : PREFS_DEFAULTS.onboarding_dismissed,
+      welcome_seen: typeof src.welcome_seen === "boolean" ? src.welcome_seen
+        : PREFS_DEFAULTS.welcome_seen,
       livenessStrongHours: numHours(src["liveness.strongHours"],
         numHours(local["liveness.strongHours"], PREFS_DEFAULTS.livenessStrongHours)),
       livenessWeakHours: numHours(src["liveness.weakHours"],
@@ -6214,6 +6216,74 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     attempt();
   }
 
+  // 0.3.7.5 welcome page: same prefs pipeline as onboarding_dismissed
+  // (userPrefs + localStorage mirror + profile/self POST).
+  function persistWelcomeSeen() {
+    if (userPrefs) userPrefs.welcome_seen = true;
+    try {
+      const ls = JSON.parse(localStorage.getItem(PREFS_LS_KEY) || "{}");
+      ls.welcome_seen = true;
+      localStorage.setItem(PREFS_LS_KEY, JSON.stringify(ls));
+    } catch (e) {}
+    (async function () {
+      try {
+        const cur = await api("/api/profile/self", { keepSession: true }).catch(function () { return null; });
+        const prefs = Object.assign({}, (cur && cur.prefs) || {}, { welcome_seen: true });
+        const body = { prefs: prefs };
+        if (cur) {
+          if (typeof cur.signature === "string") body.signature = cur.signature;
+          if (typeof cur.visible === "boolean") body.visible = cur.visible;
+        }
+        await api("/api/profile/self", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      } catch (e) {}
+    })();
+  }
+
+  function removeWelcome() {
+    const w = document.getElementById("welcome-card");
+    if (w) w.remove();
+  }
+
+  // The welcome card IS a tour-card (boss: same family as the tour, no
+  // mask layer) with the tour-row button vocabulary: quiet skip, normal
+  // never-show, primary start. It renders alone - the tour starts behind
+  // it only after the primary click.
+  function showWelcome() {
+    if (document.getElementById("welcome-card")) return;
+    const card = document.createElement("div");
+    card.id = "welcome-card";
+    card.className = "tour-card";
+    card.style.cssText = "top:50%;bottom:auto;transform:translateY(-50%);z-index:9998;";
+    const h = document.createElement("h3");
+    h.textContent = tr("welcome.t");
+    const p = document.createElement("p");
+    p.textContent = tr("welcome.b");
+    const row = document.createElement("div");
+    row.className = "tour-row";
+    const bSkip = document.createElement("button");
+    bSkip.className = "tour-btn quiet";
+    bSkip.id = "btn-welcome-skip";
+    bSkip.textContent = tr("welcome.skip");
+    const bNever = document.createElement("button");
+    bNever.className = "tour-btn";
+    bNever.id = "btn-welcome-never";
+    bNever.textContent = tr("welcome.never");
+    const bStart = document.createElement("button");
+    bStart.className = "tour-btn primary";
+    bStart.id = "btn-welcome-start";
+    bStart.textContent = tr("welcome.start");
+    row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bStart);
+    card.appendChild(h); card.appendChild(p); card.appendChild(row);
+    document.body.appendChild(card);
+    bStart.addEventListener("click", function () { persistWelcomeSeen(); removeWelcome(); start(); });
+    bNever.addEventListener("click", function () { persistWelcomeSeen(); persistDismissed(); removeWelcome(); });
+    bSkip.addEventListener("click", function () { persistWelcomeSeen(); removeWelcome(); end(false); });
+  }
+
   function start() {
     if (active) return;
     // flow split (boss): accounts that already have a sub row skip the
@@ -6255,7 +6325,13 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     const ready = header && !header.classList.contains("hidden") &&
       window.matchMedia && window.matchMedia(MOBILE_MQ).matches &&
       typeof userPrefs !== "undefined" && userPrefs !== null;
-    if (ready && !(userPrefs && userPrefs.onboarding_dismissed) && !sessionSkipped()) { start(); return; }
+    if (ready && !(userPrefs && userPrefs.onboarding_dismissed) && !sessionSkipped()) {
+      // 0.3.7.5 welcome page (boss): a plain tour-card "beat 0" - no mask,
+      // three buttons straight from the tour-card vocabulary. Shows once
+      // per account (welcome_seen pref); the tour itself waits behind it.
+      if (!(userPrefs && userPrefs.welcome_seen)) { showWelcome(); return; }
+      start(); return;
+    }
     if (tries < 120) setTimeout(tick, 750);
   };
   setTimeout(tick, 1600);

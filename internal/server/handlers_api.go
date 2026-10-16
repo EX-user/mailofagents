@@ -635,6 +635,7 @@ func (s *Server) handleProfileSelf(w http.ResponseWriter, r *http.Request) {
 			"image_preview":        "bool",
 			"body_markdown":        "bool",
 			"onboarding_dismissed": "bool",
+			"welcome_seen":        "bool",
 			"liveness.weakHours":   "number",
 			"liveness.strongHours": "number",
 		}
