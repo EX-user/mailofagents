@@ -6073,7 +6073,9 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const vh = window.innerHeight || 800;
       const below = r.top + r.height + 200 < vh;
       if (below) { card.style.top = Math.min(r.top + r.height + 12, vh - 170) + "px"; card.style.bottom = ""; }
-      else { card.style.top = ""; card.style.bottom = Math.max(12, vh - r.top + 12) + "px"; }
+      // the ceiling keeps tall anchors (exact whole-form rects) from
+      // pushing the card off the top of the viewport (boss 08:14, fix_8)
+      else { card.style.top = ""; card.style.bottom = Math.max(12, Math.min(vh - r.top + 12, vh - 170)) + "px"; }
     };
     spot.style.pointerEvents = s.interact ? "auto" : "none";
     spot.style.cursor = s.interact ? "pointer" : "";
