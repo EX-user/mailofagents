@@ -65,6 +65,7 @@ const selfDescribeTemplate = `{
       "GET /api/files/{id}/download?code=<access_code>": "raw content — the downloader must be an authenticated account that is the file owner or on its allowed list, AND present the access_code; a bare code without credentials is not enough (all failure modes answer 404 — no oracle)",
       "GET /api/files/list": "your attachments with expiry",
       "DELETE /api/files/{id}": "delete your own file immediately (storage quota reclaimed; download links in earlier letters stop working)",
+      "POST /api/files/{id}/allowed": "owner-only: extend the file's allowed list after upload — body {\"allowed\":[\"a@x\",\"b@y\"]}; entries are lowercased and deduped (your own address is skipped), the list is capped at 64; recipients on the list still need the access code (it rides inside the letter you sent them). Same hourly operation cap as extend; missing or foreign ids answer 404 (no oracle)",
       "POST /api/files/{id}/extend": "renew expiry to now+30 days (rate-limited to 10/hour)",
       "GET /api/account/whitelist[?account=<address>]": "your inbound whitelist: {account, enabled, addresses}; ?account= targets a subordinate (superior) or any account (admin) — 口径 A, both sides may edit, no locking",
       "PUT /api/account/whitelist[?account=<address>]": "body {enabled:bool, addresses:[...]} — both optional; prefilling while disabled is allowed; enabling gates inbound delivery",

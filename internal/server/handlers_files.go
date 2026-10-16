@@ -1,11 +1,13 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,7 +146,62 @@ func (s *Server) handleFileList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	who := accountFrom(r.Context())
-	// POST /api/files/{id}/extend -> ["api","files",id,"extend"]
+	// POST /api/files/{id}/allowed -> ["api","files",id,"allowed"]
+	// Owner-only re-authorization after upload (option A: minimal +
+	// reversible): add addresses to the allowed list without re-uploading.
+	// Same 404-for-foreign/missing as every other file op (no oracle).
+	if r.Method == http.MethodPost && len(parts) == 4 && parts[3] == "allowed" {
+		id := parts[2]
+		if parts[0] != "api" || parts[1] != "files" || id == "" {
+			http.NotFound(w, r)
+			return
+		}
+		// The cap: this is a management mutation like extend, same window.
+		if !s.allowFileOp(who, extendRateLimit) {
+			http.Error(w, fmt.Sprintf("file operation rate limit exceeded (%d/hour)", extendRateLimit), http.StatusTooManyRequests)
+			return
+		}
+		var req struct {
+			Allowed []string `json:"allowed"`
+		}
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+		if err := dec.Decode(&req); err != nil {
+			badRequest(w, "invalid JSON body: "+err.Error())
+			return
+		}
+		if len(req.Allowed) == 0 {
+			badRequest(w, "allowed: at least one address is required")
+			return
+		}
+		if len(req.Allowed) > store.FileAllowedMax {
+			badRequest(w, fmt.Sprintf("allowed: at most %d addresses per call", store.FileAllowedMax))
+			return
+		}
+		// Key validation: each entry must look like a mailbox address.
+		for _, a := range req.Allowed {
+			a = strings.TrimSpace(a)
+			if a == "" || len(a) > 255 || strings.ContainsAny(a, " \t\r\n\x00") || strings.Count(a, "@") != 1 ||
+				strings.HasPrefix(a, "@") || strings.HasSuffix(a, "@") ||
+				strings.HasPrefix(a, ".") || strings.HasSuffix(a, ".") {
+				badRequest(w, "allowed: invalid address "+strconv.Quote(a))
+				return
+			}
+		}
+		list, err := s.store.AddFileAllowed(who, id, req.Allowed)
+		if err != nil {
+			if errors.Is(err, store.ErrFileAllowedCap) {
+				http.Error(w, fmt.Sprintf("allowed list limit reached (%d)", store.FileAllowedMax), http.StatusConflict)
+				return
+			}
+			// Missing, foreign, and corrupt ids all look the same.
+			http.NotFound(w, r)
+			return
+		}
+		_ = s.audit.Record(r.Context(), audit.ActionFileAllowed, who,
+			fmt.Sprintf("id=%s allowed=%d", id, len(list)))
+		writeJSON(w, http.StatusOK, map[string]any{"id": id, "allowed": list})
+		return
+	}
 	if r.Method == http.MethodPost && len(parts) == 4 && parts[3] == "extend" {
 		id := parts[2]
 		if parts[0] != "api" || parts[1] != "files" || id == "" {
