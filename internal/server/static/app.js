@@ -6016,15 +6016,20 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     document.body.appendChild(layer);
   }
 
-  function spotRect(el) {
+  function spotRect(el, exact) {
     const r = el.getBoundingClientRect();
     const pad = 8;
     const vh = window.innerHeight || 800;
     const vw = window.innerWidth || 400;
     let top = Math.max(0, r.top - pad);
     let bottom = Math.min(vh, r.bottom + pad);
+    // boss 00:31 (rc22): in pass state the spotlight IS the whole dialog -
+    // the viewport clamps (bottom min(vh), height cap 50vh) bit on short
+    // screens and left the success card bottom outside the hole, reading
+    // as "mask not aligned with the page". Pass state takes the exact rect.
+    if (exact) bottom = r.bottom + pad;
     let height = bottom - top;
-    if (height > vh * 0.5) height = vh * 0.5;
+    if (!exact && height > vh * 0.5) height = vh * 0.5;
     const left = Math.max(0, r.left - pad);
     const width = Math.min(vw - left, r.width + pad * 2);
     return { left: left, top: top, width: width, height: height };
@@ -6051,7 +6056,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       if (!el) return;
       const raw = el.getBoundingClientRect();
       if (raw.width === 0 || raw.height === 0) return;
-      const r = spotRect(el);
+      // exact rect while a pass modal owns the beat (mask = whole dialog)
+      const r = spotRect(el, layer.classList.contains("tour-pass"));
       spot.style.left = r.left + "px";
       spot.style.top = r.top + "px";
       spot.style.width = r.width + "px";
