@@ -341,6 +341,19 @@ func (d *Duty) saveState() {
 	_ = os.Rename(tmp, d.statePath()) // atomic swap
 }
 
+// compactNoticeText renders the pre-compaction notice: persist memory
+// first, then (boss 2026-10-16) a tail line pointing a post-compaction
+// fresh session at the self-description endpoint so system usage survives.
+func compactNoticeText(server string) string {
+	info := strings.TrimRight(server, "/") + "/api/info"
+	return ("[压缩预告 / Session compaction notice] 本次唤醒结束后，会话将被压缩。" +
+		"The session will be compacted right after this wake. 请先把需要延续的信息" +
+		"写入并更新你的记忆文件（memory file in the workdir），再正常结束本轮。\n" +
+		"Please persist or update your memory file BEFORE finishing this wake.\n" +
+		"压缩后若是新会话，请先查看系统自述端点以免忘记用法：GET " + info + "。" +
+		"If this is a fresh session after compaction, re-read the system self-description endpoint: GET " + info + ".")
+}
+
 // watchActions consumes board mouse actions for this account (boss 0.2.10
 // pool). 停止 cancels the in-flight wake — the queued mail re-wakes on the
 // next poll, but the interrupted run stops now (operator intent, not a
@@ -730,10 +743,7 @@ func (d *Duty) checkOnce(ctx context.Context) {
 	// compaction (in place or built-in) happens when this round completes.
 	var compactNotice string
 	if d.compactPending.Load() {
-		compactNotice = ("[压缩预告 / Session compaction notice] 本次唤醒结束后，会话将被压缩。" +
-			"The session will be compacted right after this wake. 请先把需要延续的信息" +
-			"写入并更新你的记忆文件（memory file in the workdir），再正常结束本轮。\n" +
-			"Please persist or update your memory file BEFORE finishing this wake.")
+		compactNotice = compactNoticeText(d.cfg.Server)
 	}
 
 	wakeCtx, cancel := context.WithTimeout(ctx, time.Duration(d.cfg.TimeoutSec)*time.Second)

@@ -225,3 +225,16 @@ func TestDigestIrtMarker(t *testing.T) {
 		t.Fatalf("reply letter must carry the [↩reply to <id>] marker:\n%s", d)
 	}
 }
+
+func TestCompactNoticeSelfDescribe(t *testing.T) {
+	n := compactNoticeText("http://s/")
+	for _, want := range []string{
+		"GET http://s/api/info。",
+		"endpoint: GET http://s/api/info.",
+		"请先把需要延续的信息",
+	} {
+		if !strings.Contains(n, want) {
+			t.Fatalf("notice missing %q:\n%s", want, n)
+		}
+	}
+}
