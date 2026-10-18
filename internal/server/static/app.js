@@ -3145,7 +3145,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // ---- user preferences (v0.6) ----
   // Read order: server account.prefs > localStorage fallback > defaults.
   // Cached in memory: message rendering consults it without a request.
-  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24, onboarding_dismissed: false };
+  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24, onboarding_dismissed: false, welcome_seen: false };
   let userPrefs = null;
   const PREFS_LS_KEY = "agentmail_prefs";
 
@@ -3175,6 +3175,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // write-only for older frontends.
       onboarding_dismissed: typeof src.onboarding_dismissed === "boolean" ? src.onboarding_dismissed
         : PREFS_DEFAULTS.onboarding_dismissed,
+      welcome_seen: typeof src.welcome_seen === "boolean" ? src.welcome_seen
+        : PREFS_DEFAULTS.welcome_seen,
       livenessStrongHours: numHours(src["liveness.strongHours"],
         numHours(local["liveness.strongHours"], PREFS_DEFAULTS.livenessStrongHours)),
       livenessWeakHours: numHours(src["liveness.weakHours"],
@@ -5938,10 +5940,16 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         // boss 09-29: a peer with NO conversation lands in the full form
         // (the session bar stays hidden) - that still counts as entered
         const sec = document.getElementById("tab-compose");
-        return !!sec && sec.classList.contains("im-full");
+        if (!!sec && sec.classList.contains("im-full")) return true;
+        // PC (0.3.7.5): the row's write button opens the two-column form
+        // with the recipient prefilled (#compose-to) - that is "entered"
+        const to = document.getElementById("compose-to");
+        return !!to && to.getClientRects().length > 0;
       },
-      sel: "#acc-m-contacts .im3-row[data-claddr]", t: "tour.s3rowt", b: "tour.s3rowb" },
-    { tab: "compose", sel: "#im-input", t: "tour.s3t", b: "tour.s3imb",
+      // PC taps the row's write button ([data-compose] dispatches
+      // compose:to); the bare row has no click action there
+      sel: ["#acc-m-contacts .im3-row[data-claddr]", "#accounts-table tbody tr.subrow-pc [data-compose]", "#accounts-table tbody tr.ct-row [data-compose]"], t: "tour.s3rowt", b: "tour.s3rowb" },
+    { tab: "compose", sel: ["#compose-to", "#im-input"], t: "tour.s3t", b: "tour.s3imb",
       dropIf: function () { // empty conversation -> full form: the session
         // bar is display:none, spotlighting it would stall - skip the beat
         const sec = document.getElementById("tab-compose");
@@ -6214,6 +6222,74 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     attempt();
   }
 
+  // 0.3.7.5 welcome page: same prefs pipeline as onboarding_dismissed
+  // (userPrefs + localStorage mirror + profile/self POST).
+  function persistWelcomeSeen() {
+    if (userPrefs) userPrefs.welcome_seen = true;
+    try {
+      const ls = JSON.parse(localStorage.getItem(PREFS_LS_KEY) || "{}");
+      ls.welcome_seen = true;
+      localStorage.setItem(PREFS_LS_KEY, JSON.stringify(ls));
+    } catch (e) {}
+    (async function () {
+      try {
+        const cur = await api("/api/profile/self", { keepSession: true }).catch(function () { return null; });
+        const prefs = Object.assign({}, (cur && cur.prefs) || {}, { welcome_seen: true });
+        const body = { prefs: prefs };
+        if (cur) {
+          if (typeof cur.signature === "string") body.signature = cur.signature;
+          if (typeof cur.visible === "boolean") body.visible = cur.visible;
+        }
+        await api("/api/profile/self", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      } catch (e) {}
+    })();
+  }
+
+  function removeWelcome() {
+    const w = document.getElementById("welcome-card");
+    if (w) w.remove();
+  }
+
+  // The welcome card IS a tour-card (boss: same family as the tour, no
+  // mask layer) with the tour-row button vocabulary: quiet skip, normal
+  // never-show, primary start. It renders alone - the tour starts behind
+  // it only after the primary click.
+  function showWelcome() {
+    if (document.getElementById("welcome-card")) return;
+    const card = document.createElement("div");
+    card.id = "welcome-card";
+    card.className = "tour-card";
+    card.style.cssText = "top:50%;bottom:auto;transform:translateY(-50%);z-index:9998;";
+    const h = document.createElement("h3");
+    h.textContent = tr("welcome.t");
+    const p = document.createElement("p");
+    p.textContent = tr("welcome.b");
+    const row = document.createElement("div");
+    row.className = "tour-row";
+    const bSkip = document.createElement("button");
+    bSkip.className = "tour-btn quiet";
+    bSkip.id = "btn-welcome-skip";
+    bSkip.textContent = tr("welcome.skip");
+    const bNever = document.createElement("button");
+    bNever.className = "tour-btn";
+    bNever.id = "btn-welcome-never";
+    bNever.textContent = tr("welcome.never");
+    const bStart = document.createElement("button");
+    bStart.className = "tour-btn primary";
+    bStart.id = "btn-welcome-start";
+    bStart.textContent = tr("welcome.start");
+    row.appendChild(bSkip); row.appendChild(bNever); row.appendChild(bStart);
+    card.appendChild(h); card.appendChild(p); card.appendChild(row);
+    document.body.appendChild(card);
+    bStart.addEventListener("click", function () { persistWelcomeSeen(); removeWelcome(); start(); });
+    bNever.addEventListener("click", function () { persistWelcomeSeen(); persistDismissed(); removeWelcome(); });
+    bSkip.addEventListener("click", function () { persistWelcomeSeen(); removeWelcome(); end(false); });
+  }
+
   function start() {
     if (active) return;
     // flow split (boss): accounts that already have a sub row skip the
@@ -6253,9 +6329,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
     tries += 1;
     const header = document.getElementById("app-header");
     const ready = header && !header.classList.contains("hidden") &&
-      window.matchMedia && window.matchMedia(MOBILE_MQ).matches &&
       typeof userPrefs !== "undefined" && userPrefs !== null;
-    if (ready && !(userPrefs && userPrefs.onboarding_dismissed) && !sessionSkipped()) { start(); return; }
+    // 0.3.7.5 PC face (boss 22:25): the gate is no longer width-bound -
+    // the same beats run on PC, anchors fall through to PC equivalents
+    // (subrow-pc / compose form).
+    if (ready && !(userPrefs && userPrefs.onboarding_dismissed) && !sessionSkipped()) {
+      // 0.3.7.5 welcome page (boss): a plain tour-card "beat 0" - no mask,
+      // three buttons straight from the tour-card vocabulary. Shows once
+      // per account (welcome_seen pref); the tour itself waits behind it.
+      if (!(userPrefs && userPrefs.welcome_seen)) { showWelcome(); return; }
+      start(); return;
+    }
     if (tries < 120) setTimeout(tick, 750);
   };
   setTimeout(tick, 1600);
