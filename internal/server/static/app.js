@@ -5949,7 +5949,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // PC taps the row's write button ([data-compose] dispatches
       // compose:to); the bare row has no click action there
       sel: ["#acc-m-contacts .im3-row[data-claddr]", "#accounts-table tbody tr.subrow-pc [data-compose]", "#accounts-table tbody tr.ct-row [data-compose]"], t: "tour.s3rowt", b: "tour.s3rowb" },
-    { tab: "compose", sel: ["#im-input", "#tab-compose:not(.hidden) .compose-form"], exact: true, t: "tour.s3t", b: "tour.s3imb",
+    { tab: "compose", sel: ["#compose-to", "#im-input"], t: "tour.s3t", b: "tour.s3imb",
       dropIf: function () { // empty conversation -> full form: the session
         // bar is display:none, spotlighting it would stall - skip the beat
         const sec = document.getElementById("tab-compose");
@@ -5958,7 +5958,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       // page switch is automatic, no action required
       tab: "inbox",
       sel: ".tab[data-tab=\"inbox\"]", t: "tour.enterInboxT", b: "tour.enterInboxB" },
-    { tab: "inbox", sel: "#inbox-mode-pill", t: "tour.s4t", b: "tour.s4b" },
+    { tab: "inbox", sel: "#inbox-row-pill", t: "tour.s4t", b: "tour.s4b" },
     { // narrated, same as above
       tab: "mail",
       sel: ".tab[data-tab=\"mail\"]", t: "tour.enterMgmtT", b: "tour.enterMgmtB" },
@@ -6065,7 +6065,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const raw = el.getBoundingClientRect();
       if (raw.width === 0 || raw.height === 0) return;
       // exact rect while a pass modal owns the beat (mask = whole dialog)
-      const r = spotRect(el, layer.classList.contains("tour-pass") || s.exact === true);
+      const r = spotRect(el, layer.classList.contains("tour-pass"));
       spot.style.left = r.left + "px";
       spot.style.top = r.top + "px";
       spot.style.width = r.width + "px";
@@ -6073,9 +6073,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const vh = window.innerHeight || 800;
       const below = r.top + r.height + 200 < vh;
       if (below) { card.style.top = Math.min(r.top + r.height + 12, vh - 170) + "px"; card.style.bottom = ""; }
-      // the ceiling keeps tall anchors (exact whole-form rects) from
-      // pushing the card off the top of the viewport (boss 08:14, fix_8)
-      else { card.style.top = ""; card.style.bottom = Math.max(12, Math.min(vh - r.top + 12, vh - 170)) + "px"; }
+      else { card.style.top = ""; card.style.bottom = Math.max(12, vh - r.top + 12) + "px"; }
     };
     spot.style.pointerEvents = s.interact ? "auto" : "none";
     spot.style.cursor = s.interact ? "pointer" : "";

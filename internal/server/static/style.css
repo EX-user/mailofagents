@@ -3641,13 +3641,8 @@ html[data-theme="dark"] .tour-spot { box-shadow: 0 0 0 200vmax rgba(2, 6, 23, 0.
 .tour-card h3 { margin: 0 0 6px; font-size: 15px; color: #1f2328; }
 .tour-card p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.65; color: #4a5158; }
 .tour-row { display: flex; align-items: center; gap: 8px; }
-#welcome-card .tour-row { justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
-#welcome-card .tour-btn { font-size: 11px; padding: 7px 8px; }
 .tour-count { margin-right: auto; font-size: 12px; color: #98a1ab; }
-.tour-btn { border: 1px solid #dfe3e8; background: #fff; color: #333; border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; height: 34px; box-sizing: border-box; white-space: nowrap; flex: none; }
-/* boss 08:12: on the PC welcome card the three buttons flex-shrunk and
-   their labels wrapped mid-word - keep each label on one line and at
-   its natural width (the row has room: 428px inside the 460px card). */
+.tour-btn { border: 1px solid #dfe3e8; background: #fff; color: #333; border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; height: 34px; box-sizing: border-box; }
 .tour-btn.primary { background: #2f6fed; border-color: #2f6fed; color: #fff; min-height: 34px; height: 34px; }
 .tour-btn.quiet { border-color: transparent; background: transparent; color: #66707a; }
 body.tour-lock { overflow: hidden; }
@@ -3657,5 +3652,5 @@ body.tour-lock { overflow: hidden; }
    card centers instead of stretching edge to edge. */
 @media (min-width: 801px) {
   .tour-card { left: auto; right: 24px; max-width: 380px; }
-  #welcome-card { left: 50% !important; right: auto !important; width: 460px; max-width: 460px; margin-left: -230px; }
+  #welcome-card { left: 50% !important; right: auto !important; width: 460px; margin-left: -230px; }
 }
