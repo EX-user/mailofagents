@@ -245,14 +245,27 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   var PAGE_LOCK_TABS = ["inbox", "mail", "compose", "audit", "accounts"];
   function syncPageLock(name) {
     var de = document.documentElement;
-    var lock = PAGE_LOCK_TABS.indexOf(name) >= 0;
+    // boss 14:47 (PC accounts dead-scroll): the lock CSS is scoped to
+    // max-width:800 - applying the class on PC gave guardLockedScroll a
+    // class with no lock behind it, so every scroll got snapped to zero on
+    // a page that was supposed to scroll. Gate the class on the same
+    // breakpoint as the CSS contract.
+    var lock = PAGE_LOCK_TABS.indexOf(name) >= 0 && window.innerWidth <= 800;
     de.classList.toggle("page-locked", lock);
     if (lock) de.style.setProperty("--app-vh", window.innerHeight + "px");
     else de.style.removeProperty("--app-vh");
   }
   window.addEventListener("resize", function () {
-    if (document.documentElement.classList.contains("page-locked")) {
-      document.documentElement.style.setProperty("--app-vh", window.innerHeight + "px");
+    var de = document.documentElement;
+    var active = document.querySelector(".tab.active");
+    var name = active && active.dataset ? active.dataset.tab : null;
+    if (name && PAGE_LOCK_TABS.indexOf(name) >= 0) {
+      var lock = window.innerWidth <= 800;
+      de.classList.toggle("page-locked", lock);
+      if (lock) de.style.setProperty("--app-vh", window.innerHeight + "px");
+      else de.style.removeProperty("--app-vh");
+    } else if (de.classList.contains("page-locked")) {
+      de.style.setProperty("--app-vh", window.innerHeight + "px");
     }
   });
   // boss 17:50 (Android real device, rc19): with the page locked, any stray
