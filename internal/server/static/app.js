@@ -5967,7 +5967,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   let layer = null, spot = null, card = null, idx = 0, active = false, paintTimer = null, advanceTimer = null;
   let steps = null;
 
-  function subRowEl() { return document.querySelector("#acc-m-contacts .im3-row[data-claddr]"); }
+  function subRowEl() {
+    // rc2 (boss 13:50): PC renders subs as table rows (subrow-pc) - the
+    // mobile-only selector made skipIf always false there, so accounts
+    // WITH subs still saw the register beat. Match either rendering.
+    return document.querySelector("#acc-m-contacts .im3-row[data-claddr], #accounts-table tbody tr.subrow-pc");
+  }
 
   function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
 
