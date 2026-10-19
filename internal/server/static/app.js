@@ -6140,6 +6140,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   });
 
   function render() {
+    const s0 = steps[idx];
+    if (s0 && s0.skipIf && s0.skipIf()) {
+      // rc2 (boss 13:50): start-time filtering races tab loading - PC lands
+      // on overview so #accounts-table is empty when the tour starts, and
+      // the register beat survived the filter even with subs present.
+      // Re-check at beat entry: by the time the tour reaches this beat the
+      // accounts tab has rendered and the skip is honest. Mobile keeps its
+      // start-time skip (rows render eagerly there); entry-time handles PC.
+      while (idx < steps.length && steps[idx].skipIf && steps[idx].skipIf()) idx += 1;
+      if (idx >= steps.length) { end(true); return; }
+    }
     const s = steps[idx];
     if (s.dropIf && s.dropIf()) { nextStep(); return; }
     if (card) card.style.display = "";
