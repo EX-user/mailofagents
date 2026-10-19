@@ -245,14 +245,27 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   var PAGE_LOCK_TABS = ["inbox", "mail", "compose", "audit", "accounts"];
   function syncPageLock(name) {
     var de = document.documentElement;
-    var lock = PAGE_LOCK_TABS.indexOf(name) >= 0;
+    // boss 14:47 (PC accounts dead-scroll): the lock CSS is scoped to
+    // max-width:800 - applying the class on PC gave guardLockedScroll a
+    // class with no lock behind it, so every scroll got snapped to zero on
+    // a page that was supposed to scroll. Gate the class on the same
+    // breakpoint as the CSS contract.
+    var lock = PAGE_LOCK_TABS.indexOf(name) >= 0 && window.innerWidth <= 800;
     de.classList.toggle("page-locked", lock);
     if (lock) de.style.setProperty("--app-vh", window.innerHeight + "px");
     else de.style.removeProperty("--app-vh");
   }
   window.addEventListener("resize", function () {
-    if (document.documentElement.classList.contains("page-locked")) {
-      document.documentElement.style.setProperty("--app-vh", window.innerHeight + "px");
+    var de = document.documentElement;
+    var active = document.querySelector(".tab.active");
+    var name = active && active.dataset ? active.dataset.tab : null;
+    if (name && PAGE_LOCK_TABS.indexOf(name) >= 0) {
+      var lock = window.innerWidth <= 800;
+      de.classList.toggle("page-locked", lock);
+      if (lock) de.style.setProperty("--app-vh", window.innerHeight + "px");
+      else de.style.removeProperty("--app-vh");
+    } else if (de.classList.contains("page-locked")) {
+      de.style.setProperty("--app-vh", window.innerHeight + "px");
     }
   });
   // boss 17:50 (Android real device, rc19): with the page locked, any stray
@@ -5967,7 +5980,12 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   let layer = null, spot = null, card = null, idx = 0, active = false, paintTimer = null, advanceTimer = null;
   let steps = null;
 
-  function subRowEl() { return document.querySelector("#acc-m-contacts .im3-row[data-claddr]"); }
+  function subRowEl() {
+    // rc2 (boss 13:50): PC renders subs as table rows (subrow-pc) - the
+    // mobile-only selector made skipIf always false there, so accounts
+    // WITH subs still saw the register beat. Match either rendering.
+    return document.querySelector("#acc-m-contacts .im3-row[data-claddr], #accounts-table tbody tr.subrow-pc");
+  }
 
   function tr(k) { try { return window.I18N.t(k); } catch (e) { return k; } }
 
@@ -6135,6 +6153,17 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   });
 
   function render() {
+    const s0 = steps[idx];
+    if (s0 && s0.skipIf && s0.skipIf()) {
+      // rc2 (boss 13:50): start-time filtering races tab loading - PC lands
+      // on overview so #accounts-table is empty when the tour starts, and
+      // the register beat survived the filter even with subs present.
+      // Re-check at beat entry: by the time the tour reaches this beat the
+      // accounts tab has rendered and the skip is honest. Mobile keeps its
+      // start-time skip (rows render eagerly there); entry-time handles PC.
+      while (idx < steps.length && steps[idx].skipIf && steps[idx].skipIf()) idx += 1;
+      if (idx >= steps.length) { end(true); return; }
+    }
     const s = steps[idx];
     if (s.dropIf && s.dropIf()) { nextStep(); return; }
     if (card) card.style.display = "";
