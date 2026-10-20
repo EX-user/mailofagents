@@ -2013,7 +2013,9 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
         const prefs = await new Promise(function (resolve) {
           document.dispatchEvent(new CustomEvent("prefs:request", { detail: { resolve: resolve } }));
         });
-        if (prefs && prefs.body_markdown === true && window.marked && window.DOMPurify) {
+        // 0.3.7.7: the NEW surfaces gate on their own switch (default off) -
+        // body_markdown keeps owning the inbox detail pane only.
+        if (prefs && prefs.session_markdown === true && window.marked && window.DOMPurify) {
           bodyHtml = '<div class="md-body md-body-letter">' + DOMPurify.sanitize(marked.parse(m.body || ""), {
             FORBID_TAGS: ["img", "style", "audio", "video"],
             FORBID_ATTR: ["style"],
