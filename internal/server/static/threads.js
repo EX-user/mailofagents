@@ -6,6 +6,7 @@
 // HARD CONSTRAINT (audit_frontend_imports.sh): imports ONLY ./core.js;
 // cross-domain interactions go through DOM CustomEvents:
 //   listens:  threads:entered {}  threads:refresh {}  threads:reset {}
+//             prefs:request (emitted; 0.3.7.6-1 body_markdown gate ask)
 //             i18n:change
 //   emits:    mgmt:browse-account {address, folder?}  (full text in manage)
 //             mgmt:fallback-browse {}  (remembered-entry empty-list bounce,
@@ -351,7 +352,24 @@ import { $, $$, esc, api, getSession, fmtTime } from "./core.js";
                     from: el.getAttribute("data-th-from"),
                     to: (el.getAttribute("data-th-to") || "").split(",").filter(Boolean)
                   });
-                  full.textContent = body || "";
+                  // 0.3.7.6-1: honor the body_markdown preference (same
+                  // gate/sanitizer/default-off as the inbox detail pane);
+                  // plain text otherwise, exactly as before.
+                  var prefs = await new Promise(function (resolve) {
+                    document.dispatchEvent(new CustomEvent("prefs:request", { detail: { resolve: resolve } }));
+                  });
+                  if (prefs && prefs.body_markdown === true && window.marked && window.DOMPurify) {
+                    try {
+                      full.innerHTML = '<div class="md-body md-body-letter">' + DOMPurify.sanitize(marked.parse(body || ""), {
+                        FORBID_TAGS: ["img", "style", "audio", "video"],
+                        FORBID_ATTR: ["style"],
+                      }) + "</div>";
+                    } catch (e2) {
+                      full.textContent = body || "";
+                    }
+                  } else {
+                    full.textContent = body || "";
+                  }
                 } catch (e) {
                   full.textContent = t("common.error", { msg: e.message });
                 }
