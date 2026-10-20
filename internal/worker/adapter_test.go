@@ -225,3 +225,31 @@ func TestDigestIrtMarker(t *testing.T) {
 		t.Fatalf("reply letter must carry the [↩reply to <id>] marker:\n%s", d)
 	}
 }
+
+func TestCompactNoticeSelfDescribe(t *testing.T) {
+	n := compactNoticeText("http://s/")
+	for _, want := range []string{
+		"GET http://s/api/info。",
+		"endpoint: GET http://s/api/info.",
+		"请先把需要延续的信息",
+	} {
+		if !strings.Contains(n, want) {
+			t.Fatalf("notice missing %q:\n%s", want, n)
+		}
+	}
+}
+
+func TestDigestAttachMark(t *testing.T) {
+	cfg := &Config{Address: "a@x", Server: "http://s", Workdir: "/w"}
+	mails := []MailSummary{
+		{ID: "01", From: "boss@x", Subject: "plain", Preview: "hi", ReceivedAt: 1791862163},
+		{ID: "02", From: "dev@x", Subject: "with files", Preview: "see attached", ReceivedAt: 1791862164, Files: 2},
+	}
+	d := Digest(cfg, mails, true, "", "", MailStats{}, false, 0)
+	if !strings.Contains(d, "主题: plain（") || strings.Contains(d, "[📎×") && strings.Count(d, "[📎×") != 1 {
+		t.Fatalf("plain letter must be unmarked and marker must appear exactly once:\n%s", d)
+	}
+	if !strings.Contains(d, "预览: see attached [📎×2]") {
+		t.Fatalf("attachment letter must carry the trailing [📎×N]:\n%s", d)
+	}
+}

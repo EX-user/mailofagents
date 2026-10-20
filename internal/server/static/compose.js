@@ -2005,9 +2005,24 @@ import { $, $$, esc, api, getSession, basicAuth, toast, fmtTime, fmtBytes } from
       const m = await api(path);
       // v0.5.3: thread expansion shows attachments too (parity with the
       // inbox/mail detail panes), including image previews.
+      // 0.3.7.6-1: the body honors the body_markdown preference (same
+      // gate/sanitizer/default-off as the inbox detail pane) - plain <pre>
+      // otherwise, exactly as before.
+      let bodyHtml = '<pre class="thread-body">' + esc(m.body || "") + "</pre>";
+      try {
+        const prefs = await new Promise(function (resolve) {
+          document.dispatchEvent(new CustomEvent("prefs:request", { detail: { resolve: resolve } }));
+        });
+        if (prefs && prefs.body_markdown === true && window.marked && window.DOMPurify) {
+          bodyHtml = '<div class="md-body md-body-letter">' + DOMPurify.sanitize(marked.parse(m.body || ""), {
+            FORBID_TAGS: ["img", "style", "audio", "video"],
+            FORBID_ATTR: ["style"],
+          }) + "</div>";
+        }
+      } catch (_) { /* keep plain on any prefs/render failure */ }
       full.innerHTML =
       (m.cc && m.cc.length ? '<div class="detail-row"><b>Cc:</b> ' + esc(m.cc.join(", ")) + "</div>" : "") +
-      "<pre class=\"thread-body\">" + esc(m.body || "") + "</pre>" + attachmentCards(m);
+      bodyHtml + attachmentCards(m);
       wireAttachmentDownloads(full, m);
       hydrateAttachmentPreviews(full, m);
       item.dataset.loaded = "1";

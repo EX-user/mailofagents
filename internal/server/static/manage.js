@@ -5,6 +5,7 @@
 //             manage:refresh (prefs thresholds changed -> recolor dots)
 //             manage:reset   (login switch: caches must not leak)
 //             subs:request {force, resolve} (other domains need sub edges)
+//             prefs:request {resolve} (0.3.7.6-1: body_markdown gate owner)
 //             audio:stop-all (leaving a message view must stop audio)
 //   emits:    badge:refresh, accounts:refresh, nav:activate,
 //             compose:reply / compose:reply-self (reply buttons here)
@@ -2558,6 +2559,12 @@ document.addEventListener("manage:entered", function () {
   document.addEventListener("subs:request", function (ev) {
     var d = ev.detail || {};
     loadSubs(!!d.force).then(d.resolve, function () { d.resolve && d.resolve(null); });
+  });
+  document.addEventListener("prefs:request", function (ev) {
+    // 0.3.7.6-1: compose/threads gate letter markdown on body_markdown -
+    // the cache lives here (one profile owner), other domains ask.
+    var d = ev.detail || {};
+    ensureMgmtPrefs().then(d.resolve, function () { d.resolve && d.resolve(null); });
   });
   document.addEventListener("audio:stop-all", function () {
     resetAudioPlayers();
