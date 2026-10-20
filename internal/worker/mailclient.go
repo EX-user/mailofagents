@@ -43,6 +43,11 @@ type MailSummary struct {
 	// surfaces it as [↩reply to <id>] on the subject line (boss
 	// 2026-10-15 18:00) so the agent can thread without a detail fetch.
 	InReplyTo string `json:"in_reply_to,omitempty"`
+	// Files is the attachment count (server list entries carry it). The
+	// digest surfaces it as a trailing [📎×N] on the unread entry (boss
+	// 2026-10-20, Devi scheme) — the agent knows a letter carries
+	// attachments without fetching the body; names ride the detail fetch.
+	Files int `json:"files"`
 }
 
 // MailStats is the volume snapshot injected into the fresh-session digest:
