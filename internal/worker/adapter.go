@@ -137,10 +137,10 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 			// shred one record across many visual lines until records were
 			// indistinguishable from each other. Previews clamp at 60
 			// runes on top of the server-side 100.
-			fmt.Fprintf(&b, "[未读 %d/%d]\n  发件人: %s\n  主题: %s（%s）\n  预览: %s\n",
+			fmt.Fprintf(&b, "[未读 %d/%d]\n  发件人: %s\n  主题: %s（%s）\n  预览: %s%s\n",
 				i+1, len(mails), oneLine(m.From), irtMark(m)+oneLine(m.Subject),
 				time.Unix(m.ReceivedAt, 0).Format("01-02 15:04"),
-				oneLine(clampRunes(m.Preview, 60)))
+				oneLine(clampRunes(m.Preview, 60)), attachMark(m))
 		}
 		// Long-unread reminder (boss spec 2026-10-01): a mail pushed for
 		// more than 3 wake rounds means the session keeps receiving it
@@ -165,6 +165,16 @@ func Digest(cfg *Config, mails []MailSummary, resumed bool, timeBeat, compactNot
 // (boss 2026-10-15 18:00: "改成 [↩reply to ID] 其中ID换成irt参数") — the
 // marker names the parent message id directly, so the agent can thread
 // without a detail fetch. No parent subject rides the digest.
+// attachMark appends the trailing [📎×N] to an unread entry when the
+// letter carries attachments (boss 2026-10-20, Devi scheme) — count only:
+// names live in the detail fetch, so the list layer never pays N requests.
+func attachMark(m MailSummary) string {
+	if m.Files > 0 {
+		return fmt.Sprintf(" [📎×%d]", m.Files)
+	}
+	return ""
+}
+
 func irtMark(m MailSummary) string {
 	if m.InReplyTo != "" {
 		return "[↩reply to " + m.InReplyTo + "] "

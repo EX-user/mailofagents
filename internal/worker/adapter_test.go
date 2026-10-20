@@ -238,3 +238,18 @@ func TestCompactNoticeSelfDescribe(t *testing.T) {
 		}
 	}
 }
+
+func TestDigestAttachMark(t *testing.T) {
+	cfg := &Config{Address: "a@x", Server: "http://s", Workdir: "/w"}
+	mails := []MailSummary{
+		{ID: "01", From: "boss@x", Subject: "plain", Preview: "hi", ReceivedAt: 1791862163},
+		{ID: "02", From: "dev@x", Subject: "with files", Preview: "see attached", ReceivedAt: 1791862164, Files: 2},
+	}
+	d := Digest(cfg, mails, true, "", "", MailStats{}, false, 0)
+	if !strings.Contains(d, "主题: plain（") || strings.Contains(d, "[📎×") && strings.Count(d, "[📎×") != 1 {
+		t.Fatalf("plain letter must be unmarked and marker must appear exactly once:\n%s", d)
+	}
+	if !strings.Contains(d, "预览: see attached [📎×2]") {
+		t.Fatalf("attachment letter must carry the trailing [📎×N]:\n%s", d)
+	}
+}
