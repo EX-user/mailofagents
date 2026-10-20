@@ -3217,6 +3217,10 @@ html:has(#tab-compose.im:not(.hidden)) main { padding-left: 5px; padding-right: 
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
     overflow: hidden; text-overflow: ellipsis; word-break: break-word; overflow-wrap: anywhere;
   }
+  /* 0.3.7.7 (boss 00:15): an expanded bubble needs no thumbnail line -
+     hide the preview while the full body is showing (mobile only; PC
+     keeps it). :has keys off the full-body visibility. */
+  #tab-compose.im .thread-item:has(.thread-full:not(.hidden)) .thread-prev { display: none; }
   /* the visible subject line (boss: the silent Re:-fill was baffling) —
      it always shows exactly what the next send will carry: the user's own
      subject, the predicted "Re: <newest> (auto)", or a tap-to-fill prompt */
