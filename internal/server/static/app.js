@@ -3158,7 +3158,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
   // ---- user preferences (v0.6) ----
   // Read order: server account.prefs > localStorage fallback > defaults.
   // Cached in memory: message rendering consults it without a request.
-  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24, onboarding_dismissed: false, welcome_seen: false };
+  const PREFS_DEFAULTS = { audio_autoplay: false, image_preview: true, body_markdown: false, session_markdown: false, livenessWeakHours: 48, livenessStrongHours: 24, onboarding_dismissed: false, welcome_seen: false };
   let userPrefs = null;
   const PREFS_LS_KEY = "agentmail_prefs";
 
@@ -3181,6 +3181,8 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
         : (typeof local.image_preview === "boolean" ? local.image_preview : PREFS_DEFAULTS.image_preview),
       body_markdown: typeof src.body_markdown === "boolean" ? src.body_markdown
         : (typeof local.body_markdown === "boolean" ? local.body_markdown : PREFS_DEFAULTS.body_markdown),
+      session_markdown: typeof src.session_markdown === "boolean" ? src.session_markdown
+        : (typeof local.session_markdown === "boolean" ? local.session_markdown : PREFS_DEFAULTS.session_markdown),
       // Felix vector-1: the localStorage mirror is per-browser, not
       // per-account - a Don't-show-again on any account leaked into every
       // fresh account via the local fallback. The server is authoritative:
@@ -3228,6 +3230,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       audio_autoplay: !!$("#pref-audio-autoplay").checked,
       image_preview: !!$("#pref-image-preview").checked,
       body_markdown: !!$("#pref-body-markdown").checked,
+      session_markdown: !!$("#pref-session-markdown").checked,
       "liveness.strongHours": strong,
       "liveness.weakHours": weak,
     };
@@ -3445,6 +3448,7 @@ import { $, $$, esc, api, getSession, setSession, setToken, updateTokenRole, bas
       const obEl = $("#pref-onboarding");
       if (obEl) obEl.checked = !(userPrefs.onboarding_dismissed === true);
       $("#pref-body-markdown").checked = userPrefs.body_markdown === true;
+      $("#pref-session-markdown").checked = userPrefs.session_markdown === true;
       const lvS = $("#pref-liveness-strong"), lvW = $("#pref-liveness-weak");
       if (lvS) lvS.value = userPrefs.livenessStrongHours;
       if (lvW) lvW.value = userPrefs.livenessWeakHours;
