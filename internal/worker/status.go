@@ -278,7 +278,9 @@ func (b *Board) row(tag string) *statusRow {
 // bottom, never stack). When the board is disabled it falls back to plain
 // log.Printf so redirected runs keep a flat log.
 func (b *Board) Logf(tag, format string, args ...any) {
-	line := fmt.Sprintf("[%s] %s", tag, fmt.Sprintf(format, args...))
+	// 行首时刻（boss 2026-10-30，用户 luowudi 报）：worker-log 滚动环的行
+	// 原先不带时间，排查无从对时。HH:MM:SS 在行首，10 行内即可比先后。
+	line := fmt.Sprintf("[%s %s] %s", time.Now().Format("15:04:05"), tag, fmt.Sprintf(format, args...))
 	b.mu.Lock()
 	if b.enabled || b.dumpDir != "" {
 		b.logRing = append(b.logRing, line)
